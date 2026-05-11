@@ -18,6 +18,15 @@ The implementation must be designed so the full graph structure is **never loade
 
 ---
 
+## Version Control Discipline
+
+- Keep this project under git.
+- After every code, config, test, or documentation change, run the relevant verification and create a git commit.
+- Do not commit generated datasets, experiment outputs, caches, IDE metadata, or local environment files.
+- Push commits to the configured private remote after the remote is available.
+
+---
+
 ## Non-Negotiable Design Constraints
 
 ### 1. Never materialize full two-hop neighborhoods or `A^2`
@@ -595,4 +604,3 @@ Keep the implementation aligned with this narrative:
 4. Merge only same-type nodes using spectral, relation, feature, convolution, and boundary-aware costs.
 5. Construct the coarse heterogeneous graph by relation-preserving aggregation.
 6. Evaluate not only downstream accuracy, but also spectral / energy preservation and resource use.
-
