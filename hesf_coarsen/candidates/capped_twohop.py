@@ -10,6 +10,7 @@ import numpy as np
 
 from hesf_coarsen.candidates.bounded_heap import BoundedCandidateStore
 from hesf_coarsen.io.schema import HeteroGraph
+from hesf_coarsen.progress import progress_iter, progress_message
 
 
 @dataclass(frozen=True)
@@ -29,17 +30,26 @@ class CappedTwoHopIncidentIndex:
         graph: HeteroGraph,
         edge_chunk_size: int = 1_000_000,
         mmap_dir: str | Path | None = None,
+        progress_config: dict | None = None,
     ) -> "CappedTwoHopIncidentIndex":
         if edge_chunk_size <= 0:
             raise ValueError("edge_chunk_size must be positive")
         if mmap_dir is not None:
-            return cls._from_graph_memmap(graph, edge_chunk_size, Path(mmap_dir))
+            return cls._from_graph_memmap(graph, edge_chunk_size, Path(mmap_dir), progress_config)
 
         middle_chunks: list[np.ndarray] = []
         endpoint_type_chunks: list[np.ndarray] = []
         endpoint_chunks: list[np.ndarray] = []
         for rel in graph.relations.values():
-            for edge_start in range(0, rel.num_edges, edge_chunk_size):
+            ranges = range(0, rel.num_edges, edge_chunk_size)
+            total = (rel.num_edges + edge_chunk_size - 1) // edge_chunk_size
+            for edge_start in progress_iter(
+                ranges,
+                total=total,
+                desc=f"incident index relation {rel.relation_id}",
+                config=progress_config,
+                unit="chunk",
+            ):
                 edge_stop = min(edge_start + edge_chunk_size, rel.num_edges)
                 src = rel.src[edge_start:edge_stop]
                 dst = rel.dst[edge_start:edge_stop]
@@ -167,6 +177,7 @@ class CappedTwoHopIncidentIndex:
         graph: HeteroGraph,
         edge_chunk_size: int,
         mmap_dir: Path,
+        progress_config: dict | None,
     ) -> "CappedTwoHopIncidentIndex":
         mmap_dir.mkdir(parents=True, exist_ok=True)
         chunk_dir = mmap_dir / "incident_chunks"
@@ -177,7 +188,15 @@ class CappedTwoHopIncidentIndex:
         chunk_paths: list[Path] = []
         chunk_index = 0
         for rel in graph.relations.values():
-            for edge_start in range(0, rel.num_edges, edge_chunk_size):
+            ranges = range(0, rel.num_edges, edge_chunk_size)
+            total = (rel.num_edges + edge_chunk_size - 1) // edge_chunk_size
+            for edge_start in progress_iter(
+                ranges,
+                total=total,
+                desc=f"incident mmap relation {rel.relation_id}",
+                config=progress_config,
+                unit="chunk",
+            ):
                 edge_stop = min(edge_start + edge_chunk_size, rel.num_edges)
                 src = rel.src[edge_start:edge_stop]
                 dst = rel.dst[edge_start:edge_stop]
@@ -194,6 +213,7 @@ class CappedTwoHopIncidentIndex:
                 chunk_paths.append(chunk_path)
                 chunk_index += 1
 
+        progress_message(progress_config, "incident mmap merge: counting unique triples")
         total_unique, group_count = cls._count_merged_chunks(chunk_paths)
         middle = np.lib.format.open_memmap(
             mmap_dir / "incident_middle.npy",
@@ -219,6 +239,7 @@ class CappedTwoHopIncidentIndex:
             dtype=np.int64,
             shape=(group_count + 1,),
         )
+        progress_message(progress_config, "incident mmap merge: writing final index")
         cls._write_merged_chunks(chunk_paths, middle, endpoint_type, endpoints, indptr)
         for array in [middle, endpoint_type, endpoints, indptr]:
             array.flush()
@@ -499,11 +520,20 @@ def generate_capped_twohop_candidates_chunked(
         graph,
         edge_chunk_size=edge_chunk_size,
         mmap_dir=candidate_cfg.get("incident_index_mmap_dir"),
+        progress_config=config,
     )
     total_emitted = 0
     max_per_middle = 0
     middle_count = 0
-    for start_middle in range(0, graph.num_nodes, middle_chunk_size):
+    ranges = range(0, graph.num_nodes, middle_chunk_size)
+    total = (graph.num_nodes + middle_chunk_size - 1) // middle_chunk_size
+    for start_middle in progress_iter(
+        ranges,
+        total=total,
+        desc="capped two-hop middle chunks",
+        config=config,
+        unit="chunk",
+    ):
         stop_middle = min(start_middle + middle_chunk_size, graph.num_nodes)
         incident = incident_index.collect_middle_range(start_middle, stop_middle)
         if cap is None and global_cap not in (None, "none", "off", False):

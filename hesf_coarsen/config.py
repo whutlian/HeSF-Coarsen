@@ -21,6 +21,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "max_dense_bytes": None,
         "scoring_batch_size": 65_536,
     },
+    "progress": {
+        "enabled": False,
+        "backend": "auto",
+        "min_interval_seconds": 1.0,
+    },
     "coarsening": {
         "target_ratio": 0.1,
         "max_levels": 6,

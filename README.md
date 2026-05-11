@@ -24,11 +24,36 @@ Torch/CUDA are available in that environment. The default coarsening core keeps 
 
 ```powershell
 & 'C:\Users\slian\anaconda3\envs\pytorch\python.exe' -m hesf_coarsen.cli.main generate-synthetic --output data/tiny --num-users 1000 --num-items 500 --num-tags 100
-& 'C:\Users\slian\anaconda3\envs\pytorch\python.exe' -m hesf_coarsen.cli.main coarsen --config configs/default.yaml --input data/tiny --output outputs/tiny_run
+& 'C:\Users\slian\anaconda3\envs\pytorch\python.exe' -m hesf_coarsen.cli.main coarsen --config configs/default.yaml --input data/tiny --output outputs/tiny_run --progress
 & 'C:\Users\slian\anaconda3\envs\pytorch\python.exe' -m hesf_coarsen.cli.main diagnose --input outputs/tiny_run/level_1
 ```
 
 Each graph directory uses `schema.json`, `nodes.npz`, one `relation_<id>.npz` per relation, optional per-type feature arrays, and `diagnostics.json` for coarsened levels.
+
+## Progress Feedback
+
+Progress is disabled by default in the library config and writes only to stderr when enabled, so the final CLI JSON remains on stdout. Enable it from the command line:
+
+```powershell
+& 'C:\Users\slian\anaconda3\envs\pytorch\python.exe' -m hesf_coarsen.cli.main coarsen --config configs/default.yaml --input data/tiny --output outputs/tiny_run --progress
+```
+
+For server logs, use the plain backend and combine stderr/stdout into a log:
+
+```powershell
+& 'C:\Users\slian\anaconda3\envs\pytorch\python.exe' -m hesf_coarsen.cli.main coarsen --config configs/default.yaml --input data/ogbn_mag_hesf --output outputs/ogbn_mag_full --progress --progress-backend plain 2>&1 | Tee-Object outputs/ogbn_mag_full.log
+```
+
+The equivalent YAML config is:
+
+```yaml
+progress:
+  enabled: true
+  backend: auto
+  min_interval_seconds: 1.0
+```
+
+`backend: auto` uses `tqdm` if it is installed and otherwise falls back to plain progress lines.
 
 ## Real Dataset Imports
 
@@ -78,6 +103,10 @@ The assignment file is an `.npz` with `assignment` and `supernode_type` arrays.
 Enable fixed-size array or memmap-backed candidate storage inside the multilevel pipeline with config. This is intended for large-graph experiments; the default remains the simpler heap store.
 
 ```yaml
+progress:
+  enabled: true
+  backend: plain
+  min_interval_seconds: 5.0
 candidates:
   store_backend: array
   use_chunked_generation: true

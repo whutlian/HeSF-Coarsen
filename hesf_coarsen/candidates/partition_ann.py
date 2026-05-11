@@ -6,6 +6,7 @@ import numpy as np
 
 from hesf_coarsen.candidates.bounded_heap import BoundedCandidateStore
 from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
+from hesf_coarsen.progress import progress_iter
 
 
 def _partition_groups(
@@ -52,7 +53,16 @@ def generate_partition_ann_candidates(
     pairs_considered = 0
     groups_considered = 0
 
-    for group_id, group in enumerate(_partition_groups(graph, partition_id)):
+    groups = list(_partition_groups(graph, partition_id))
+    for group_id, group in enumerate(
+        progress_iter(
+            groups,
+            total=len(groups),
+            desc="partition ANN groups",
+            config=config,
+            unit="group",
+        )
+    ):
         groups_considered += 1
         group_Z = Z[group]
         for projection_id in range(num_projections):

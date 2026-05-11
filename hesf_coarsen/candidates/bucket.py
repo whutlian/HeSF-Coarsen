@@ -6,6 +6,7 @@ from itertools import combinations
 import numpy as np
 
 from hesf_coarsen.candidates.bounded_heap import BoundedCandidateStore
+from hesf_coarsen.progress import progress_iter
 
 
 def _bounded_pairs(nodes: np.ndarray, cap: int, seed: int) -> list[tuple[int, int]]:
@@ -64,7 +65,15 @@ def generate_bucket_candidates_chunked(
     seed = int(config.get("seed", 12345))
     emitted = 0
     buckets = np.asarray(buckets, dtype=np.int64)
-    for start in range(0, len(buckets), node_chunk_size):
+    ranges = range(0, len(buckets), node_chunk_size)
+    total = (len(buckets) + node_chunk_size - 1) // node_chunk_size
+    for start in progress_iter(
+        ranges,
+        total=total,
+        desc="bucket candidates",
+        config=config,
+        unit="chunk",
+    ):
         stop = min(start + node_chunk_size, len(buckets))
         groups: dict[int, list[int]] = defaultdict(list)
         for local_node, bucket in enumerate(buckets[start:stop], start=start):

@@ -23,6 +23,7 @@ from hesf_coarsen.io.edge_list import save_graph
 from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
 from hesf_coarsen.matching.greedy import run_greedy_matching
 from hesf_coarsen.partition.type_partition import default_partition
+from hesf_coarsen.progress import progress_message
 from hesf_coarsen.scoring.conv_response import compute_conv_response_sketch
 from hesf_coarsen.scoring.merge_cost import score_candidate_pairs
 from hesf_coarsen.scoring.relation_profile import compute_relation_profiles
@@ -118,11 +119,18 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         if current.num_nodes <= target_nodes:
             break
         runtime: dict[str, float] = {}
+        progress_message(
+            config,
+            f"level {level}: start ({current.num_nodes} nodes, target {target_nodes})",
+        )
 
+        progress_message(config, f"level {level}: sketch start")
         start = perf_counter()
         Z = compute_lowpass_sketch(current, config)
         runtime["sketch"] = perf_counter() - start
+        progress_message(config, f"level {level}: sketch done in {runtime['sketch']:.2f}s")
 
+        progress_message(config, f"level {level}: candidates start")
         start = perf_counter()
         partition_id = default_partition(current)
         candidate_cfg = config.get("candidates", {})
@@ -187,7 +195,13 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         candidate_counts = store.counts()
         source_counts = store.source_counts()
         runtime["candidates"] = perf_counter() - start
+        progress_message(
+            config,
+            f"level {level}: candidates done in {runtime['candidates']:.2f}s "
+            f"({pairs.shape[0]} pairs)",
+        )
 
+        progress_message(config, f"level {level}: scoring start")
         start = perf_counter()
         relation_profiles = compute_relation_profiles(current)
         X = _global_feature_matrix(current)
@@ -204,7 +218,12 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             partition_id=partition_id,
         )
         runtime["scoring"] = perf_counter() - start
+        progress_message(
+            config,
+            f"level {level}: scoring done in {runtime['scoring']:.2f}s ({scored.shape[0]} pairs)",
+        )
 
+        progress_message(config, f"level {level}: matching and aggregation start")
         start = perf_counter()
         assignment = run_greedy_matching(
             current,
@@ -214,7 +233,13 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         )
         coarse = coarsen_graph(current, assignment)
         runtime["matching_and_aggregation"] = perf_counter() - start
+        progress_message(
+            config,
+            f"level {level}: matching and aggregation done in "
+            f"{runtime['matching_and_aggregation']:.2f}s ({coarse.num_nodes} nodes)",
+        )
 
+        progress_message(config, f"level {level}: diagnostics and save start")
         diagnostics = compute_diagnostics(
             current,
             coarse,
@@ -244,8 +269,13 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         save_graph(coarse, level_dir)
         save_diagnostics(diagnostics, level_dir / "diagnostics.json")
         results.append(LevelResult(level, coarse, assignment, diagnostics))
+        progress_message(config, f"level {level}: saved {level_dir}")
 
         if coarse.num_nodes >= current.num_nodes:
+            progress_message(
+                config,
+                f"level {level}: stop because node count did not decrease",
+            )
             break
         current = coarse
 

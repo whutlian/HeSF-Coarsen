@@ -122,3 +122,25 @@ def test_multilevel_pipeline_accepts_partition_ann_candidate_source(tmp_path):
     assert results
     source_counts = results[0].diagnostics["candidate_source_counts"]
     assert source_counts.get("partition_ann", 0) > 0
+
+
+def test_multilevel_pipeline_emits_stage_progress_when_enabled(tmp_path, capsys):
+    graph = generate_synthetic_graph(
+        num_users=8,
+        num_items=5,
+        num_tags=3,
+        seed=47,
+    )
+    config = small_config(tmp_path)
+    config["progress"] = {
+        "enabled": True,
+        "backend": "plain",
+        "min_interval_seconds": 0,
+    }
+
+    run_multilevel_coarsening(graph, config)
+
+    captured = capsys.readouterr()
+    assert "level 1" in captured.err
+    assert "sketch" in captured.err
+    assert "candidates" in captured.err

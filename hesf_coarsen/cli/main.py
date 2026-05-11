@@ -40,6 +40,12 @@ def cmd_generate_synthetic(args: argparse.Namespace) -> None:
 
 def cmd_coarsen(args: argparse.Namespace) -> None:
     config = load_config(args.config)
+    if args.progress:
+        config.setdefault("progress", {})["enabled"] = True
+    if args.progress_backend is not None:
+        config.setdefault("progress", {})["backend"] = args.progress_backend
+    if args.progress_interval is not None:
+        config.setdefault("progress", {})["min_interval_seconds"] = args.progress_interval
     config.setdefault("output", {})["dir"] = str(args.output)
     graph = load_graph(args.input)
     validate_schema(graph)
@@ -159,6 +165,9 @@ def build_parser() -> argparse.ArgumentParser:
     coarsen.add_argument("--config", type=Path, required=True)
     coarsen.add_argument("--input", type=Path, required=True)
     coarsen.add_argument("--output", type=Path, required=True)
+    coarsen.add_argument("--progress", action="store_true", help="emit progress updates to stderr")
+    coarsen.add_argument("--progress-backend", choices=["auto", "plain", "tqdm"])
+    coarsen.add_argument("--progress-interval", type=float)
     coarsen.set_defaults(func=cmd_coarsen)
 
     diagnose = subparsers.add_parser("diagnose")

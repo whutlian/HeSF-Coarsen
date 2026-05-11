@@ -4,6 +4,7 @@ import numpy as np
 
 from hesf_coarsen.candidates.bounded_heap import BoundedCandidateStore
 from hesf_coarsen.io.schema import HeteroGraph
+from hesf_coarsen.progress import progress_iter
 
 
 def generate_onehop_candidates(
@@ -39,7 +40,15 @@ def generate_onehop_candidates_chunked(
     for rel in graph.relations.values():
         if rel.src_type != rel.dst_type:
             continue
-        for start in range(0, rel.num_edges, edge_chunk_size):
+        ranges = range(0, rel.num_edges, edge_chunk_size)
+        total = (rel.num_edges + edge_chunk_size - 1) // edge_chunk_size
+        for start in progress_iter(
+            ranges,
+            total=total,
+            desc=f"one-hop relation {rel.relation_id}",
+            config=config,
+            unit="chunk",
+        ):
             stop = min(start + edge_chunk_size, rel.num_edges)
             src = rel.src[start:stop]
             dst = rel.dst[start:stop]
