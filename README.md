@@ -57,10 +57,11 @@ progress:
 
 ## OGB MAG Server Runs
 
-Two checked-in CPU experiment configs are provided for full OGB MAG envelope runs:
+Two checked-in CPU configs and one Torch/CUDA config are provided for full OGB MAG envelope runs:
 
 - `configs/ogbn_mag_A_cpu_chunked.yaml`: CPU, chunked/memmap candidate store, no partition ANN source.
 - `configs/ogbn_mag_B_cpu_ann.yaml`: CPU, same chunked/memmap baseline plus the deterministic partition ANN candidate source.
+- `configs/ogbn_mag_C_torch_ann.yaml`: Torch/CUDA dense blocks, chunked/memmap candidate store, and deterministic partition ANN.
 
 Run A:
 
@@ -92,7 +93,22 @@ python -m hesf_coarsen.cli.main coarsen \
   2>&1 | tee outputs/ogbn_mag_B_cpu_ann/run.log
 ```
 
-Both configs enable plain progress output and sampled large-graph diagnostics. The final per-level memory/runtime envelope is written to each `level_<n>/diagnostics.json`.
+Run C on GPU 0:
+
+```bash
+cd /path/to/HeSF-Coarsen
+git pull
+conda activate pytorch
+mkdir -p outputs/ogbn_mag_C_torch_ann
+
+CUDA_VISIBLE_DEVICES=0 python -m hesf_coarsen.cli.main coarsen \
+  --config configs/ogbn_mag_C_torch_ann.yaml \
+  --input data/ogbn_mag_hesf \
+  --output outputs/ogbn_mag_C_torch_ann \
+  2>&1 | tee outputs/ogbn_mag_C_torch_ann/run.log
+```
+
+All three configs enable plain progress output and sampled large-graph diagnostics. The final per-level memory/runtime envelope is written to each `level_<n>/diagnostics.json`.
 
 If the server restarts or the process is interrupted, rerun against the same output directory with `--resume`. Resume happens at completed level boundaries: a partially written next level is ignored and recomputed.
 
@@ -103,6 +119,17 @@ python -m hesf_coarsen.cli.main coarsen \
   --output outputs/ogbn_mag_A_cpu_chunked \
   --resume \
   2>&1 | tee -a outputs/ogbn_mag_A_cpu_chunked/run.log
+```
+
+For C, keep the same GPU binding when resuming:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m hesf_coarsen.cli.main coarsen \
+  --config configs/ogbn_mag_C_torch_ann.yaml \
+  --input data/ogbn_mag_hesf \
+  --output outputs/ogbn_mag_C_torch_ann \
+  --resume \
+  2>&1 | tee -a outputs/ogbn_mag_C_torch_ann/run.log
 ```
 
 For output directories produced before checkpoint support was added, also pass `--allow-legacy-checkpoints`. This accepts loadable `level_<n>` directories that have `diagnostics.json` but no `checkpoint.json`.

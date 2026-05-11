@@ -1,0 +1,51 @@
+seed: 12345
+acceleration:
+  dense_backend: torch
+  device: cuda
+  fallback_to_numpy: true
+  max_dense_bytes: 12000000000
+  scoring_batch_size: 65536
+progress:
+  enabled: true
+  backend: plain
+  min_interval_seconds: 5.0
+resume:
+  enabled: false
+  allow_legacy_checkpoints: false
+coarsening:
+  target_ratio: 0.1
+  max_levels: 6
+  per_level_ratio: 0.55
+  same_type_only: true
+  same_partition_only: true
+sketch:
+  dim: 32
+  order: 5
+  num_scales: 2
+  dtype: float32
+  probe: rademacher
+  method: repeated_smoothing
+candidates:
+  store_backend: array
+  use_chunked_generation: true
+  mmap_dir: outputs/ogbn_mag_C_torch_ann/candidate_mmap
+  incident_index_mmap_dir: outputs/ogbn_mag_C_torch_ann/incident_index_mmap
+  edge_chunk_size: 1000000
+  middle_chunk_size: 100000
+  node_chunk_size: 500000
+  total_budget_K: 16
+  twohop_budget_K2: 8
+  middle_degree_cap_policy: p99
+  per_middle_pair_cap: 64
+  bucket_pair_cap: 64
+  enable_onehop: true
+  enable_capped_twohop: true
+  enable_bucket: true
+  enable_partition_ann: true
+  ann_num_projections: 4
+  ann_window_size: 8
+  ann_budget_K: 8
+  simhash_bits: 16
+diagnostics:
+  enable_large_graph_envelope: true
+  edge_sample_size: 1024
