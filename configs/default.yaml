@@ -13,6 +13,9 @@ progress:
   enabled: false
   backend: auto
   min_interval_seconds: 1.0
+resume:
+  enabled: false
+  allow_legacy_checkpoints: false
 coarsening:
   target_ratio: 0.1
   max_levels: 6

@@ -94,6 +94,31 @@ python -m hesf_coarsen.cli.main coarsen \
 
 Both configs enable plain progress output and sampled large-graph diagnostics. The final per-level memory/runtime envelope is written to each `level_<n>/diagnostics.json`.
 
+If the server restarts or the process is interrupted, rerun against the same output directory with `--resume`. Resume happens at completed level boundaries: a partially written next level is ignored and recomputed.
+
+```bash
+python -m hesf_coarsen.cli.main coarsen \
+  --config configs/ogbn_mag_A_cpu_chunked.yaml \
+  --input data/ogbn_mag_hesf \
+  --output outputs/ogbn_mag_A_cpu_chunked \
+  --resume \
+  2>&1 | tee -a outputs/ogbn_mag_A_cpu_chunked/run.log
+```
+
+For output directories produced before checkpoint support was added, also pass `--allow-legacy-checkpoints`. This accepts loadable `level_<n>` directories that have `diagnostics.json` but no `checkpoint.json`.
+
+```bash
+python -m hesf_coarsen.cli.main coarsen \
+  --config configs/ogbn_mag_A_cpu_chunked.yaml \
+  --input data/ogbn_mag_hesf \
+  --output outputs/ogbn_mag_A_cpu_chunked \
+  --resume \
+  --allow-legacy-checkpoints \
+  2>&1 | tee -a outputs/ogbn_mag_A_cpu_chunked/run.log
+```
+
+New completed levels include `assignment.npz` and `checkpoint.json`. Running into an existing output directory without `--resume` raises an error so old and new results are not silently mixed.
+
 ## Real Dataset Imports
 
 Import HGB datasets through PyG. Use `--root data` so local `data/acm` and `data/dblp` caches are reused when present:

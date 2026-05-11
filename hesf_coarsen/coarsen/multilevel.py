@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +20,7 @@ from hesf_coarsen.candidates.partition_ann import generate_partition_ann_candida
 from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph
 from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.eval.diagnostics import compute_diagnostics, save_diagnostics
-from hesf_coarsen.io.edge_list import save_graph
+from hesf_coarsen.io.edge_list import load_graph, save_graph
 from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
 from hesf_coarsen.matching.greedy import run_greedy_matching
 from hesf_coarsen.partition.type_partition import default_partition
@@ -37,6 +38,120 @@ class LevelResult:
     graph: HeteroGraph
     assignment: Assignment
     diagnostics: dict
+
+
+@dataclass(frozen=True)
+class CompletedLevel:
+    level: int
+    directory: Path
+    num_nodes: int
+    legacy: bool
+
+
+def _parse_level_dir(path: Path) -> int | None:
+    if not path.is_dir() or not path.name.startswith("level_"):
+        return None
+    try:
+        level = int(path.name.removeprefix("level_"))
+    except ValueError:
+        return None
+    return level if level > 0 else None
+
+
+def _has_level_dirs(output_dir: Path) -> bool:
+    if not output_dir.exists():
+        return False
+    return any(_parse_level_dir(path) is not None for path in output_dir.iterdir())
+
+
+def _write_json_atomic(path: Path, payload: dict) -> None:
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    with tmp_path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+    tmp_path.replace(path)
+
+
+def _save_assignment(assignment: Assignment, path: Path) -> None:
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    with tmp_path.open("wb") as handle:
+        np.savez_compressed(
+            handle,
+            assignment=assignment.assignment,
+            supernode_type=assignment.supernode_type,
+        )
+    tmp_path.replace(path)
+
+
+def _completed_level(
+    level_dir: Path,
+    level: int,
+    allow_legacy_checkpoints: bool,
+) -> CompletedLevel | None:
+    diagnostics_path = level_dir / "diagnostics.json"
+    checkpoint_path = level_dir / "checkpoint.json"
+    if not diagnostics_path.exists():
+        return None
+    try:
+        graph = load_graph(level_dir)
+    except Exception:
+        return None
+
+    if checkpoint_path.exists():
+        try:
+            with checkpoint_path.open("r", encoding="utf-8") as handle:
+                checkpoint = json.load(handle)
+        except (json.JSONDecodeError, OSError):
+            return None
+        if not bool(checkpoint.get("complete", False)):
+            return None
+        if int(checkpoint.get("level", -1)) != level:
+            return None
+        if not (level_dir / "assignment.npz").exists():
+            return None
+        return CompletedLevel(level=level, directory=level_dir, num_nodes=graph.num_nodes, legacy=False)
+
+    if allow_legacy_checkpoints:
+        return CompletedLevel(level=level, directory=level_dir, num_nodes=graph.num_nodes, legacy=True)
+    return None
+
+
+def discover_completed_levels(
+    output_dir: str | Path,
+    allow_legacy_checkpoints: bool = False,
+) -> list[CompletedLevel]:
+    root = Path(output_dir)
+    completed: list[CompletedLevel] = []
+    level = 1
+    while True:
+        level_dir = root / f"level_{level}"
+        if not level_dir.exists():
+            break
+        found = _completed_level(level_dir, level, allow_legacy_checkpoints)
+        if found is None:
+            break
+        completed.append(found)
+        level += 1
+    return completed
+
+
+def _save_checkpoint(
+    level_dir: Path,
+    level: int,
+    input_nodes: int,
+    coarse_nodes: int,
+    target_nodes: int,
+    legacy_resume: bool,
+) -> None:
+    checkpoint = {
+        "version": 1,
+        "complete": True,
+        "level": int(level),
+        "input_nodes": int(input_nodes),
+        "coarse_nodes": int(coarse_nodes),
+        "target_nodes": int(target_nodes),
+        "legacy_resume": bool(legacy_resume),
+    }
+    _write_json_atomic(level_dir / "checkpoint.json", checkpoint)
 
 
 def _global_feature_matrix(graph: HeteroGraph) -> np.ndarray | None:
@@ -107,15 +222,37 @@ def _flush_candidate_store(store: BoundedCandidateStore | ArrayCandidateStore) -
 
 
 def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelResult]:
-    current = graph
     original_nodes = graph.num_nodes
     target_nodes = max(1, int(np.ceil(original_nodes * float(config["coarsening"]["target_ratio"]))))
     max_levels = int(config["coarsening"]["max_levels"])
     output_dir = Path(config.get("output", {}).get("dir", "outputs/default_run"))
+    resume_cfg = config.get("resume", {})
+    resume_enabled = bool(resume_cfg.get("enabled", False))
+    allow_legacy_checkpoints = bool(resume_cfg.get("allow_legacy_checkpoints", False))
+    if _has_level_dirs(output_dir) and not resume_enabled:
+        raise FileExistsError(
+            f"{output_dir} already contains level outputs; rerun with --resume or use a new output directory"
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
+    completed_levels = discover_completed_levels(
+        output_dir,
+        allow_legacy_checkpoints=allow_legacy_checkpoints,
+    )
+    legacy_resume = any(level.legacy for level in completed_levels)
+    if completed_levels:
+        last_completed = completed_levels[-1]
+        current = load_graph(last_completed.directory)
+        start_level = last_completed.level + 1
+        progress_message(
+            config,
+            f"resume: using level {last_completed.level} from {last_completed.directory}",
+        )
+    else:
+        current = graph
+        start_level = 1
     results: list[LevelResult] = []
 
-    for level in range(1, max_levels + 1):
+    for level in range(start_level, max_levels + 1):
         if current.num_nodes <= target_nodes:
             break
         runtime: dict[str, float] = {}
@@ -267,7 +404,16 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         )
         level_dir = output_dir / f"level_{level}"
         save_graph(coarse, level_dir)
+        _save_assignment(assignment, level_dir / "assignment.npz")
         save_diagnostics(diagnostics, level_dir / "diagnostics.json")
+        _save_checkpoint(
+            level_dir,
+            level=level,
+            input_nodes=current.num_nodes,
+            coarse_nodes=coarse.num_nodes,
+            target_nodes=target_nodes,
+            legacy_resume=legacy_resume,
+        )
         results.append(LevelResult(level, coarse, assignment, diagnostics))
         progress_message(config, f"level {level}: saved {level_dir}")
 

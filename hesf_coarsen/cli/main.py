@@ -9,7 +9,7 @@ import numpy as np
 from hesf_coarsen.config import load_config
 from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph_chunked
 from hesf_coarsen.coarsen.assignment import Assignment
-from hesf_coarsen.coarsen.multilevel import run_multilevel_coarsening
+from hesf_coarsen.coarsen.multilevel import discover_completed_levels, run_multilevel_coarsening
 from hesf_coarsen.io.edge_list import generate_synthetic_graph, load_graph, save_graph
 from hesf_coarsen.io.dataset_importers import import_hgb_dataset, import_ogbn_mag_dataset
 from hesf_coarsen.io.memmap_csr import load_memmap_graph, memmap_summary, save_memmap_graph
@@ -46,15 +46,41 @@ def cmd_coarsen(args: argparse.Namespace) -> None:
         config.setdefault("progress", {})["backend"] = args.progress_backend
     if args.progress_interval is not None:
         config.setdefault("progress", {})["min_interval_seconds"] = args.progress_interval
+    if args.resume:
+        config.setdefault("resume", {})["enabled"] = True
+    if args.allow_legacy_checkpoints:
+        config.setdefault("resume", {})["allow_legacy_checkpoints"] = True
     config.setdefault("output", {})["dir"] = str(args.output)
+    resume_cfg = config.get("resume", {})
+    completed_before = (
+        discover_completed_levels(
+            args.output,
+            allow_legacy_checkpoints=bool(resume_cfg.get("allow_legacy_checkpoints", False)),
+        )
+        if bool(resume_cfg.get("enabled", False))
+        else []
+    )
     graph = load_graph(args.input)
     validate_schema(graph)
     results = run_multilevel_coarsening(graph, config)
+    completed_after = discover_completed_levels(
+        args.output,
+        allow_legacy_checkpoints=bool(resume_cfg.get("allow_legacy_checkpoints", False)),
+    )
+    final_nodes = (
+        results[-1].graph.num_nodes
+        if results
+        else completed_after[-1].num_nodes
+        if completed_after
+        else graph.num_nodes
+    )
     summary = {
         "input": str(args.input),
         "output": str(args.output),
         "levels": len(results),
-        "final_nodes": results[-1].graph.num_nodes if results else graph.num_nodes,
+        "completed_levels": len(completed_after),
+        "resumed_from_level": completed_before[-1].level if completed_before else 0,
+        "final_nodes": final_nodes,
     }
     if results:
         summary["last_level_diagnostics"] = results[-1].diagnostics
@@ -168,6 +194,12 @@ def build_parser() -> argparse.ArgumentParser:
     coarsen.add_argument("--progress", action="store_true", help="emit progress updates to stderr")
     coarsen.add_argument("--progress-backend", choices=["auto", "plain", "tqdm"])
     coarsen.add_argument("--progress-interval", type=float)
+    coarsen.add_argument("--resume", action="store_true", help="continue from completed level outputs")
+    coarsen.add_argument(
+        "--allow-legacy-checkpoints",
+        action="store_true",
+        help="treat loadable pre-checkpoint level outputs as completed when resuming",
+    )
     coarsen.set_defaults(func=cmd_coarsen)
 
     diagnose = subparsers.add_parser("diagnose")

@@ -26,6 +26,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "backend": "auto",
         "min_interval_seconds": 1.0,
     },
+    "resume": {
+        "enabled": False,
+        "allow_legacy_checkpoints": False,
+    },
     "coarsening": {
         "target_ratio": 0.1,
         "max_levels": 6,
