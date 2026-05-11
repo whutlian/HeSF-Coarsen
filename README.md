@@ -55,6 +55,45 @@ progress:
 
 `backend: auto` uses `tqdm` if it is installed and otherwise falls back to plain progress lines.
 
+## OGB MAG Server Runs
+
+Two checked-in CPU experiment configs are provided for full OGB MAG envelope runs:
+
+- `configs/ogbn_mag_A_cpu_chunked.yaml`: CPU, chunked/memmap candidate store, no partition ANN source.
+- `configs/ogbn_mag_B_cpu_ann.yaml`: CPU, same chunked/memmap baseline plus the deterministic partition ANN candidate source.
+
+Run A:
+
+```bash
+cd /path/to/HeSF-Coarsen
+git pull
+conda activate pytorch
+mkdir -p outputs/ogbn_mag_A_cpu_chunked
+
+python -m hesf_coarsen.cli.main coarsen \
+  --config configs/ogbn_mag_A_cpu_chunked.yaml \
+  --input data/ogbn_mag_hesf \
+  --output outputs/ogbn_mag_A_cpu_chunked \
+  2>&1 | tee outputs/ogbn_mag_A_cpu_chunked/run.log
+```
+
+Run B:
+
+```bash
+cd /path/to/HeSF-Coarsen
+git pull
+conda activate pytorch
+mkdir -p outputs/ogbn_mag_B_cpu_ann
+
+python -m hesf_coarsen.cli.main coarsen \
+  --config configs/ogbn_mag_B_cpu_ann.yaml \
+  --input data/ogbn_mag_hesf \
+  --output outputs/ogbn_mag_B_cpu_ann \
+  2>&1 | tee outputs/ogbn_mag_B_cpu_ann/run.log
+```
+
+Both configs enable plain progress output and sampled large-graph diagnostics. The final per-level memory/runtime envelope is written to each `level_<n>/diagnostics.json`.
+
 ## Real Dataset Imports
 
 Import HGB datasets through PyG. Use `--root data` so local `data/acm` and `data/dblp` caches are reused when present:
