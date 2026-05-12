@@ -52,7 +52,7 @@ The energy estimator loops over relation edges, optionally sampled per relation,
 Z_P = S_step_l ... S_step_1 Omega
 ```
 
-The implementation supports integer relation IDs and accepts either integer type IDs or type names for `start_type` / `end_type`. Type names are inferred from relation schema names such as `author__writes__paper` or `user_to_item`, and can also be supplied through `metapath_sketch.type_names`. The initial basis is nonzero only on `start_type`; after each step, rows outside the current type are zeroed. This preserves type restrictions and avoids constructing `A_r1 @ A_r2` or any two-hop candidate set. Guardrails cap paths and path length unless `allow_large_metapath_sketch` is enabled.
+The implementation supports integer relation IDs and accepts either integer type IDs or type names for `start_type` / `end_type`. Type names are inferred from relation schema names such as `author__writes__paper` or `user_to_item`, and can also be supplied through `metapath_sketch.type_names`. The initial basis is nonzero only on `start_type`; after each step, rows outside the current type are zeroed. This preserves type restrictions and avoids constructing `A_r1 @ A_r2` or any two-hop candidate set. Guardrails cap paths and path length unless `allow_large_metapath_sketch` is enabled. When `auto_paths: true` and no paths are supplied, the default Chebyshev config generates short `relation forward + relation backward` and `relation backward + relation forward` paths from the relation schema so channels such as User-Item-User and Paper-Author-Paper are present in the main sketch.
 
 ## Diagnostics
 

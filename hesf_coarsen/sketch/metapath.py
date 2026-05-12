@@ -71,6 +71,70 @@ def _path_dims(total_dim: int, num_paths: int) -> list[int]:
     return [base + (1 if idx < remainder else 0) for idx in range(num_paths)]
 
 
+def _auto_metapath_paths(
+    graph: HeteroGraph,
+    max_paths: int,
+    type_names: dict[str, int],
+) -> list[dict[str, Any]]:
+    paths: list[dict[str, Any]] = []
+    for relation_id in sorted(graph.relations):
+        if len(paths) >= max_paths:
+            break
+        rel = graph.relations[int(relation_id)]
+        if rel.src_type == rel.dst_type:
+            continue
+        spec = graph.relation_specs.get(int(relation_id))
+        relation_name = str(spec.name) if spec is not None else f"relation_{relation_id}"
+        src_name = _type_display_name(int(rel.src_type), type_names)
+        dst_name = _type_display_name(int(rel.dst_type), type_names)
+        paths.append(
+            {
+                "name": f"auto_{src_name}_{relation_name}_{dst_name}_{src_name}",
+                "start_type": int(rel.src_type),
+                "end_type": int(rel.src_type),
+                "steps": [
+                    {"relation_id": int(relation_id), "direction": "forward"},
+                    {"relation_id": int(relation_id), "direction": "backward"},
+                ],
+            }
+        )
+        if len(paths) >= max_paths:
+            break
+        paths.append(
+            {
+                "name": f"auto_{dst_name}_{relation_name}_{src_name}_{dst_name}",
+                "start_type": int(rel.dst_type),
+                "end_type": int(rel.dst_type),
+                "steps": [
+                    {"relation_id": int(relation_id), "direction": "backward"},
+                    {"relation_id": int(relation_id), "direction": "forward"},
+                ],
+            }
+        )
+
+    if paths:
+        return paths[:max_paths]
+
+    for relation_id in sorted(graph.relations):
+        if len(paths) >= max_paths:
+            break
+        rel = graph.relations[int(relation_id)]
+        if rel.src_type != rel.dst_type:
+            continue
+        spec = graph.relation_specs.get(int(relation_id))
+        relation_name = str(spec.name) if spec is not None else f"relation_{relation_id}"
+        src_name = _type_display_name(int(rel.src_type), type_names)
+        paths.append(
+            {
+                "name": f"auto_{src_name}_{relation_name}_{src_name}",
+                "start_type": int(rel.src_type),
+                "end_type": int(rel.src_type),
+                "steps": [{"relation_id": int(relation_id), "direction": "forward"}],
+            }
+        )
+    return paths[:max_paths]
+
+
 def _mask_type(graph: HeteroGraph, H: np.ndarray, type_id: int) -> np.ndarray:
     out = np.zeros_like(H, dtype=np.float32)
     mask = graph.node_type == int(type_id)
@@ -90,9 +154,14 @@ def compute_metapath_sketch(
             {"enabled": False, "num_paths": 0, "paths": []},
         )
 
-    paths = list(cfg.get("paths", []))
     max_paths = int(cfg.get("max_paths", 3))
     max_path_length = int(cfg.get("max_path_length", 3))
+    type_names = _type_name_map(graph, config)
+    paths = list(cfg.get("paths", []))
+    auto_generated = False
+    if not paths and bool(cfg.get("auto_paths", False)):
+        paths = _auto_metapath_paths(graph, max_paths, type_names)
+        auto_generated = True
     allow_large = bool(cfg.get("allow_large_metapath_sketch", False))
     if not allow_large and len(paths) > max_paths:
         raise ValueError("metapath_sketch.paths exceeds max_paths")
@@ -104,7 +173,6 @@ def compute_metapath_sketch(
     seed = int(cfg.get("seed", config.get("seed", 12345)))
     row_normalize = bool(cfg.get("row_normalize", True))
     dims = _path_dims(total_dim, len(paths))
-    type_names = _type_name_map(graph, config)
     components: list[np.ndarray] = []
     path_diags: list[dict[str, Any]] = []
 
@@ -163,5 +231,10 @@ def compute_metapath_sketch(
     )
     return MetaPathSketchResult(
         sketch,
-        {"enabled": True, "num_paths": int(len(paths)), "paths": path_diags},
+        {
+            "enabled": True,
+            "num_paths": int(len(paths)),
+            "auto_generated_paths": bool(auto_generated),
+            "paths": path_diags,
+        },
     )

@@ -12,6 +12,8 @@ def test_default_config_uses_canonical_sketch_schema():
     config = load_config()
 
     assert config["sketch"]["method"] == "chebyshev_heat"
+    assert config["metapath_sketch"]["enabled"] is True
+    assert config["metapath_sketch"]["auto_paths"] is True
     assert isinstance(config["fusion"]["relation_weighting"], dict)
     assert config["fusion"]["relation_weighting"]["method"] == "inverse_energy"
     assert "include_metapath_filters" not in config["fusion"]
@@ -30,3 +32,12 @@ def test_shipped_configs_do_not_use_legacy_schema_names():
         assert isinstance(loaded["fusion"]["relation_weighting"], dict)
         assert raw.get("fusion", {}).get("relation_weighting") != "uniform"
         assert "include_metapath_filters" not in raw.get("fusion", {})
+
+
+def test_main_chebheat_config_enables_metapath_sketch():
+    config = load_config("configs/sketch_chebheat_metapath.yaml")
+
+    assert config["sketch"]["method"] == "chebyshev_heat"
+    assert config["metapath_sketch"]["enabled"] is True
+    assert config["metapath_sketch"]["auto_paths"] is True
+    assert config["metapath_sketch"]["dim"] > 0

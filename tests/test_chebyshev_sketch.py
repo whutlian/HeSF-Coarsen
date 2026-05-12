@@ -115,7 +115,6 @@ def test_default_lowpass_sketch_uses_relation_weighted_chebyshev_heat():
             "seed": 25,
         },
     )
-    config["metapath_sketch"] = {"enabled": False}
 
     Z = compute_lowpass_sketch(graph, config)
 
@@ -124,3 +123,5 @@ def test_default_lowpass_sketch_uses_relation_weighted_chebyshev_heat():
     assert diagnostics["sketch_method"] == "chebyshev_heat"
     assert diagnostics["fusion"]["relation_weighting_method"] == "inverse_energy"
     assert diagnostics["fusion"]["relation_weight_stats"]["num_relations"] == len(graph.relations)
+    assert diagnostics["metapath_sketch"]["enabled"] is True
+    assert diagnostics["metapath_sketch"]["num_paths"] > 0

@@ -65,10 +65,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
     },
     "metapath_sketch": {
-        "enabled": False,
+        "enabled": True,
         "dim": 8,
         "max_paths": 3,
         "max_path_length": 3,
+        "auto_paths": True,
         "seed": 123,
         "row_normalize": True,
         "paths": [],

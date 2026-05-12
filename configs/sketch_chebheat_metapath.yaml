@@ -22,10 +22,11 @@ fusion:
     seed: 42
 
 metapath_sketch:
-  enabled: false
+  enabled: true
   dim: 8
   max_paths: 3
   max_path_length: 3
+  auto_paths: true
   seed: 123
   row_normalize: true
   paths: []

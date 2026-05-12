@@ -96,3 +96,27 @@ def test_metapath_sketch_resolves_type_names_from_relation_schema():
     assert np.allclose(result.sketch[graph.node_type == 1], 0.0)
     assert result.diagnostics["paths"][0]["start_type_name"] == "author"
     assert result.diagnostics["paths"][0]["end_type_name"] == "author"
+
+
+def test_metapath_sketch_auto_generates_paths_from_relation_schema():
+    graph = _author_paper_graph()
+    config = {
+        "metapath_sketch": {
+            "enabled": True,
+            "dim": 4,
+            "max_paths": 2,
+            "max_path_length": 2,
+            "auto_paths": True,
+            "seed": 7,
+            "row_normalize": True,
+            "paths": [],
+        }
+    }
+
+    result = compute_metapath_sketch(graph, config)
+
+    assert result.sketch.shape == (graph.num_nodes, 4)
+    assert result.diagnostics["enabled"] is True
+    assert result.diagnostics["auto_generated_paths"] is True
+    assert result.diagnostics["num_paths"] == 2
+    assert result.diagnostics["paths"][0]["length"] == 2
