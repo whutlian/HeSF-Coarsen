@@ -45,7 +45,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "num_scales": 2,
         "dtype": "float16",
         "probe": "rademacher",
-        "method": "lazy",
+        "method": "chebyshev_heat",
         "heat_times": [1.0, 3.0],
         "chebyshev_quadrature_points": 128,
         "internal_dtype": "float32",

@@ -1,6 +1,8 @@
 # Sketch Methods
 
-HeSF-Coarsen supports two low-pass sketch methods.
+HeSF-Coarsen supports two low-pass sketch methods. The default main pipeline uses
+`sketch.method: chebyshev_heat` so the sketch is built from the relation-weighted
+fused Laplacian. `sketch.method: lazy` remains available as an explicit baseline.
 
 ## Lazy Smoothing
 

@@ -1,6 +1,7 @@
 import numpy as np
 
 from hesf_coarsen.config import DEFAULT_CONFIG
+from hesf_coarsen.config import load_config
 from hesf_coarsen.io.edge_list import generate_synthetic_graph
 from hesf_coarsen.io.schema import HeteroGraph, RelationAdj, RelationSpec
 from hesf_coarsen.sketch.chebyshev import chebyshev_heat_coefficients, chebyshev_heat_filter
@@ -94,3 +95,32 @@ def test_chebyshev_lowpass_sketch_has_configured_dtype_and_no_invalid_values():
     assert config["_last_sketch_diagnostics"]["sketch_method"] == "chebyshev_heat"
     assert config["_last_sketch_diagnostics"]["nan_count"] == 0
     assert config["_last_sketch_diagnostics"]["inf_count"] == 0
+
+
+def test_default_lowpass_sketch_uses_relation_weighted_chebyshev_heat():
+    graph = generate_synthetic_graph(num_users=4, num_items=3, num_tags=2, seed=25)
+    config = load_config()
+    config["sketch"] = dict(
+        config["sketch"],
+        dim=8,
+        order=2,
+        heat_times=[1.0],
+        dtype="float32",
+    )
+    config["fusion"] = dict(
+        config["fusion"],
+        relation_weighting={
+            "method": "inverse_energy",
+            "sample_edges_per_relation": 16,
+            "seed": 25,
+        },
+    )
+    config["metapath_sketch"] = {"enabled": False}
+
+    Z = compute_lowpass_sketch(graph, config)
+
+    diagnostics = config["_last_sketch_diagnostics"]
+    assert Z.shape == (graph.num_nodes, 8)
+    assert diagnostics["sketch_method"] == "chebyshev_heat"
+    assert diagnostics["fusion"]["relation_weighting_method"] == "inverse_energy"
+    assert diagnostics["fusion"]["relation_weight_stats"]["num_relations"] == len(graph.relations)

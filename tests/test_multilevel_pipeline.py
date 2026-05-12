@@ -227,6 +227,6 @@ def test_multilevel_pipeline_emits_stage_progress_when_enabled(tmp_path, capsys)
     assert "level 1" in captured.err
     assert "sketch" in captured.err
     assert "candidates" in captured.err
-    assert "lazy smoothing" in captured.err
+    assert "chebyshev heat components" in captured.err
     assert "scoring relation profiles" in captured.err
     assert "score dense batches" in captured.err

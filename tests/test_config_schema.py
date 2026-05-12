@@ -11,7 +11,7 @@ CONFIG_PATHS = sorted(Path("configs").glob("*.yaml"))
 def test_default_config_uses_canonical_sketch_schema():
     config = load_config()
 
-    assert config["sketch"]["method"] == "lazy"
+    assert config["sketch"]["method"] == "chebyshev_heat"
     assert isinstance(config["fusion"]["relation_weighting"], dict)
     assert config["fusion"]["relation_weighting"]["method"] == "inverse_energy"
     assert "include_metapath_filters" not in config["fusion"]
