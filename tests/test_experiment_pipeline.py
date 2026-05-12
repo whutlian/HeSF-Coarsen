@@ -155,6 +155,37 @@ def test_sanity_runner_outputs_summary_and_report(tmp_path):
     assert (output / "report.md").exists()
 
 
+def test_sanity_runner_writes_per_level_diagnose_outputs(tmp_path):
+    from experiments.scripts.run_sanity import run_sanity
+
+    output = tmp_path / "sanity"
+    exit_code = run_sanity(output=output, python=sys.executable)
+
+    assert exit_code == 0
+    for diagnose_path in sorted(output.glob("sanity_*_level/level_*/diagnose.json")):
+        payload = json.loads(diagnose_path.read_text(encoding="utf-8"))
+        assert isinstance(payload, dict)
+        assert payload
+    assert len(list(output.glob("sanity_*_level/level_*/diagnose.json"))) == 3
+
+
+def test_sanity_runner_returns_nonzero_when_any_run_fails(tmp_path, monkeypatch):
+    import experiments.scripts.run_sanity as run_sanity_module
+
+    def fail_coarsening(*args, **kwargs):
+        raise RuntimeError("forced sanity failure")
+
+    monkeypatch.setattr(run_sanity_module, "run_multilevel_coarsening", fail_coarsening)
+
+    output = tmp_path / "sanity"
+    exit_code = run_sanity_module.run_sanity(output=output, python=sys.executable)
+
+    rows = list(csv.DictReader((output / "summary.csv").open()))
+    assert exit_code == 1
+    assert rows
+    assert all(row["status"] == "failed" for row in rows)
+
+
 def test_subset_sampler_is_deterministic_and_writes_diagnostics(tmp_path):
     from experiments.scripts.run_ogbn_mag_subset import sample_relation_aware_subset
 

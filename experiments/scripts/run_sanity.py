@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
+import subprocess
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -9,7 +11,7 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from experiments.scripts._common import markdown_table, write_command_metadata, write_config_snapshot
+from experiments.scripts._common import markdown_table, repo_root, write_command_metadata, write_config_snapshot
 from hesf_coarsen.coarsen.multilevel import run_multilevel_coarsening
 from hesf_coarsen.config import DEFAULT_CONFIG
 from hesf_coarsen.eval.invariants import validate_level_invariants
@@ -35,6 +37,35 @@ def _sanity_config(output: Path, max_levels: int) -> dict:
     )
     config["output"] = {"dir": str(output)}
     return config
+
+
+def _run_level_diagnose(python: str, level_dir: Path) -> dict:
+    command = [
+        python,
+        "-m",
+        "hesf_coarsen.cli.main",
+        "diagnose",
+        "--input",
+        str(level_dir),
+    ]
+    completed = subprocess.run(
+        command,
+        cwd=repo_root(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"diagnose failed for {level_dir}: {completed.stderr.strip()}")
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"diagnose emitted invalid JSON for {level_dir}: {exc}") from exc
+    (level_dir / "diagnose.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return payload
 
 
 def run_sanity(output: str | Path, python: str = "python") -> int:
@@ -68,6 +99,7 @@ def run_sanity(output: str | Path, python: str = "python") -> int:
             results = run_multilevel_coarsening(graph, config)
             for result in results:
                 level_dir = run_dir / f"level_{result.level}"
+                _run_level_diagnose(python, level_dir)
                 invariants = validate_level_invariants(
                     original=current_input,
                     coarse=result.graph,
@@ -112,7 +144,9 @@ def run_sanity(output: str | Path, python: str = "python") -> int:
         writer.writerows(rows)
     report = ["# Sanity Report", "", markdown_table(rows, fieldnames[: min(len(fieldnames), 8)])]
     (output / "report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
-    return 1 if any(int(row.get(key, 0) or 0) != 0 for row in rows for key in core_keys) else 0
+    has_failed_run = any(row.get("status") != "success" for row in rows)
+    has_core_violation = any(int(row.get(key, 0) or 0) != 0 for row in rows for key in core_keys)
+    return 1 if has_failed_run or has_core_violation else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
