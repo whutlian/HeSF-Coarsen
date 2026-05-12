@@ -169,6 +169,7 @@ def compute_large_graph_envelope(
         "candidate_count_quantiles": {
             "p50": float(np.percentile(candidate_counts, 50)) if len(candidate_counts) else 0.0,
             "p90": float(np.percentile(candidate_counts, 90)) if len(candidate_counts) else 0.0,
+            "p95": float(np.percentile(candidate_counts, 95)) if len(candidate_counts) else 0.0,
             "p99": float(np.percentile(candidate_counts, 99)) if len(candidate_counts) else 0.0,
         },
         "runtime_by_stage": {key: float(value) for key, value in sorted(runtime_by_stage.items())},
@@ -207,6 +208,11 @@ def compute_diagnostics(
         "candidate_count_total": int(len(candidate_counts) and candidate_counts.sum()),
         "candidate_count_max": int(candidate_counts.max(initial=0)),
         "candidate_count_mean": float(candidate_counts.mean() if len(candidate_counts) else 0.0),
+        "candidate_count_quantiles": {
+            "p50": float(np.percentile(candidate_counts, 50)) if len(candidate_counts) else 0.0,
+            "p95": float(np.percentile(candidate_counts, 95)) if len(candidate_counts) else 0.0,
+            "p99": float(np.percentile(candidate_counts, 99)) if len(candidate_counts) else 0.0,
+        },
         "candidate_source_counts": dict(source_counts),
         "matched_pairs": int(np.sum(sizes == 2)),
         "singleton_ratio": float(np.sum(sizes == 1) / max(len(sizes), 1)),
