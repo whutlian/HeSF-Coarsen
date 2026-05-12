@@ -13,6 +13,7 @@ def test_ogbn_mag_cpu_chunked_config_exists_and_loads():
     assert config["candidates"]["store_backend"] == "array"
     assert config["candidates"]["use_chunked_generation"] is True
     assert config["candidates"]["enable_partition_ann"] is False
+    assert config["coarsening"]["matching_method"] == "mutual_best"
     assert config["progress"]["enabled"] is True
 
 
@@ -26,6 +27,7 @@ def test_ogbn_mag_cpu_ann_config_exists_and_loads():
     assert config["candidates"]["store_backend"] == "array"
     assert config["candidates"]["use_chunked_generation"] is True
     assert config["candidates"]["enable_partition_ann"] is True
+    assert config["coarsening"]["matching_method"] == "mutual_best"
     assert config["progress"]["enabled"] is True
 
 
@@ -40,4 +42,5 @@ def test_ogbn_mag_torch_ann_config_exists_and_loads():
     assert config["candidates"]["store_backend"] == "array"
     assert config["candidates"]["use_chunked_generation"] is True
     assert config["candidates"]["enable_partition_ann"] is True
+    assert config["coarsening"]["matching_method"] == "mutual_best"
     assert config["progress"]["enabled"] is True

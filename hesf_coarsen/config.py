@@ -36,6 +36,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "per_level_ratio": 0.55,
         "same_type_only": True,
         "same_partition_only": True,
+        "matching_method": "mutual_best",
         "aggregation_chunk_size": 1_000_000,
         "aggregation_reducer": "sort",
     },

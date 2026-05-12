@@ -4,6 +4,7 @@ coarsening:
   per_level_ratio: 0.7
   same_type_only: true
   same_partition_only: true
+  matching_method: mutual_best
 
 sketch:
   method: chebyshev_heat

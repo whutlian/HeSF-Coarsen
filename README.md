@@ -210,6 +210,8 @@ candidates:
   ann_num_projections: 4
   ann_window_size: 8
   ann_budget_K: 8
+coarsening:
+  matching_method: mutual_best
 ```
 
 With `mmap_dir` set, each level writes `candidate_ids.npy`, `candidate_scores.npy`, `candidate_sources.npy`, and `candidate_counts.npy` under `mmap_dir/level_<n>`. With `incident_index_mmap_dir` set, capped two-hop also writes `incident_middle.npy`, `incident_endpoint_type.npy`, `incident_endpoints.npy`, and `incident_indptr.npy` under `incident_index_mmap_dir/level_<n>`. Chunked one-hop, capped two-hop, and SimHash bucket generation keep per-node budgets in the same store API used by the default path. Chunked capped two-hop builds an incident index once per level, keyed by `(middle_node, endpoint_type)`, then slices that index per middle-node chunk instead of rescanning all relation edges. In memmap mode, the index builder writes sorted temporary edge chunks and merges them into the final mmap arrays. Multilevel aggregation writes sort-reduce shards under `output.dir/level_<n>/_aggregation_shards`, and diagnostics include that directory size when the sort reducer is active.
@@ -248,6 +250,7 @@ When enabled, `diagnostics.json` includes `large_graph_envelope` with exact grap
 
 ## Current Limitations
 
+- The default matcher is mutual-best matching, which avoids converting the full candidate table to a Python list or globally sorting all scored pairs. The legacy global greedy matcher remains available with `coarsening.matching_method: greedy` for small debugging runs.
 - The default candidate store uses Python dictionaries and is intended for small and medium prototype runs. Large-graph experiments can opt into fixed-size array or memmap-backed candidate storage.
 - Memmap export remains an explicit utility. Chunked aggregation is the default multilevel edge aggregation path.
 - Memmap-backed capped two-hop indexing and sort-reduce edge aggregation use temporary sorted chunk files during construction, so large runs need enough disk headroom for those intermediate chunks.

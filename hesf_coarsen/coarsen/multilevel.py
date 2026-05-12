@@ -22,7 +22,7 @@ from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.eval.diagnostics import compute_diagnostics, save_diagnostics
 from hesf_coarsen.io.edge_list import load_graph, save_graph
 from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
-from hesf_coarsen.matching.greedy import run_greedy_matching
+from hesf_coarsen.matching.greedy import run_matching
 from hesf_coarsen.ops.fusion_weights import compute_relation_fusion_weights
 from hesf_coarsen.partition.type_partition import default_partition
 from hesf_coarsen.progress import progress_message
@@ -374,8 +374,9 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
 
         progress_message(config, f"level {level}: matching and aggregation start")
         start = perf_counter()
-        progress_message(config, f"level {level}: matching start")
-        assignment = run_greedy_matching(
+        matching_method = str(config.get("coarsening", {}).get("matching_method", "mutual_best"))
+        progress_message(config, f"level {level}: matching start (method={matching_method})")
+        assignment = run_matching(
             current,
             scored,
             _config_for_level(config, current.num_nodes),

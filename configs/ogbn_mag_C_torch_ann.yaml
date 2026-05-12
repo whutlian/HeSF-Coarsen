@@ -18,6 +18,7 @@ coarsening:
   per_level_ratio: 0.55
   same_type_only: true
   same_partition_only: true
+  matching_method: mutual_best
 sketch:
   dim: 32
   order: 5
