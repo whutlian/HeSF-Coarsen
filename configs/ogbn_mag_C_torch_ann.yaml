@@ -24,7 +24,7 @@ sketch:
   num_scales: 2
   dtype: float32
   probe: rademacher
-  method: repeated_smoothing
+  method: lazy
 candidates:
   store_backend: array
   use_chunked_generation: true

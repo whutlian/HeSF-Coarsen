@@ -63,7 +63,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "energy_basis": "random",
             "seed": 12345,
         },
-        "include_metapath_filters": False,
     },
     "metapath_sketch": {
         "enabled": False,

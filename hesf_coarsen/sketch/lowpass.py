@@ -234,7 +234,7 @@ def compute_lowpass_sketch(
     diagnostics: dict[str, Any] | None = None,
 ) -> np.ndarray:
     method = str(config.get("sketch", {}).get("method", "lazy")).lower()
-    if method in {"lazy", "repeated_smoothing"}:
+    if method == "lazy":
         return _compute_lazy_sketch(graph, config, diagnostics)
     if method == "chebyshev_heat":
         return _compute_chebyshev_heat_sketch(graph, config, diagnostics)

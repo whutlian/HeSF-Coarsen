@@ -4,7 +4,7 @@ HeSF-Coarsen supports two low-pass sketch methods.
 
 ## Lazy Smoothing
 
-`sketch.method: lazy` is the fast baseline. It generates a random probe, repeatedly applies relation-weighted smoothing, averages the last configured scales, centers columns, and row-normalizes. The old `repeated_smoothing` name remains accepted as an alias.
+`sketch.method: lazy` is the fast baseline. It generates a random probe, repeatedly applies relation-weighted smoothing, averages the last configured scales, centers columns, and row-normalizes.
 
 ## Chebyshev Heat-Kernel Sketch
 

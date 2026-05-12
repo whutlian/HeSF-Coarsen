@@ -46,7 +46,6 @@ fusion:
     sample_edges_per_relation: 200000
     energy_basis: random
     seed: 12345
-  include_metapath_filters: false
 metapath_sketch:
   enabled: false
   dim: 8
