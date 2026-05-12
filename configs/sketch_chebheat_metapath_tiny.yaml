@@ -1,0 +1,49 @@
+coarsening:
+  target_ratio: 0.5
+  max_levels: 2
+  per_level_ratio: 0.7
+  same_type_only: true
+  same_partition_only: true
+
+sketch:
+  method: chebyshev_heat
+  dim: 16
+  order: 5
+  heat_times: [1.0, 3.0]
+  chebyshev_quadrature_points: 128
+  seed: 42
+  dtype: float32
+  internal_dtype: float32
+  row_normalize: true
+
+fusion:
+  symmetric_relation_operator: true
+  reverse_relation_policy: include_all
+  relation_weighting:
+    method: inverse_energy
+    eta: 0.5
+    gamma: 1.0
+    epsilon: 1.0e-8
+    sample_edges_per_relation: 200000
+    energy_basis: random
+    seed: 42
+
+metapath_sketch:
+  enabled: true
+  dim: 4
+  max_paths: 3
+  max_path_length: 3
+  seed: 123
+  row_normalize: true
+  paths:
+    - name: user_item_user
+      start_type: user
+      end_type: user
+      steps:
+        - relation_id: 0
+          direction: forward
+        - relation_id: 0
+          direction: backward
+
+output:
+  dir: outputs/tiny_chebheat

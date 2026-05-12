@@ -1,4 +1,5 @@
 from hesf_coarsen.ops.fused_operator import apply_fused_smoothing
+from hesf_coarsen.ops.fusion_weights import compute_relation_fusion_weights
 from hesf_coarsen.ops.relation_ops import apply_relation, apply_relation_transpose
 from hesf_coarsen.ops.torch_dense import (
     get_torch_device,
@@ -10,6 +11,7 @@ from hesf_coarsen.ops.torch_dense import (
 
 __all__ = [
     "apply_fused_smoothing",
+    "compute_relation_fusion_weights",
     "apply_relation",
     "apply_relation_transpose",
     "get_torch_device",

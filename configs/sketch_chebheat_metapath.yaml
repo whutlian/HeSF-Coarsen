@@ -1,0 +1,31 @@
+sketch:
+  method: chebyshev_heat
+  dim: 32
+  order: 5
+  heat_times: [1.0, 3.0]
+  chebyshev_quadrature_points: 128
+  seed: 42
+  dtype: float16
+  internal_dtype: float32
+  row_normalize: true
+
+fusion:
+  symmetric_relation_operator: true
+  reverse_relation_policy: include_all
+  relation_weighting:
+    method: inverse_energy
+    eta: 0.5
+    gamma: 1.0
+    epsilon: 1.0e-8
+    sample_edges_per_relation: 200000
+    energy_basis: random
+    seed: 42
+
+metapath_sketch:
+  enabled: false
+  dim: 8
+  max_paths: 3
+  max_path_length: 3
+  seed: 123
+  row_normalize: true
+  paths: []

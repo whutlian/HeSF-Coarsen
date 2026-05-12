@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+from math import ceil
 from typing import Any
 
 import numpy as np
+
+from hesf_coarsen.progress import progress_iter
 
 
 def torch_available() -> bool:
@@ -98,6 +101,8 @@ def torch_weighted_pairwise_dense_cost(
     device: str = "auto",
     batch_size: int = 65_536,
     max_bytes: int | None = None,
+    progress_config: dict | None = None,
+    progress_desc: str = "torch score dense batches",
 ) -> np.ndarray:
     """Compute weighted pairwise squared distances from row-local dense batches.
 
@@ -129,7 +134,14 @@ def torch_weighted_pairwise_dense_cost(
 
     selected = get_torch_device(device) if device == "auto" else device
     with torch.no_grad():
-        for start in range(0, pairs.shape[0], batch_size):
+        starts = range(0, pairs.shape[0], batch_size)
+        for start in progress_iter(
+            starts,
+            total=ceil(pairs.shape[0] / batch_size) if len(pairs) else 0,
+            desc=progress_desc,
+            config=progress_config,
+            unit="batch",
+        ):
             stop = min(start + batch_size, pairs.shape[0])
             batch_pairs = pairs[start:stop]
             unique_nodes, inverse = np.unique(batch_pairs.reshape(-1), return_inverse=True)

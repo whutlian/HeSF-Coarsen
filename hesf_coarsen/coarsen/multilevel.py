@@ -17,12 +17,13 @@ from hesf_coarsen.candidates.capped_twohop import (
 )
 from hesf_coarsen.candidates.onehop import generate_onehop_candidates, generate_onehop_candidates_chunked
 from hesf_coarsen.candidates.partition_ann import generate_partition_ann_candidates
-from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph
+from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph_chunked
 from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.eval.diagnostics import compute_diagnostics, save_diagnostics
 from hesf_coarsen.io.edge_list import load_graph, save_graph
 from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
 from hesf_coarsen.matching.greedy import run_greedy_matching
+from hesf_coarsen.ops.fusion_weights import compute_relation_fusion_weights
 from hesf_coarsen.partition.type_partition import default_partition
 from hesf_coarsen.progress import progress_message
 from hesf_coarsen.scoring.conv_response import compute_conv_response_sketch
@@ -263,7 +264,8 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
 
         progress_message(config, f"level {level}: sketch start")
         start = perf_counter()
-        Z = compute_lowpass_sketch(current, config)
+        sketch_diagnostics: dict = {}
+        Z = compute_lowpass_sketch(current, config, diagnostics=sketch_diagnostics)
         runtime["sketch"] = perf_counter() - start
         progress_message(config, f"level {level}: sketch done in {runtime['sketch']:.2f}s")
 
@@ -340,10 +342,18 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
 
         progress_message(config, f"level {level}: scoring start")
         start = perf_counter()
+        progress_message(config, f"level {level}: scoring relation profiles start")
         relation_profiles = compute_relation_profiles(current)
+        progress_message(config, f"level {level}: scoring relation profiles done")
         X = _global_feature_matrix(current)
         H = Z.astype(np.float32) if X is None else np.concatenate([Z.astype(np.float32), X], axis=1)
-        conv = compute_conv_response_sketch(current, H, None)
+        progress_message(config, f"level {level}: scoring fusion weights start")
+        relation_weights = compute_relation_fusion_weights(current, Z.astype(np.float32), config)
+        progress_message(config, f"level {level}: scoring fusion weights done")
+        progress_message(config, f"level {level}: scoring conv response start")
+        conv = compute_conv_response_sketch(current, H, relation_weights)
+        progress_message(config, f"level {level}: scoring conv response done")
+        progress_message(config, f"level {level}: scoring candidate pairs start")
         scored = score_candidate_pairs(
             current,
             pairs,
@@ -354,6 +364,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             config,
             partition_id=partition_id,
         )
+        progress_message(config, f"level {level}: scoring candidate pairs done")
         runtime["scoring"] = perf_counter() - start
         progress_message(
             config,
@@ -362,13 +373,28 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
 
         progress_message(config, f"level {level}: matching and aggregation start")
         start = perf_counter()
+        progress_message(config, f"level {level}: matching start")
         assignment = run_greedy_matching(
             current,
             scored,
             _config_for_level(config, current.num_nodes),
             partition_id=partition_id,
         )
-        coarse = coarsen_graph(current, assignment)
+        progress_message(config, f"level {level}: matching done")
+        aggregation_chunk_size = int(config.get("coarsening", {}).get("aggregation_chunk_size", 1_000_000))
+        aggregation_reducer = str(config.get("coarsening", {}).get("aggregation_reducer", "sort"))
+        progress_message(
+            config,
+            f"level {level}: chunked aggregation start "
+            f"(chunk_size={aggregation_chunk_size}, reducer={aggregation_reducer})",
+        )
+        coarse = coarsen_graph_chunked(
+            current,
+            assignment,
+            chunk_size=aggregation_chunk_size,
+            reducer=aggregation_reducer,
+        )
+        progress_message(config, f"level {level}: chunked aggregation done")
         runtime["matching_and_aggregation"] = perf_counter() - start
         progress_message(
             config,
@@ -401,6 +427,16 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 }.items()
                 if path is not None
             },
+        )
+        diagnostics["sketch"] = {
+            key: value
+            for key, value in sketch_diagnostics.items()
+            if key not in {"fusion", "metapath_sketch"}
+        }
+        diagnostics["fusion"] = sketch_diagnostics.get("fusion", {})
+        diagnostics["metapath_sketch"] = sketch_diagnostics.get(
+            "metapath_sketch",
+            {"enabled": False, "num_paths": 0, "paths": []},
         )
         level_dir = output_dir / f"level_{level}"
         save_graph(coarse, level_dir)

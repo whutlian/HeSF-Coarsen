@@ -234,6 +234,7 @@ This path only handles dense blocks such as sketches and candidate scoring matri
 ## Diagnostics
 
 Diagnostics include node counts by type, edge counts by relation, compression ratio, candidate count distribution, candidate source counts, matched-pair count, singleton ratio, relation weight preservation, and per-stage runtime.
+Sketch diagnostics are also written for each level. They include the low-pass sketch method, dimension, dtype, Chebyshev order and heat times when applicable, relation fusion weights and energy estimates, meta-path sketch metadata, NaN/Inf counts, row norm stats, and per-component sketch runtime. See `docs/sketch_methods.md` for configuration details and guardrails.
 
 Enable sampled large-graph envelopes with config:
 
@@ -252,6 +253,7 @@ When enabled, `diagnostics.json` includes `large_graph_envelope` with exact grap
 - Memmap-backed capped two-hop indexing uses temporary sorted chunk files during construction, so large runs need enough disk headroom for those intermediate chunks.
 - Partition-local ANN is a projection-window candidate source, not an HNSW/FAISS index. It is deterministic and lightweight, but not a high-recall ANN implementation.
 - Torch acceleration covers dense helper kernels, low-pass sketch normalization, and block-local dense candidate scoring only.
+- The Chebyshev heat-kernel sketch supports relation-weighted fused operators and chained meta-path sketch channels without materializing relation products. Reverse-relation dropping is exact-array based and intended for explicit reverse relation pairs.
 - Large-graph diagnostics are sampled envelopes. They are intended for memory and runtime sanity checks, not exact distributional profiling.
 - Spectral diagnostics use relation-wise edge energy approximations, not eigendecomposition.
 

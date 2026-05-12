@@ -1,0 +1,211 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from math import ceil
+from typing import Any
+
+import numpy as np
+
+from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
+from hesf_coarsen.ops.normalization import relation_degrees
+from hesf_coarsen.progress import progress_iter
+
+
+@dataclass(frozen=True)
+class RelationWeightResult:
+    weights: dict[int, float]
+    energy_estimates: dict[int, float]
+    volume_estimates: dict[int, float]
+    diagnostics: dict[str, Any]
+
+
+def _weighting_config(config: dict[str, Any]) -> dict[str, Any]:
+    fusion = config.get("fusion", {})
+    raw = fusion.get("relation_weighting", "uniform")
+    if isinstance(raw, dict):
+        result = dict(raw)
+    else:
+        method = str(raw).lower()
+        if method in {"reliability", "reliability_weighted"}:
+            method = "inverse_energy"
+        result = {"method": method}
+    if "eta" not in result and "volume_eta" in fusion:
+        result["eta"] = fusion["volume_eta"]
+    if "epsilon" not in result and "energy_epsilon" in fusion:
+        result["epsilon"] = fusion["energy_epsilon"]
+    return result
+
+
+def _normalize(raw: dict[int, float]) -> dict[int, float]:
+    cleaned = {relation_id: max(float(value), 0.0) for relation_id, value in raw.items()}
+    total = float(sum(cleaned.values()))
+    if total <= 0.0:
+        uniform = 1.0 / max(len(cleaned), 1)
+        return {relation_id: uniform for relation_id in cleaned}
+    return {relation_id: value / total for relation_id, value in cleaned.items()}
+
+
+def _relation_volume(graph: HeteroGraph, relation_id: int) -> float:
+    rel = graph.relations[int(relation_id)]
+    if rel.num_edges == 0:
+        return 0.0
+    return float(np.sum(rel.weight.astype(np.float64)))
+
+
+def _random_basis(graph: HeteroGraph, dim: int, seed: int) -> np.ndarray:
+    rng = np.random.default_rng(int(seed))
+    return rng.choice(np.array([-1.0, 1.0], dtype=np.float32), size=(graph.num_nodes, int(dim)))
+
+
+def _feature_basis(graph: HeteroGraph) -> np.ndarray | None:
+    if not graph.features:
+        return None
+    width = max(feature.shape[1] for feature in graph.features.values())
+    basis = np.zeros((graph.num_nodes, width), dtype=np.float32)
+    for type_id, feature in graph.features.items():
+        basis[nodes_of_type(graph, int(type_id)), : feature.shape[1]] = feature.astype(np.float32, copy=False)
+    return basis
+
+
+def _basis_for_energy(
+    graph: HeteroGraph,
+    config: dict[str, Any],
+    basis: np.ndarray | None,
+    method: str,
+) -> tuple[np.ndarray, str]:
+    if basis is not None:
+        B = np.asarray(basis, dtype=np.float32)
+        if B.ndim == 1:
+            B = B[:, None]
+        if B.shape[0] != graph.num_nodes:
+            raise ValueError("basis must have one row per graph node")
+        return B, "provided"
+    if method == "feature_smoothness":
+        feature_basis = _feature_basis(graph)
+        if feature_basis is not None:
+            return feature_basis, "features"
+    dim = int(config.get("energy_basis_dim", 8))
+    seed = int(config.get("seed", 12345))
+    return _random_basis(graph, dim, seed), "random"
+
+
+def _sample_edge_indices(length: int, sample_size: int | None, seed: int, relation_id: int) -> np.ndarray:
+    if sample_size is None or sample_size <= 0 or length <= sample_size:
+        return np.arange(length, dtype=np.int64)
+    rng = np.random.default_rng(int(seed) + int(relation_id) * 7919)
+    return np.sort(rng.choice(length, size=int(sample_size), replace=False).astype(np.int64))
+
+
+def _relation_energy(
+    graph: HeteroGraph,
+    relation_id: int,
+    basis: np.ndarray,
+    *,
+    epsilon: float,
+    sample_edges_per_relation: int | None,
+    seed: int,
+    chunk_size: int = 200_000,
+    progress_config: dict[str, Any] | None = None,
+) -> float:
+    rel = graph.relations[int(relation_id)]
+    denom = float(np.sum(basis.astype(np.float64) * basis.astype(np.float64))) + float(epsilon)
+    if rel.num_edges == 0 or denom <= 0.0:
+        return 0.0
+
+    src_degree, dst_degree = relation_degrees(graph, rel)
+    indices = _sample_edge_indices(rel.num_edges, sample_edges_per_relation, seed, relation_id)
+    total = 0.0
+    effective_chunk_size = max(int(chunk_size), 1)
+    chunk_starts = range(0, len(indices), effective_chunk_size)
+    for start in progress_iter(
+        chunk_starts,
+        total=ceil(len(indices) / effective_chunk_size) if len(indices) else 0,
+        desc=f"relation energy r={relation_id}",
+        config=progress_config,
+        unit="chunk",
+    ):
+        idx = indices[start : start + effective_chunk_size]
+        src = rel.src[idx]
+        dst = rel.dst[idx]
+        src_scale = np.sqrt(src_degree[src].astype(np.float64) + float(epsilon))[:, None]
+        dst_scale = np.sqrt(dst_degree[dst].astype(np.float64) + float(epsilon))[:, None]
+        diff = basis[src].astype(np.float64) / src_scale - basis[dst].astype(np.float64) / dst_scale
+        total += float(np.sum(rel.weight[idx].astype(np.float64) * np.sum(diff * diff, axis=1)))
+    if len(indices) and len(indices) < rel.num_edges:
+        total *= float(rel.num_edges / len(indices))
+    return float(max(total / denom, 0.0))
+
+
+def compute_relation_weights(
+    graph: HeteroGraph,
+    config: dict[str, Any] | None = None,
+    *,
+    basis: np.ndarray | None = None,
+) -> RelationWeightResult:
+    """Compute normalized non-negative alpha_r weights for fused sketching."""
+
+    config = config or {}
+    weight_cfg = _weighting_config(config)
+    method = str(weight_cfg.get("method", "uniform")).lower()
+    if method in {"reliability", "reliability_weighted"}:
+        method = "inverse_energy"
+    if method not in {"uniform", "volume", "inverse_energy", "feature_smoothness"}:
+        raise ValueError(f"unsupported fusion.relation_weighting.method: {method}")
+
+    relation_ids = sorted(graph.relations)
+    epsilon = float(weight_cfg.get("epsilon", 1e-8))
+    eta = float(weight_cfg.get("eta", 0.5))
+    gamma = float(weight_cfg.get("gamma", 1.0))
+    sample_edges = weight_cfg.get("sample_edges_per_relation", None)
+    sample_edges = None if sample_edges in (None, "") else int(sample_edges)
+    seed = int(weight_cfg.get("seed", config.get("seed", 12345)))
+
+    volumes = {relation_id: _relation_volume(graph, relation_id) for relation_id in relation_ids}
+    energies = {relation_id: 0.0 for relation_id in relation_ids}
+    basis_source = None
+    if method in {"inverse_energy", "feature_smoothness"}:
+        B, basis_source = _basis_for_energy(graph, weight_cfg, basis, method)
+        for relation_id in progress_iter(
+            relation_ids,
+            total=len(relation_ids),
+            desc="relation weights",
+            config=config,
+            unit="relation",
+        ):
+            energies[relation_id] = _relation_energy(
+                graph,
+                relation_id,
+                B,
+                epsilon=epsilon,
+                sample_edges_per_relation=sample_edges,
+                seed=seed,
+                progress_config=config,
+            )
+
+    if method == "uniform":
+        raw = {relation_id: 1.0 for relation_id in relation_ids}
+    elif method == "volume":
+        raw = {relation_id: (volumes[relation_id] + epsilon) ** eta for relation_id in relation_ids}
+    else:
+        raw = {
+            relation_id: (volumes[relation_id] + epsilon) ** eta
+            / ((energies[relation_id] + epsilon) ** gamma)
+            for relation_id in relation_ids
+        }
+    weights = _normalize(raw)
+    stats_values = list(weights.values())
+    diagnostics: dict[str, Any] = {
+        "relation_weighting_method": method,
+        "relation_weights": {str(k): float(v) for k, v in weights.items()},
+        "relation_weight_stats": {
+            "sum": float(sum(stats_values)),
+            "min": float(min(stats_values, default=0.0)),
+            "max": float(max(stats_values, default=0.0)),
+            "num_relations": int(len(stats_values)),
+        },
+        "relation_energy_estimates": {str(k): float(v) for k, v in energies.items()},
+        "relation_volume_estimates": {str(k): float(v) for k, v in volumes.items()},
+    }
+    if basis_source is not None:
+        diagnostics["energy_basis_source"] = basis_source
+    return RelationWeightResult(weights, energies, volumes, diagnostics)

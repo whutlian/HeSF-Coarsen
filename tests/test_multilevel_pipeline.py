@@ -2,6 +2,8 @@ import json
 
 import numpy as np
 
+from hesf_coarsen.coarsen import aggregate_edges
+from hesf_coarsen.coarsen import multilevel as multilevel_module
 from hesf_coarsen.coarsen.multilevel import run_multilevel_coarsening
 from hesf_coarsen.config import DEFAULT_CONFIG
 from hesf_coarsen.io.edge_list import generate_synthetic_graph, load_graph
@@ -47,6 +49,53 @@ def test_multilevel_pipeline_runs_and_writes_diagnostics(tmp_path):
     assert diagnostics["matched_pairs"] > 0
     validate_loaded = load_graph(tmp_path / "level_1")
     assert validate_loaded.num_nodes == results[0].graph.num_nodes
+
+
+def test_multilevel_pipeline_runs_lazy_and_chebyshev_sketches(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=10,
+        num_items=6,
+        num_tags=4,
+        seed=29,
+    )
+    lazy_config = small_config(tmp_path / "lazy")
+    lazy_config["sketch"] = dict(lazy_config["sketch"], method="lazy")
+    cheb_config = small_config(tmp_path / "cheb")
+    cheb_config["sketch"] = dict(
+        cheb_config["sketch"],
+        method="chebyshev_heat",
+        dim=10,
+        order=4,
+        heat_times=[1.0, 2.0],
+    )
+    cheb_config["metapath_sketch"] = {
+        "enabled": True,
+        "dim": 2,
+        "max_paths": 1,
+        "max_path_length": 2,
+        "seed": 123,
+        "row_normalize": True,
+        "paths": [
+            {
+                "name": "user_item_user",
+                "start_type": 0,
+                "end_type": 0,
+                "steps": [
+                    {"relation_id": 0, "direction": "forward"},
+                    {"relation_id": 0, "direction": "backward"},
+                ],
+            }
+        ],
+    }
+
+    lazy_results = run_multilevel_coarsening(graph, lazy_config)
+    cheb_results = run_multilevel_coarsening(graph, cheb_config)
+
+    assert lazy_results
+    assert cheb_results
+    assert lazy_results[0].diagnostics["sketch"]["sketch_method"] == "lazy"
+    assert cheb_results[0].diagnostics["sketch"]["sketch_method"] == "chebyshev_heat"
+    assert cheb_results[0].diagnostics["metapath_sketch"]["enabled"] is True
 
 
 def test_multilevel_pipeline_is_deterministic(tmp_path):
@@ -98,6 +147,40 @@ def test_multilevel_pipeline_accepts_array_chunked_candidate_backend(tmp_path):
     assert (tmp_path / "incident_index_mmap" / "level_1" / "incident_endpoints.npy").exists()
 
 
+def test_multilevel_pipeline_uses_chunked_aggregation(tmp_path, monkeypatch):
+    graph = generate_synthetic_graph(
+        num_users=10,
+        num_items=6,
+        num_tags=4,
+        seed=42,
+    )
+    config = small_config(tmp_path)
+    config["coarsening"] = dict(
+        config["coarsening"],
+        aggregation_chunk_size=3,
+        aggregation_reducer="sort",
+    )
+    calls = []
+
+    def fake_chunked_aggregation(graph_arg, assignment, **kwargs):
+        calls.append(kwargs)
+        return aggregate_edges.coarsen_graph(graph_arg, assignment)
+
+    monkeypatch.setattr(
+        multilevel_module,
+        "coarsen_graph_chunked",
+        fake_chunked_aggregation,
+        raising=False,
+    )
+
+    results = run_multilevel_coarsening(graph, config)
+
+    assert results
+    assert calls
+    assert calls[0]["chunk_size"] == 3
+    assert calls[0]["reducer"] == "sort"
+
+
 def test_multilevel_pipeline_accepts_partition_ann_candidate_source(tmp_path):
     graph = generate_synthetic_graph(
         num_users=10,
@@ -144,3 +227,6 @@ def test_multilevel_pipeline_emits_stage_progress_when_enabled(tmp_path, capsys)
     assert "level 1" in captured.err
     assert "sketch" in captured.err
     assert "candidates" in captured.err
+    assert "lazy smoothing" in captured.err
+    assert "scoring relation profiles" in captured.err
+    assert "score dense batches" in captured.err

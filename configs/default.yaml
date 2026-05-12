@@ -22,16 +22,39 @@ coarsening:
   per_level_ratio: 0.55
   same_type_only: true
   same_partition_only: true
+  aggregation_chunk_size: 1000000
+  aggregation_reducer: sort
 sketch:
   dim: 32
   order: 5
   num_scales: 2
   dtype: float16
   probe: rademacher
-  method: repeated_smoothing
+  method: lazy
+  heat_times: [1.0, 3.0]
+  chebyshev_quadrature_points: 128
+  internal_dtype: float32
+  row_normalize: true
 fusion:
-  relation_weighting: uniform
+  symmetric_relation_operator: true
+  reverse_relation_policy: include_all
+  relation_weighting:
+    method: inverse_energy
+    eta: 0.5
+    gamma: 1.0
+    epsilon: 1.0e-8
+    sample_edges_per_relation: 200000
+    energy_basis: random
+    seed: 12345
   include_metapath_filters: false
+metapath_sketch:
+  enabled: false
+  dim: 8
+  max_paths: 3
+  max_path_length: 3
+  seed: 123
+  row_normalize: true
+  paths: []
 candidates:
   store_backend: heap
   use_chunked_generation: false
