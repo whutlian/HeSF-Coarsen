@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import heapq
+import shutil
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -118,8 +121,10 @@ def coarsen_graph_chunked(
 
     This explicit large-graph path avoids building a full per-edge coarse table.
     The default ``sort`` reducer does vectorized per-chunk sort-reduce and then
-    merges reduced chunk tables. ``hash`` keeps the older Python dictionary path
-    for debugging on small graphs.
+    merges reduced chunk shards with a k-way merge. When ``output_dir`` is set,
+    the sort reducer spills chunk shards and final relation arrays under
+    ``output_dir/_aggregation_shards``. ``hash`` keeps the older Python
+    dictionary path for debugging on small graphs.
     """
 
     if chunk_size <= 0:
@@ -128,8 +133,10 @@ def coarsen_graph_chunked(
         raise ValueError("reducer must be either 'sort' or 'hash'")
     if assignment.assignment.shape != (graph.num_nodes,):
         raise ValueError("assignment length must equal graph.num_nodes")
+    spill_root = None
     if output_dir is not None:
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        spill_root = Path(output_dir) / "_aggregation_shards"
+        spill_root.mkdir(parents=True, exist_ok=True)
 
     for node, supernode in enumerate(assignment.assignment):
         expected = graph.node_type[node]
@@ -142,7 +149,13 @@ def coarsen_graph_chunked(
         if reducer == "hash":
             src, dst, weight = _aggregate_relation_hash(rel, assignment, chunk_size)
         else:
-            src, dst, weight = _aggregate_relation_sort(rel, assignment, chunk_size)
+            relation_spill_dir = None if spill_root is None else spill_root / f"relation_{relation_id}"
+            src, dst, weight = _aggregate_relation_sort(
+                rel,
+                assignment,
+                chunk_size,
+                output_dir=relation_spill_dir,
+            )
         relations[relation_id] = RelationAdj(
             src=src,
             dst=dst,
@@ -209,32 +222,148 @@ def _reduce_sorted_keys(
     return reduced_keys.astype(np.int64, copy=False), reduced_weights
 
 
+def _encode_coarse_keys(
+    coarse_src: np.ndarray,
+    coarse_dst: np.ndarray,
+    num_supernodes: int,
+) -> np.ndarray:
+    if len(coarse_src) == 0:
+        return np.empty(0, dtype=np.int64)
+    max_src = int(coarse_src.max(initial=0))
+    max_dst = int(coarse_dst.max(initial=0))
+    max_int64 = np.iinfo(np.int64).max
+    if num_supernodes > 0 and max_src > (max_int64 - max_dst) // int(num_supernodes):
+        raise OverflowError("coarse edge key encoding would overflow int64")
+    return coarse_src * np.int64(num_supernodes) + coarse_dst
+
+
+def _iter_merged_sorted_chunks(
+    chunks: list[tuple[np.ndarray, np.ndarray]],
+) -> Iterator[tuple[int, float]]:
+    positions = [0] * len(chunks)
+    heap: list[tuple[int, int]] = []
+    for chunk_id, (keys, _weights) in enumerate(chunks):
+        if len(keys) > 0:
+            heapq.heappush(heap, (int(keys[0]), chunk_id))
+
+    current_key: int | None = None
+    current_weight = 0.0
+    while heap:
+        key, chunk_id = heapq.heappop(heap)
+        pos = positions[chunk_id]
+        weight = float(chunks[chunk_id][1][pos])
+        if current_key is None:
+            current_key = key
+            current_weight = weight
+        elif key == current_key:
+            current_weight += weight
+        else:
+            yield current_key, current_weight
+            current_key = key
+            current_weight = weight
+
+        pos += 1
+        positions[chunk_id] = pos
+        keys = chunks[chunk_id][0]
+        if pos < len(keys):
+            heapq.heappush(heap, (int(keys[pos]), chunk_id))
+
+    if current_key is not None:
+        yield current_key, current_weight
+
+
+def _merge_sorted_chunks(
+    chunks: list[tuple[np.ndarray, np.ndarray]],
+    num_supernodes: int,
+    output_dir: Path | None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    count = sum(1 for _key, _weight in _iter_merged_sorted_chunks(chunks))
+    if output_dir is None:
+        src = np.empty(count, dtype=np.int64)
+        dst = np.empty(count, dtype=np.int64)
+        weight = np.empty(count, dtype=np.float32)
+    else:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        src = np.lib.format.open_memmap(
+            output_dir / "final_src.npy",
+            mode="w+",
+            dtype=np.int64,
+            shape=(count,),
+        )
+        dst = np.lib.format.open_memmap(
+            output_dir / "final_dst.npy",
+            mode="w+",
+            dtype=np.int64,
+            shape=(count,),
+        )
+        weight = np.lib.format.open_memmap(
+            output_dir / "final_weight.npy",
+            mode="w+",
+            dtype=np.float32,
+            shape=(count,),
+        )
+
+    for pos, (key, merged_weight) in enumerate(_iter_merged_sorted_chunks(chunks)):
+        src[pos] = key // int(num_supernodes)
+        dst[pos] = key % int(num_supernodes)
+        weight[pos] = np.float32(merged_weight)
+
+    for array in (src, dst, weight):
+        flush = getattr(array, "flush", None)
+        if callable(flush):
+            flush()
+    return src, dst, weight
+
+
+def _write_sorted_chunk_shard(
+    chunk_dir: Path,
+    chunk_id: int,
+    keys: np.ndarray,
+    weights: np.ndarray,
+) -> tuple[Path, Path]:
+    key_path = chunk_dir / f"chunk_{chunk_id:06d}_keys.npy"
+    weight_path = chunk_dir / f"chunk_{chunk_id:06d}_weights.npy"
+    np.save(key_path, keys.astype(np.int64, copy=False))
+    np.save(weight_path, weights.astype(np.float32, copy=False))
+    return key_path, weight_path
+
+
 def _aggregate_relation_sort(
     rel: RelationAdj,
     assignment: Assignment,
     chunk_size: int,
+    output_dir: Path | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     num_supernodes = assignment.num_supernodes
-    chunk_keys: list[np.ndarray] = []
-    chunk_weights: list[np.ndarray] = []
+    chunks: list[tuple[np.ndarray, np.ndarray]] = []
+    chunk_paths: list[tuple[Path, Path]] = []
+    chunk_dir = None
+    if output_dir is not None:
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        chunk_dir = output_dir / "chunks"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+
     for start in range(0, rel.num_edges, chunk_size):
         stop = min(start + chunk_size, rel.num_edges)
         coarse_src = assignment.assignment[rel.src[start:stop]].astype(np.int64, copy=False)
         coarse_dst = assignment.assignment[rel.dst[start:stop]].astype(np.int64, copy=False)
-        keys = coarse_src * np.int64(num_supernodes) + coarse_dst
+        keys = _encode_coarse_keys(coarse_src, coarse_dst, num_supernodes)
         reduced_keys, reduced_weights = _reduce_sorted_keys(keys, rel.weight[start:stop])
-        chunk_keys.append(reduced_keys)
-        chunk_weights.append(reduced_weights)
+        if chunk_dir is None:
+            chunks.append((reduced_keys, reduced_weights))
+        else:
+            chunk_id = len(chunk_paths)
+            chunk_paths.append(
+                _write_sorted_chunk_shard(chunk_dir, chunk_id, reduced_keys, reduced_weights)
+            )
 
-    if not chunk_keys:
-        return (
-            np.empty(0, dtype=np.int64),
-            np.empty(0, dtype=np.int64),
-            np.empty(0, dtype=np.float32),
-        )
-    all_keys = np.concatenate(chunk_keys)
-    all_weights = np.concatenate(chunk_weights)
-    final_keys, final_weights = _reduce_sorted_keys(all_keys, all_weights)
-    src = (final_keys // np.int64(num_supernodes)).astype(np.int64)
-    dst = (final_keys % np.int64(num_supernodes)).astype(np.int64)
-    return src, dst, final_weights
+    if chunk_paths:
+        chunks = [
+            (
+                np.load(key_path, mmap_mode="r"),
+                np.load(weight_path, mmap_mode="r"),
+            )
+            for key_path, weight_path in chunk_paths
+        ]
+    return _merge_sorted_chunks(chunks, num_supernodes, output_dir)

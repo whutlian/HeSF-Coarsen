@@ -256,6 +256,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
     for level in range(start_level, max_levels + 1):
         if current.num_nodes <= target_nodes:
             break
+        level_dir = output_dir / f"level_{level}"
         runtime: dict[str, float] = {}
         progress_message(
             config,
@@ -392,6 +393,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             current,
             assignment,
             chunk_size=aggregation_chunk_size,
+            output_dir=level_dir,
             reducer=aggregation_reducer,
         )
         progress_message(config, f"level {level}: chunked aggregation done")
@@ -424,6 +426,11 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                         if candidate_cfg.get("incident_index_mmap_dir") is not None
                         else None
                     ),
+                    "aggregation_shards": (
+                        level_dir / "_aggregation_shards"
+                        if aggregation_reducer == "sort"
+                        else None
+                    ),
                 }.items()
                 if path is not None
             },
@@ -438,7 +445,6 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             "metapath_sketch",
             {"enabled": False, "num_paths": 0, "paths": []},
         )
-        level_dir = output_dir / f"level_{level}"
         save_graph(coarse, level_dir)
         _save_assignment(assignment, level_dir / "assignment.npz")
         save_diagnostics(diagnostics, level_dir / "diagnostics.json")

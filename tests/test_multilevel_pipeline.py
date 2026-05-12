@@ -179,6 +179,7 @@ def test_multilevel_pipeline_uses_chunked_aggregation(tmp_path, monkeypatch):
     assert calls
     assert calls[0]["chunk_size"] == 3
     assert calls[0]["reducer"] == "sort"
+    assert calls[0]["output_dir"] == tmp_path / "level_1"
 
 
 def test_multilevel_pipeline_accepts_partition_ann_candidate_source(tmp_path):

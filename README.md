@@ -171,9 +171,9 @@ Current imported dataset directories:
 - `data/ogbn_mag_hesf`
 - `data/ogbn_mag_mmap`
 
-## Explicit Large-Graph Utilities
+## Large-Graph Utilities
 
-The memmap and chunked paths are explicit CLI utilities. They are not used by the default small/medium pipeline.
+Memmap export is an explicit CLI utility. Chunked edge aggregation is used by the multilevel pipeline by default; the standalone CLI remains useful when you already have a saved assignment file.
 
 Export a graph directory to mmap-loadable `.npy` arrays:
 
@@ -189,7 +189,7 @@ Run chunked edge aggregation from a saved assignment file:
 
 The assignment file is an `.npz` with `assignment` and `supernode_type` arrays.
 
-`--reducer sort` is the default large-graph reducer. It performs vectorized per-chunk sort-reduce and a final reduced-key merge. `--reducer hash` keeps the earlier Python dictionary path for small debugging cases.
+`--reducer sort` is the default large-graph reducer. It performs vectorized per-chunk sort-reduce, writes chunk shards under `<output>/_aggregation_shards/relation_<id>/chunks`, and k-way merges those shards into mmap-backed final relation arrays. `--reducer hash` keeps the earlier Python dictionary path for small debugging cases.
 
 Enable fixed-size array or memmap-backed candidate storage inside the multilevel pipeline with config. This is intended for large-graph experiments; the default remains the simpler heap store.
 
@@ -212,7 +212,7 @@ candidates:
   ann_budget_K: 8
 ```
 
-With `mmap_dir` set, each level writes `candidate_ids.npy`, `candidate_scores.npy`, `candidate_sources.npy`, and `candidate_counts.npy` under `mmap_dir/level_<n>`. With `incident_index_mmap_dir` set, capped two-hop also writes `incident_middle.npy`, `incident_endpoint_type.npy`, `incident_endpoints.npy`, and `incident_indptr.npy` under `incident_index_mmap_dir/level_<n>`. Chunked one-hop, capped two-hop, and SimHash bucket generation keep per-node budgets in the same store API used by the default path. Chunked capped two-hop builds an incident index once per level, keyed by `(middle_node, endpoint_type)`, then slices that index per middle-node chunk instead of rescanning all relation edges. In memmap mode, the index builder writes sorted temporary edge chunks and merges them into the final mmap arrays.
+With `mmap_dir` set, each level writes `candidate_ids.npy`, `candidate_scores.npy`, `candidate_sources.npy`, and `candidate_counts.npy` under `mmap_dir/level_<n>`. With `incident_index_mmap_dir` set, capped two-hop also writes `incident_middle.npy`, `incident_endpoint_type.npy`, `incident_endpoints.npy`, and `incident_indptr.npy` under `incident_index_mmap_dir/level_<n>`. Chunked one-hop, capped two-hop, and SimHash bucket generation keep per-node budgets in the same store API used by the default path. Chunked capped two-hop builds an incident index once per level, keyed by `(middle_node, endpoint_type)`, then slices that index per middle-node chunk instead of rescanning all relation edges. In memmap mode, the index builder writes sorted temporary edge chunks and merges them into the final mmap arrays. Multilevel aggregation writes sort-reduce shards under `output.dir/level_<n>/_aggregation_shards`, and diagnostics include that directory size when the sort reducer is active.
 
 `enable_partition_ann` adds an optional ANN-style source. It is deterministic and dependency-free: for each same-type, same-partition group, it sorts nodes by several seeded random projections of the low-pass sketch and proposes only small sliding-window neighbors. `ann_budget_K` limits proposals per node from this source before the shared candidate store applies the global per-node budget.
 
@@ -249,8 +249,8 @@ When enabled, `diagnostics.json` includes `large_graph_envelope` with exact grap
 ## Current Limitations
 
 - The default candidate store uses Python dictionaries and is intended for small and medium prototype runs. Large-graph experiments can opt into fixed-size array or memmap-backed candidate storage.
-- Memmap export and chunked aggregation are available as explicit utilities, not the default pipeline. The default chunked reducer is NumPy sort-reduce; the Python hash reducer is retained only as a debug fallback.
-- Memmap-backed capped two-hop indexing uses temporary sorted chunk files during construction, so large runs need enough disk headroom for those intermediate chunks.
+- Memmap export remains an explicit utility. Chunked aggregation is the default multilevel edge aggregation path.
+- Memmap-backed capped two-hop indexing and sort-reduce edge aggregation use temporary sorted chunk files during construction, so large runs need enough disk headroom for those intermediate chunks.
 - Partition-local ANN is a projection-window candidate source, not an HNSW/FAISS index. It is deterministic and lightweight, but not a high-recall ANN implementation.
 - Torch acceleration covers dense helper kernels, low-pass sketch normalization, and block-local dense candidate scoring only.
 - The Chebyshev heat-kernel sketch supports relation-weighted fused operators and chained meta-path sketch channels without materializing relation products. Reverse-relation dropping is exact-array based and intended for explicit reverse relation pairs.

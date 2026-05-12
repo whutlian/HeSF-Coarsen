@@ -1,7 +1,11 @@
 import numpy as np
 
 from hesf_coarsen.cli.main import main
-from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph, coarsen_graph_chunked
+from hesf_coarsen.coarsen.aggregate_edges import (
+    _merge_sorted_chunks,
+    coarsen_graph,
+    coarsen_graph_chunked,
+)
 from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.io.edge_list import generate_synthetic_graph, load_graph, save_graph
 from hesf_coarsen.io.memmap_csr import load_memmap_graph, save_memmap_graph
@@ -93,6 +97,74 @@ def test_sort_reduce_chunked_aggregation_handles_duplicate_keys(tmp_path):
 
     for relation_id in hash_result.relations:
         assert relation_table(sort_result, relation_id) == relation_table(hash_result, relation_id)
+
+
+def test_sort_reduce_chunked_aggregation_uses_external_shard_merge(tmp_path):
+    graph = HeteroGraph(
+        num_nodes=6,
+        node_type=np.zeros(6, dtype=np.int32),
+        relations={
+            0: RelationAdj(
+                src=np.array([0, 1, 2, 3, 0, 1, 4, 5], dtype=np.int64),
+                dst=np.array([2, 3, 0, 1, 3, 2, 0, 1], dtype=np.int64),
+                weight=np.array([1.0, 2.0, 0.5, 0.75, 3.0, 4.0, 5.5, 0.25], dtype=np.float32),
+                src_type=0,
+                dst_type=0,
+                relation_id=0,
+            )
+        },
+        relation_specs={0: RelationSpec(0, "same_type", 0, 0)},
+    )
+    assignment = Assignment(
+        assignment=np.array([0, 0, 1, 1, 2, 2], dtype=np.int64),
+        supernode_type=np.zeros(3, dtype=np.int32),
+    )
+
+    expected = coarsen_graph(graph, assignment)
+    actual = coarsen_graph_chunked(
+        graph,
+        assignment,
+        chunk_size=2,
+        output_dir=tmp_path / "external",
+        reducer="sort",
+    )
+
+    shard_dir = tmp_path / "external" / "_aggregation_shards" / "relation_0"
+    chunk_dir = shard_dir / "chunks"
+    assert chunk_dir.exists()
+    assert len(list(chunk_dir.glob("*_keys.npy"))) == 4
+    assert (shard_dir / "final_src.npy").exists()
+    assert isinstance(actual.relations[0].src, np.memmap)
+    assert relation_table(actual, 0) == relation_table(expected, 0)
+    coarse_keys = actual.relations[0].src * actual.num_nodes + actual.relations[0].dst
+    assert np.array_equal(coarse_keys, np.unique(coarse_keys))
+
+
+def test_k_way_merge_sorted_chunks_handles_interleaved_and_empty_shards(tmp_path):
+    chunks = [
+        (
+            np.array([1, 4, 9], dtype=np.int64),
+            np.array([0.25, 1.0, 2.0], dtype=np.float32),
+        ),
+        (
+            np.array([2, 4, 8], dtype=np.int64),
+            np.array([0.5, 1.5, 3.0], dtype=np.float32),
+        ),
+        (
+            np.empty(0, dtype=np.int64),
+            np.empty(0, dtype=np.float32),
+        ),
+        (
+            np.array([1, 8], dtype=np.int64),
+            np.array([0.75, 0.25], dtype=np.float32),
+        ),
+    ]
+
+    src, dst, weight = _merge_sorted_chunks(chunks, num_supernodes=4, output_dir=tmp_path)
+
+    assert isinstance(src, np.memmap)
+    assert (src * 4 + dst).tolist() == [1, 2, 4, 8, 9]
+    assert np.allclose(weight, [1.0, 0.5, 2.5, 3.25, 2.0])
 
 
 def test_chunked_aggregation_preserves_features_and_label_majority(tmp_path):
