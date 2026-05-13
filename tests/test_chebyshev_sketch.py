@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 
 from hesf_coarsen.config import DEFAULT_CONFIG
@@ -141,6 +143,106 @@ def test_chebyshev_lowpass_diagnostics_record_operator_norm_and_rescale():
     assert diagnostics["fusion"]["chebyshev_operator_scale"] < 1.0
     assert diagnostics["fusion"]["chebyshev_scaling_assumption"] == "rescaled_to_unit_interval"
     assert diagnostics["fusion"]["symmetric_relation_scale"] == 1.0
+
+
+def test_sketch_chebyshev_scaling_estimate_norm_alias_overrides_legacy_flag():
+    graph = _bidirectional_relation_graph()
+    config = dict(DEFAULT_CONFIG)
+    config["sketch"] = {
+        "method": "chebyshev_heat",
+        "dim": 4,
+        "order": 3,
+        "heat_times": [1.0],
+        "chebyshev_scaling": "estimate_norm",
+        "seed": 11,
+        "dtype": "float32",
+        "row_normalize": True,
+    }
+    config["fusion"] = {
+        "symmetric_relation_operator": True,
+        "symmetric_relation_scale": 1.0,
+        "estimate_operator_norm": False,
+        "operator_norm_iterations": 12,
+        "chebyshev_rescale_if_needed": True,
+        "reverse_relation_policy": "include_all",
+        "relation_weighting": {"method": "uniform"},
+    }
+    config["metapath_sketch"] = {"enabled": False}
+
+    compute_lowpass_sketch(graph, config)
+    diagnostics = config["_last_sketch_diagnostics"]
+
+    assert diagnostics["fusion"]["chebyshev_scaling"] == "estimate_norm"
+    assert diagnostics["fusion"]["estimated_operator_norm"] > 1.5
+    assert diagnostics["fusion"]["chebyshev_operator_scale"] < 1.0
+
+
+def test_chebyshev_guard_warns_when_operator_exceeds_unit_interval_without_rescale():
+    graph = _bidirectional_relation_graph()
+    config = dict(DEFAULT_CONFIG)
+    config["sketch"] = {
+        "method": "chebyshev_heat",
+        "dim": 4,
+        "order": 3,
+        "heat_times": [1.0],
+        "chebyshev_scaling": "estimate_norm",
+        "seed": 11,
+        "dtype": "float32",
+        "row_normalize": True,
+    }
+    config["fusion"] = {
+        "symmetric_relation_operator": True,
+        "symmetric_relation_scale": 1.0,
+        "operator_norm_iterations": 12,
+        "chebyshev_rescale_if_needed": False,
+        "reverse_relation_policy": "include_all",
+        "relation_weighting": {"method": "uniform"},
+    }
+    config["metapath_sketch"] = {"enabled": False}
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        compute_lowpass_sketch(graph, config)
+
+    diagnostics = config["_last_sketch_diagnostics"]
+    assert any("Chebyshev fused operator norm estimate" in str(item.message) for item in caught)
+    assert diagnostics["fusion"]["chebyshev_scaling"] == "estimate_norm"
+    assert diagnostics["fusion"]["chebyshev_operator_scale"] == 1.0
+    assert diagnostics["fusion"]["chebyshev_scaling_assumption"] == "operator_norm_exceeds_unit_interval"
+
+
+def test_sketch_chebyshev_scaling_can_use_normalized_laplacian_assumption():
+    graph = _bidirectional_relation_graph()
+    config = dict(DEFAULT_CONFIG)
+    config["sketch"] = {
+        "method": "chebyshev_heat",
+        "dim": 4,
+        "order": 3,
+        "heat_times": [1.0],
+        "chebyshev_scaling": "normalized_laplacian_2",
+        "seed": 11,
+        "dtype": "float32",
+        "row_normalize": True,
+    }
+    config["fusion"] = {
+        "symmetric_relation_operator": True,
+        "symmetric_relation_scale": 1.0,
+        "estimate_operator_norm": True,
+        "operator_norm_iterations": 12,
+        "chebyshev_rescale_if_needed": True,
+        "reverse_relation_policy": "include_all",
+        "relation_weighting": {"method": "uniform"},
+    }
+    config["metapath_sketch"] = {"enabled": False}
+
+    compute_lowpass_sketch(graph, config)
+    diagnostics = config["_last_sketch_diagnostics"]
+
+    assert diagnostics["fusion"]["chebyshev_scaling"] == "normalized_laplacian_2"
+    assert diagnostics["fusion"]["operator_norm_estimation_enabled"] is False
+    assert diagnostics["fusion"]["estimated_operator_norm"] is None
+    assert diagnostics["fusion"]["chebyshev_operator_scale"] == 1.0
+    assert diagnostics["fusion"]["chebyshev_scaling_assumption"] == "normalized_laplacian_2_assumed"
 
 
 def test_chebyshev_lowpass_sketch_has_configured_dtype_and_no_invalid_values():

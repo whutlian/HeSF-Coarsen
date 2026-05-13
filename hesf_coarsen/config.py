@@ -51,6 +51,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "probe": "rademacher",
         "method": "chebyshev_heat",
         "heat_times": [1.0, 3.0],
+        "chebyshev_scaling": "estimate_norm",
         "chebyshev_quadrature_points": 128,
         "internal_dtype": "float32",
         "row_normalize": True,

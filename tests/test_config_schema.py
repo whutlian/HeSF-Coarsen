@@ -12,6 +12,7 @@ def test_default_config_uses_canonical_sketch_schema():
     config = load_config()
 
     assert config["sketch"]["method"] == "chebyshev_heat"
+    assert config["sketch"]["chebyshev_scaling"] == "estimate_norm"
     assert config["metapath_sketch"]["enabled"] is True
     assert config["metapath_sketch"]["auto_paths"] is True
     assert config["metapath_sketch"]["weighting"]["method"] == "inverse_energy"
@@ -41,6 +42,11 @@ def test_shipped_configs_do_not_use_legacy_schema_names():
 
         assert loaded["sketch"]["method"] in {"lazy", "chebyshev_heat"}
         assert loaded["sketch"]["method"] != "repeated_smoothing"
+        if loaded["sketch"]["method"] == "chebyshev_heat":
+            assert loaded["sketch"]["chebyshev_scaling"] in {
+                "estimate_norm",
+                "normalized_laplacian_2",
+            }
         assert isinstance(loaded["fusion"]["relation_weighting"], dict)
         assert raw.get("fusion", {}).get("relation_weighting") != "uniform"
         assert "include_metapath_filters" not in raw.get("fusion", {})

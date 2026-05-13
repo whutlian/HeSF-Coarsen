@@ -10,7 +10,7 @@ fused Laplacian. `sketch.method: lazy` remains available as an explicit baseline
 
 ## Chebyshev Heat-Kernel Sketch
 
-`sketch.method: chebyshev_heat` applies a Chebyshev approximation to `exp(-t L_F)` for each configured heat time. When meta-paths are enabled, they are part of the same fused Laplacian through beta-weighted chained operators. The recurrence uses the normalized Laplacian scaling `lambda_max = 2`, so the scaled operator is `L_F - I = -S_F`. The default configuration estimates `||S_F||` by matrix-free power iteration; if the estimate exceeds one and `fusion.chebyshev_rescale_if_needed: true`, the recurrence uses a rescaled `S_F / ||S_F||` guard and records that in diagnostics.
+`sketch.method: chebyshev_heat` applies a Chebyshev approximation to `exp(-t L_F)` for each configured heat time. When meta-paths are enabled, they are part of the same fused Laplacian through beta-weighted chained operators. `sketch.chebyshev_scaling` accepts `estimate_norm` or `normalized_laplacian_2`. The default `estimate_norm` mode estimates `||S_F||` by matrix-free power iteration; if the estimate exceeds one and `fusion.chebyshev_rescale_if_needed: true`, the recurrence uses a rescaled `S_F / ||S_F||` guard and records that in diagnostics. If rescaling is disabled, the guard emits a `RuntimeWarning`. `normalized_laplacian_2` keeps the fixed normalized Laplacian assumption `lambda_max = 2`, so the scaled operator is `L_F - I = -S_F`.
 
 Chebyshev coefficients are computed with numerical Chebyshev quadrature, not SciPy:
 
@@ -75,7 +75,7 @@ beta_m proportional to (vol(m) + epsilon)^eta / (E_m + epsilon)^gamma
 Each coarsening level writes sketch metadata into `diagnostics.json`:
 
 - `sketch`: method, dimension, dtype, Chebyshev order, heat times, runtime, NaN/Inf counts, row norm stats.
-- `fusion`: relation weighting method, normalized weights, weight stats, energy estimates, volume estimates, `estimated_operator_norm`, and `chebyshev_scaling_assumption`.
+- `fusion`: relation weighting method, normalized weights, weight stats, energy estimates, volume estimates, `chebyshev_scaling`, `estimated_operator_norm`, and `chebyshev_scaling_assumption`.
 - `metapath_sketch`: enabled flag, fused-operator mode, total beta mass, per-path beta weights, type endpoints, and relation names.
 
 ## Config Examples

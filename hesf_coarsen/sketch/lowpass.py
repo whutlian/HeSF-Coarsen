@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from time import perf_counter
 from typing import Any
 
@@ -28,6 +29,35 @@ def _row_normalize(Z: np.ndarray) -> np.ndarray:
 def _normalize_only(Z: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(Z, axis=1, keepdims=True)
     return Z / np.maximum(norms, 1e-6)
+
+
+def _chebyshev_scaling_mode(sketch_cfg: dict[str, Any], fusion_cfg: dict[str, Any]) -> str:
+    raw_mode = sketch_cfg.get("chebyshev_scaling")
+    if raw_mode in {None, ""}:
+        return (
+            "estimate_norm"
+            if bool(fusion_cfg.get("estimate_operator_norm", True))
+            else "normalized_laplacian_2"
+        )
+    mode = str(raw_mode).lower().replace("-", "_")
+    aliases = {
+        "estimate": "estimate_norm",
+        "estimated_norm": "estimate_norm",
+        "estimate_operator_norm": "estimate_norm",
+        "operator_norm": "estimate_norm",
+        "power_iteration": "estimate_norm",
+        "normalized_laplacian": "normalized_laplacian_2",
+        "normalized_laplacian2": "normalized_laplacian_2",
+        "lambda_max_2": "normalized_laplacian_2",
+        "laplacian_2": "normalized_laplacian_2",
+    }
+    mode = aliases.get(mode, mode)
+    if mode not in {"estimate_norm", "normalized_laplacian_2"}:
+        raise ValueError(
+            "sketch.chebyshev_scaling must be one of: "
+            "estimate_norm, normalized_laplacian_2"
+        )
+    return mode
 
 
 def _dtype_cast(Z: np.ndarray, dtype_name: str) -> np.ndarray:
@@ -254,12 +284,17 @@ def _compute_chebyshev_heat_sketch(
             if key in metapath_weight_diag:
                 meta_diag[key] = metapath_weight_diag[key]
 
-    estimate_norm = bool(fusion_cfg.get("estimate_operator_norm", True))
+    chebyshev_scaling = _chebyshev_scaling_mode(sketch_cfg, fusion_cfg)
+    estimate_norm = chebyshev_scaling == "estimate_norm"
     rescale_if_needed = bool(fusion_cfg.get("chebyshev_rescale_if_needed", True))
     norm_tolerance = float(fusion_cfg.get("operator_norm_tolerance", 1.0e-3))
     estimated_operator_norm: float | None = None
     chebyshev_operator_scale = 1.0
-    chebyshev_scaling_assumption = "unit_interval_unverified"
+    chebyshev_scaling_assumption = (
+        "unit_interval_unverified"
+        if estimate_norm
+        else "normalized_laplacian_2_assumed"
+    )
     if estimate_norm:
         estimated_operator_norm = estimate_fused_operator_norm(
             graph,
@@ -278,6 +313,14 @@ def _compute_chebyshev_heat_sketch(
                 chebyshev_scaling_assumption = "rescaled_to_unit_interval"
             else:
                 chebyshev_scaling_assumption = "operator_norm_exceeds_unit_interval"
+                warnings.warn(
+                    "Chebyshev fused operator norm estimate "
+                    f"{estimated_operator_norm:.6g} exceeds 1 + "
+                    f"{norm_tolerance:.6g}; set fusion.chebyshev_rescale_if_needed=true "
+                    "to rescale automatically.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
         else:
             chebyshev_scaling_assumption = "unit_interval_verified"
 
@@ -286,6 +329,7 @@ def _compute_chebyshev_heat_sketch(
         {
             "symmetric_relation_operator": bool(symmetric),
             "symmetric_relation_scale": float(symmetric_relation_scale),
+            "chebyshev_scaling": chebyshev_scaling,
             "operator_norm_estimation_enabled": bool(estimate_norm),
             "estimated_operator_norm": (
                 None if estimated_operator_norm is None else float(estimated_operator_norm)

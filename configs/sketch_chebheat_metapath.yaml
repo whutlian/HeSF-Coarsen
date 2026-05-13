@@ -3,6 +3,7 @@ sketch:
   dim: 32
   order: 5
   heat_times: [1.0, 3.0]
+  chebyshev_scaling: estimate_norm
   chebyshev_quadrature_points: 128
   seed: 42
   dtype: float16
