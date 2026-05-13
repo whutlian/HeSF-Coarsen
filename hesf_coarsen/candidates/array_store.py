@@ -205,28 +205,42 @@ class ArrayCandidateStore:
         first = np.r_[0, np.flatnonzero(ordered_keys[1:] != ordered_keys[:-1]) + 1]
         return ordered[first, :3]
 
-    def source_counts(self) -> dict[str, int]:
-        counts: dict[str, int] = {}
-        rows: list[tuple[int, int, int]] = []
+    def iter_pair_blocks(self, block_size: int = 65_536):
+        block_size = max(int(block_size), 1)
+        rows: list[tuple[int, int, float]] = []
         for node in range(len(self.node_type)):
             used = int(self._counts[node])
             for slot in range(used):
                 other = int(self.candidate_ids[node, slot])
-                if other < 0 or node == other:
+                if other < 0 or node >= other:
                     continue
-                i, j = (node, other) if node < other else (other, node)
-                rows.append((i, j, int(self.candidate_sources[node, slot])))
-        if not rows:
-            return counts
-        arr = np.asarray(rows, dtype=np.int64)
-        pair_keys = arr[:, 0] * np.int64(len(self.node_type)) + arr[:, 1]
-        order = np.argsort(pair_keys, kind="mergesort")
-        ordered = arr[order]
-        ordered_keys = pair_keys[order]
-        first = np.r_[0, np.flatnonzero(ordered_keys[1:] != ordered_keys[:-1]) + 1]
-        for code in ordered[first, 2]:
-            name = self._source_name(int(code))
-            counts[name] = counts.get(name, 0) + 1
+                rows.append((node, other, float(self.candidate_scores[node, slot])))
+                if len(rows) >= block_size:
+                    yield np.asarray(rows, dtype=np.float64)
+                    rows = []
+        if rows:
+            yield np.asarray(rows, dtype=np.float64)
+
+    def pair_count(self) -> int:
+        count = 0
+        for node in range(len(self.node_type)):
+            used = int(self._counts[node])
+            if used == 0:
+                continue
+            others = self.candidate_ids[node, :used]
+            count += int(np.count_nonzero(others > node))
+        return count
+
+    def source_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for node in range(len(self.node_type)):
+            used = int(self._counts[node])
+            for slot in range(used):
+                other = int(self.candidate_ids[node, slot])
+                if other < 0 or node >= other:
+                    continue
+                name = self._source_name(int(self.candidate_sources[node, slot]))
+                counts[name] = counts.get(name, 0) + 1
         return counts
 
     def flush(self) -> None:

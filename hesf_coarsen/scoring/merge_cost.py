@@ -16,6 +16,32 @@ class TypewiseFeatureView:
     local_index: np.ndarray
 
 
+@dataclass(frozen=True)
+class PairScoringContext:
+    graph: HeteroGraph
+    Z: np.ndarray
+    relation_profiles: np.ndarray
+    conv_sketch: np.ndarray
+    feature_view: TypewiseFeatureView | None
+    config: dict
+    partition_id: np.ndarray | None
+    lambda_spec: float
+    lambda_rel: float
+    lambda_feat: float
+    lambda_conv: float
+    lambda_boundary: float
+    relation_profile_distance: str
+    relation_profile_epsilon: float
+    spec_volume_weighting: bool
+    spec_volume_epsilon: float
+    boundary_mode: str
+    boundary_risk: np.ndarray | None
+    node_volume: np.ndarray
+    batch_size: int
+    use_torch: bool
+    acceleration: dict
+
+
 def _projection_dtype(config: dict) -> np.dtype:
     name = str(config.get("features", {}).get("projection_dtype", "float16"))
     dtype = np.dtype(name)
@@ -512,18 +538,15 @@ def _numpy_weighted_pairwise_dense_cost(
     )
 
 
-def score_candidate_pairs(
+def prepare_pair_scoring_context(
     graph: HeteroGraph,
-    pairs: np.ndarray,
     Z: np.ndarray,
     relation_profiles: np.ndarray,
     conv_sketch: np.ndarray,
     features: dict[int, np.ndarray] | None,
     config: dict,
     partition_id: np.ndarray | None = None,
-) -> np.ndarray:
-    if pairs.size == 0:
-        return np.empty((0, 3), dtype=np.float64)
+) -> PairScoringContext:
     scoring = config.get("scoring", {})
     lambda_spec = float(scoring.get("lambda_spec", 1.0))
     lambda_rel = float(scoring.get("lambda_rel", 0.2))
@@ -543,73 +566,103 @@ def score_candidate_pairs(
         else None
     )
     acceleration = config.get("acceleration", {})
-
-    candidate_pairs = pairs[:, :2].astype(np.int64, copy=False)
-    valid = graph.node_type[candidate_pairs[:, 0]] == graph.node_type[candidate_pairs[:, 1]]
-    candidate_pairs = candidate_pairs[valid]
-    if candidate_pairs.size == 0:
-        return np.empty((0, 3), dtype=np.float64)
-
     node_volume = _incident_weight_mass(graph)
     boundary_risk = (
         _node_boundary_risk(graph, partition_id, scoring)
         if lambda_boundary != 0.0 and boundary_mode == "node_risk"
         else None
     )
-    use_torch = acceleration.get("dense_backend") == "torch"
+    return PairScoringContext(
+        graph=graph,
+        Z=Z,
+        relation_profiles=relation_profiles,
+        conv_sketch=conv_sketch,
+        feature_view=feature_view,
+        config=config,
+        partition_id=partition_id,
+        lambda_spec=lambda_spec,
+        lambda_rel=lambda_rel,
+        lambda_feat=lambda_feat,
+        lambda_conv=lambda_conv,
+        lambda_boundary=lambda_boundary,
+        relation_profile_distance=relation_profile_distance,
+        relation_profile_epsilon=relation_profile_epsilon,
+        spec_volume_weighting=spec_volume_weighting,
+        spec_volume_epsilon=spec_volume_epsilon,
+        boundary_mode=boundary_mode,
+        boundary_risk=boundary_risk,
+        node_volume=node_volume,
+        batch_size=int(acceleration.get("scoring_batch_size", 65_536)),
+        use_torch=acceleration.get("dense_backend") == "torch",
+        acceleration=acceleration,
+    )
+
+
+def score_pair_block(context: PairScoringContext, pairs: np.ndarray) -> np.ndarray:
+    if pairs.size == 0:
+        return np.empty((0, 3), dtype=np.float64)
+
+    graph = context.graph
+    candidate_pairs = pairs[:, :2].astype(np.int64, copy=False)
+    valid = graph.node_type[candidate_pairs[:, 0]] == graph.node_type[candidate_pairs[:, 1]]
+    candidate_pairs = candidate_pairs[valid]
+    if candidate_pairs.size == 0:
+        return np.empty((0, 3), dtype=np.float64)
+
+    use_torch = context.use_torch
     if use_torch:
         try:
             from hesf_coarsen.ops.torch_dense import torch_weighted_pairwise_dense_cost
 
-            device = str(acceleration.get("device", "auto"))
-            max_bytes = acceleration.get("max_dense_bytes")
+            device = str(context.acceleration.get("device", "auto"))
+            max_bytes = context.acceleration.get("max_dense_bytes")
             dense_cost = _scoring_pair_cost_batches(
                 graph,
                 candidate_pairs,
-                Z,
-                relation_profiles,
-                conv_sketch,
-                feature_view,
-                lambda_spec=lambda_spec,
-                lambda_rel=lambda_rel,
+                context.Z,
+                context.relation_profiles,
+                context.conv_sketch,
+                context.feature_view,
+                lambda_spec=context.lambda_spec,
+                lambda_rel=context.lambda_rel,
                 lambda_feat=0.0,
                 lambda_conv=0.0,
-                lambda_boundary=lambda_boundary,
-                relation_profile_distance=relation_profile_distance,
-                relation_profile_epsilon=relation_profile_epsilon,
-                spec_volume_weighting=spec_volume_weighting,
-                spec_volume_epsilon=spec_volume_epsilon,
-                boundary_mode=boundary_mode,
-                boundary_risk=boundary_risk,
-                partition_id=partition_id,
-                node_volume=node_volume,
-                batch_size=int(acceleration.get("scoring_batch_size", 65_536)),
-                config=config,
+                lambda_boundary=context.lambda_boundary,
+                relation_profile_distance=context.relation_profile_distance,
+                relation_profile_epsilon=context.relation_profile_epsilon,
+                spec_volume_weighting=context.spec_volume_weighting,
+                spec_volume_epsilon=context.spec_volume_epsilon,
+                boundary_mode=context.boundary_mode,
+                boundary_risk=context.boundary_risk,
+                partition_id=context.partition_id,
+                node_volume=context.node_volume,
+                batch_size=context.batch_size,
+                config=context.config,
                 include_conv=False,
             )
             dense_blocks = [
-                (conv_sketch.astype(np.float32, copy=False), lambda_conv),
+                (context.conv_sketch.astype(np.float32, copy=False), context.lambda_conv),
             ]
             dense_cost += torch_weighted_pairwise_dense_cost(
                 dense_blocks,
                 candidate_pairs,
                 device=device,
-                batch_size=int(acceleration.get("scoring_batch_size", 65_536)),
+                batch_size=context.batch_size,
                 max_bytes=max_bytes,
-                progress_config=config,
+                progress_config=context.config,
                 progress_desc="score dense batches",
             )
-            if feature_view is not None and lambda_feat != 0.0:
+            if context.feature_view is not None and context.lambda_feat != 0.0:
                 feature_cost = _feature_pair_cost_batches(
                     graph,
                     candidate_pairs,
-                    feature_view,
-                    batch_size=int(acceleration.get("scoring_batch_size", 65_536)),
-                    config=config,
+                    context.feature_view,
+                    batch_size=context.batch_size,
+                    config=context.config,
                 )
-                dense_cost += np.float32(lambda_feat) * feature_cost
+                dense_cost += np.float32(context.lambda_feat) * feature_cost
         except (ImportError, RuntimeError, MemoryError):
-            if not bool(acceleration.get("fallback_to_numpy", True)):
+            if not bool(context.acceleration.get("fallback_to_numpy", True)):
                 raise
             use_torch = False
 
@@ -617,42 +670,79 @@ def score_candidate_pairs(
         dense_cost = _numpy_weighted_pairwise_dense_cost(
             graph,
             candidate_pairs,
-            Z,
-            relation_profiles,
-            conv_sketch,
-            feature_view,
-            lambda_spec=lambda_spec,
-            lambda_rel=lambda_rel,
-            lambda_feat=lambda_feat,
-            lambda_conv=lambda_conv,
-            lambda_boundary=lambda_boundary,
-            relation_profile_distance=relation_profile_distance,
-            relation_profile_epsilon=relation_profile_epsilon,
-            spec_volume_weighting=spec_volume_weighting,
-            spec_volume_epsilon=spec_volume_epsilon,
-            boundary_mode=boundary_mode,
-            boundary_risk=boundary_risk,
-            partition_id=partition_id,
-            node_volume=node_volume,
-            batch_size=int(acceleration.get("scoring_batch_size", 65_536)),
-            config=config,
+            context.Z,
+            context.relation_profiles,
+            context.conv_sketch,
+            context.feature_view,
+            lambda_spec=context.lambda_spec,
+            lambda_rel=context.lambda_rel,
+            lambda_feat=context.lambda_feat,
+            lambda_conv=context.lambda_conv,
+            lambda_boundary=context.lambda_boundary,
+            relation_profile_distance=context.relation_profile_distance,
+            relation_profile_epsilon=context.relation_profile_epsilon,
+            spec_volume_weighting=context.spec_volume_weighting,
+            spec_volume_epsilon=context.spec_volume_epsilon,
+            boundary_mode=context.boundary_mode,
+            boundary_risk=context.boundary_risk,
+            partition_id=context.partition_id,
+            node_volume=context.node_volume,
+            batch_size=context.batch_size,
+            config=context.config,
         )
 
-    rows: list[tuple[int, int, float]] = []
-    row_iter = progress_iter(
-        enumerate(candidate_pairs),
-        total=len(candidate_pairs),
-        desc="score row assembly",
-        config=config,
-        unit="pair",
-    )
-    for idx, (i, j) in row_iter:
-        i = int(i)
-        j = int(j)
-        rows.append((i, j, float(dense_cost[idx])))
-    if not rows:
+    scored = np.empty((candidate_pairs.shape[0], 3), dtype=np.float64)
+    scored[:, :2] = candidate_pairs
+    scored[:, 2] = dense_cost.astype(np.float64, copy=False)
+    return scored
+
+
+def score_candidate_pair_block(
+    graph: HeteroGraph,
+    pairs: np.ndarray,
+    Z: np.ndarray,
+    relation_profiles: np.ndarray,
+    conv_sketch: np.ndarray,
+    features: dict[int, np.ndarray] | None,
+    config: dict,
+    partition_id: np.ndarray | None = None,
+) -> np.ndarray:
+    if pairs.size == 0:
         return np.empty((0, 3), dtype=np.float64)
-    return np.asarray(rows, dtype=np.float64)
+    context = prepare_pair_scoring_context(
+        graph,
+        Z,
+        relation_profiles,
+        conv_sketch,
+        features,
+        config,
+        partition_id=partition_id,
+    )
+    return score_pair_block(context, pairs)
+
+
+def score_candidate_pairs(
+    graph: HeteroGraph,
+    pairs: np.ndarray,
+    Z: np.ndarray,
+    relation_profiles: np.ndarray,
+    conv_sketch: np.ndarray,
+    features: dict[int, np.ndarray] | None,
+    config: dict,
+    partition_id: np.ndarray | None = None,
+) -> np.ndarray:
+    if pairs.size == 0:
+        return np.empty((0, 3), dtype=np.float64)
+    context = prepare_pair_scoring_context(
+        graph,
+        Z,
+        relation_profiles,
+        conv_sketch,
+        features,
+        config,
+        partition_id=partition_id,
+    )
+    return score_pair_block(context, pairs)
 
 
 def _feature_pair_cost_batches(

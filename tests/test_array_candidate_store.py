@@ -10,6 +10,20 @@ from hesf_coarsen.io.edge_list import generate_synthetic_graph
 from hesf_coarsen.sketch.simhash import compute_simhash_buckets
 
 
+def _stack_pair_blocks(blocks):
+    blocks = list(blocks)
+    if not blocks:
+        return np.empty((0, 3), dtype=np.float64)
+    return np.vstack(blocks)
+
+
+def _sort_pairs(pairs):
+    if pairs.size == 0:
+        return pairs
+    order = np.lexsort((pairs[:, 2], pairs[:, 1], pairs[:, 0]))
+    return pairs[order]
+
+
 def test_array_candidate_store_bounds_dedupes_and_can_use_memmap(tmp_path):
     node_type = np.array([0, 0, 0, 0, 1], dtype=np.int32)
     store = ArrayCandidateStore(node_type, K=2, mmap_dir=tmp_path)
@@ -29,6 +43,23 @@ def test_array_candidate_store_bounds_dedupes_and_can_use_memmap(tmp_path):
     assert len({tuple(pair[:2].astype(int)) for pair in pairs}) == len(pairs)
     assert all(node_type[int(i)] == node_type[int(j)] for i, j, *_ in pairs)
     assert store.source_counts()
+
+
+def test_array_candidate_store_iter_pair_blocks_matches_to_pairs():
+    node_type = np.array([0, 0, 0, 0, 1], dtype=np.int32)
+    store = ArrayCandidateStore(node_type, K=3)
+
+    store.add(0, 1, 0.5, "onehop")
+    store.add(1, 0, 0.4, "bucket")
+    store.add(0, 2, 0.3, "bucket")
+    store.add(2, 3, 0.2, "onehop")
+    store.add(0, 4, 0.1, "bucket")
+    store.add(3, 3, 0.0, "bucket")
+
+    streamed = _stack_pair_blocks(store.iter_pair_blocks(block_size=1))
+
+    assert np.allclose(_sort_pairs(streamed), _sort_pairs(store.to_pairs()))
+    assert store.pair_count() == store.to_pairs().shape[0]
 
 
 def test_array_candidate_store_keeps_best_duplicate_score():

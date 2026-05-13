@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from dataclasses import dataclass
+from math import ceil
 from pathlib import Path
 from time import perf_counter
 
@@ -23,12 +24,21 @@ from hesf_coarsen.eval.diagnostics import compute_diagnostics, save_diagnostics
 from hesf_coarsen.eval.spectral_diagnostics import compute_spectral_diagnostics
 from hesf_coarsen.io.edge_list import load_graph, save_graph
 from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
-from hesf_coarsen.matching.greedy import run_matching
+from hesf_coarsen.matching.greedy import (
+    finalize_mutual_best,
+    initialize_mutual_best_state,
+    mutual_best_update_block,
+    run_matching,
+)
 from hesf_coarsen.ops.fusion_weights import compute_relation_fusion_weights
 from hesf_coarsen.partition.type_partition import default_partition
-from hesf_coarsen.progress import progress_message
+from hesf_coarsen.progress import progress_iter, progress_message
 from hesf_coarsen.scoring.conv_response import compute_conv_response_sketch
-from hesf_coarsen.scoring.merge_cost import score_candidate_pairs
+from hesf_coarsen.scoring.merge_cost import (
+    prepare_pair_scoring_context,
+    score_candidate_pairs,
+    score_pair_block,
+)
 from hesf_coarsen.scoring.relation_profile import compute_relation_profiles
 from hesf_coarsen.sketch.lowpass import compute_lowpass_sketch
 from hesf_coarsen.sketch.simhash import compute_simhash_buckets
@@ -364,14 +374,15 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             generate_partition_ann_candidates(current, Z, partition_id, config, store)
         _add_fallback_candidates(current, partition_id, store, config)
         _flush_candidate_store(store)
-        pairs = store.to_pairs()
+        pair_count_fn = getattr(store, "pair_count", None)
+        pair_count = int(pair_count_fn()) if callable(pair_count_fn) else int(store.to_pairs().shape[0])
         candidate_counts = store.counts()
         source_counts = store.source_counts()
         runtime["candidates"] = perf_counter() - start
         progress_message(
             config,
             f"level {level}: candidates done in {runtime['candidates']:.2f}s "
-            f"({pairs.shape[0]} pairs)",
+            f"({pair_count} pairs)",
         )
 
         progress_message(config, f"level {level}: scoring start")
@@ -392,33 +403,86 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         progress_message(config, f"level {level}: scoring conv response done")
         progress_message(config, f"level {level}: scoring candidate pairs start")
         scoring_config = _config_with_level_feature_store(config, level)
-        scored = score_candidate_pairs(
-            current,
-            pairs,
-            Z,
-            relation_profiles,
-            conv,
-            current.features,
-            scoring_config,
-            partition_id=partition_id,
-        )
+        matching_method = str(config.get("coarsening", {}).get("matching_method", "mutual_best"))
+        matching_method_normalized = matching_method.lower().replace("-", "_")
+        level_matching_config = _config_for_level(config, current.num_nodes)
+        streaming_mutual_best = matching_method_normalized == "mutual_best"
+        scored = None
+        scored_pair_count = 0
+        streaming_state = None
+        if streaming_mutual_best:
+            streaming_state = initialize_mutual_best_state(current)
+            scoring_context = prepare_pair_scoring_context(
+                current,
+                Z,
+                relation_profiles,
+                conv,
+                current.features,
+                scoring_config,
+                partition_id=partition_id,
+            )
+            pair_block_size = max(
+                int(
+                    candidate_cfg.get(
+                        "pair_block_size",
+                        scoring_config.get("acceleration", {}).get("scoring_batch_size", 65_536),
+                    )
+                ),
+                1,
+            )
+            block_total = ceil(pair_count / pair_block_size) if pair_count else 0
+            pair_blocks = store.iter_pair_blocks(block_size=pair_block_size)
+            for pair_block in progress_iter(
+                pair_blocks,
+                total=block_total,
+                desc="score/match pair blocks",
+                config=config,
+                unit="block",
+            ):
+                scored_block = score_pair_block(scoring_context, pair_block)
+                scored_pair_count += int(scored_block.shape[0])
+                mutual_best_update_block(
+                    current,
+                    streaming_state,
+                    scored_block,
+                    level_matching_config,
+                    partition_id=partition_id,
+                )
+        else:
+            pairs = store.to_pairs()
+            scored = score_candidate_pairs(
+                current,
+                pairs,
+                Z,
+                relation_profiles,
+                conv,
+                current.features,
+                scoring_config,
+                partition_id=partition_id,
+            )
+            scored_pair_count = int(scored.shape[0])
         progress_message(config, f"level {level}: scoring candidate pairs done")
         runtime["scoring"] = perf_counter() - start
         progress_message(
             config,
-            f"level {level}: scoring done in {runtime['scoring']:.2f}s ({scored.shape[0]} pairs)",
+            f"level {level}: scoring done in {runtime['scoring']:.2f}s "
+            f"({scored_pair_count} pairs)",
         )
 
         progress_message(config, f"level {level}: matching and aggregation start")
         start = perf_counter()
-        matching_method = str(config.get("coarsening", {}).get("matching_method", "mutual_best"))
         progress_message(config, f"level {level}: matching start (method={matching_method})")
-        assignment = run_matching(
-            current,
-            scored,
-            _config_for_level(config, current.num_nodes),
-            partition_id=partition_id,
-        )
+        if streaming_mutual_best:
+            assert streaming_state is not None
+            assignment = finalize_mutual_best(current, streaming_state, level_matching_config)
+        else:
+            assert scored is not None
+            assignment = run_matching(
+                current,
+                scored,
+                level_matching_config,
+                partition_id=partition_id,
+            )
         progress_message(config, f"level {level}: matching done")
         aggregation_chunk_size = int(config.get("coarsening", {}).get("aggregation_chunk_size", 1_000_000))
         aggregation_reducer = str(config.get("coarsening", {}).get("aggregation_reducer", "sort"))

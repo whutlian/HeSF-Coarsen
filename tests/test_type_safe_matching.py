@@ -6,9 +6,12 @@ from hesf_coarsen.config import DEFAULT_CONFIG
 from hesf_coarsen.io.edge_list import generate_synthetic_graph
 from hesf_coarsen.io.schema import HeteroGraph
 from hesf_coarsen.matching.greedy import (
+    finalize_mutual_best,
+    initialize_mutual_best_state,
     run_greedy_matching,
     run_matching,
     run_mutual_best_matching,
+    mutual_best_update_block,
 )
 
 
@@ -114,6 +117,36 @@ def test_mutual_best_matching_enforces_same_partition_by_default():
     )
 
     assert not paired(assignment, 0, 1)
+
+
+def test_streaming_mutual_best_matches_batch_matching_across_blocks():
+    graph = same_type_graph(6)
+    scored_pairs = np.array(
+        [
+            [0, 1, 0.5],
+            [1, 2, 0.1],
+            [2, 3, 0.2],
+            [4, 5, 0.3],
+            [0, 5, 0.3],
+        ],
+        dtype=np.float64,
+    )
+    config = {
+        "coarsening": {
+            "same_type_only": True,
+            "same_partition_only": False,
+            "max_matched_pairs": 2,
+        }
+    }
+
+    state = initialize_mutual_best_state(graph)
+    mutual_best_update_block(graph, state, scored_pairs[:2], config)
+    mutual_best_update_block(graph, state, scored_pairs[2:], config)
+    streaming = finalize_mutual_best(graph, state, config)
+    batch = run_mutual_best_matching(graph, scored_pairs, config)
+
+    assert np.array_equal(streaming.assignment, batch.assignment)
+    assert np.array_equal(streaming.supernode_type, batch.supernode_type)
 
 
 def test_greedy_matching_never_merges_cross_type_pairs_by_default():

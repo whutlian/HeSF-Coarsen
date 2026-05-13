@@ -1,7 +1,11 @@
 import numpy as np
 
 from hesf_coarsen.io.schema import HeteroGraph, RelationAdj, RelationSpec
-from hesf_coarsen.scoring.merge_cost import score_candidate_pairs
+from hesf_coarsen.scoring.merge_cost import (
+    prepare_pair_scoring_context,
+    score_candidate_pairs,
+    score_pair_block,
+)
 
 
 def _same_type_graph_with_degrees() -> HeteroGraph:
@@ -30,6 +34,48 @@ def _score_single_pair(graph: HeteroGraph, pair: tuple[int, int], config: dict) 
     pairs = np.array([[pair[0], pair[1], 0.0]], dtype=np.float64)
     scored = score_candidate_pairs(graph, pairs, z, profiles, conv, None, config)
     return float(scored[0, 2])
+
+
+def test_score_pair_block_matches_full_scoring_and_filters_cross_type():
+    graph = HeteroGraph(
+        num_nodes=3,
+        node_type=np.array([0, 0, 1], dtype=np.int32),
+        relations={},
+    )
+    pairs = np.array(
+        [
+            [0, 1, 100.0],
+            [0, 2, 0.0],
+            [1, 0, 5.0],
+        ],
+        dtype=np.float64,
+    )
+    z = np.array([[0.0, 0.0], [3.0, 4.0], [1.0, 1.0]], dtype=np.float32)
+    profiles = np.zeros((3, 2), dtype=np.float32)
+    conv = np.zeros((3, 2), dtype=np.float32)
+    config = {
+        "scoring": {
+            "lambda_spec": 1.0,
+            "lambda_rel": 0.0,
+            "lambda_feat": 0.0,
+            "lambda_conv": 0.0,
+            "lambda_boundary": 0.0,
+            "spec_volume_weighting": False,
+        },
+        "acceleration": {"dense_backend": "numpy", "scoring_batch_size": 1},
+    }
+    context = prepare_pair_scoring_context(graph, z, profiles, conv, None, config)
+
+    streamed = np.vstack(
+        [
+            score_pair_block(context, pairs[:1]),
+            score_pair_block(context, pairs[1:]),
+        ]
+    )
+    full = score_candidate_pairs(graph, pairs, z, profiles, conv, None, config)
+
+    assert np.allclose(streamed, full)
+    assert streamed.shape == (2, 3)
 
 
 def test_spec_term_uses_local_variation_volume_factor():

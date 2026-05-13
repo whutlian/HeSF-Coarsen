@@ -101,6 +101,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "edge_chunk_size": 1_000_000,
         "middle_chunk_size": 100_000,
         "node_chunk_size": 1_000_000,
+        "pair_block_size": 65_536,
         "total_budget_K": 16,
         "twohop_budget_K2": 8,
         "middle_degree_cap_policy": "p99",

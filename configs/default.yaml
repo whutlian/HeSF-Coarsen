@@ -81,6 +81,7 @@ candidates:
   edge_chunk_size: 1000000
   middle_chunk_size: 100000
   node_chunk_size: 1000000
+  pair_block_size: 65536
   total_budget_K: 16
   twohop_budget_K2: 8
   middle_degree_cap_policy: p99

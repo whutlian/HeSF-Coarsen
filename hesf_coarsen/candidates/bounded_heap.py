@@ -93,8 +93,22 @@ class BoundedCandidateStore:
             return np.empty((0, 3), dtype=np.float64)
         return np.asarray(rows, dtype=np.float64)
 
+    def iter_pair_blocks(self, block_size: int = 65_536):
+        block_size = max(int(block_size), 1)
+        rows: list[tuple[int, int, float]] = []
+        for (i, j), (score, _source) in self._pairs.items():
+            rows.append((int(i), int(j), float(score)))
+            if len(rows) >= block_size:
+                yield np.asarray(rows, dtype=np.float64)
+                rows = []
+        if rows:
+            yield np.asarray(rows, dtype=np.float64)
+
+    def pair_count(self) -> int:
+        return len(self._pairs)
+
     def counts(self) -> np.ndarray:
         return np.asarray([len(candidates) for candidates in self._per_node], dtype=np.int32)
 
     def source_counts(self) -> dict[str, int]:
-        return dict(self._source_counts)
+        return dict(Counter(source for _score, source in self._pairs.values()))

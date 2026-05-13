@@ -24,6 +24,22 @@ def test_candidate_store_bounds_counts_and_deduplicates_pairs():
     assert all(node_type[int(i)] == node_type[int(j)] for i, j, *_ in pairs)
 
 
+def test_candidate_store_iter_pair_blocks_matches_to_pairs():
+    node_type = np.array([0, 0, 0, 0], dtype=np.int32)
+    store = BoundedCandidateStore(node_type, K=3)
+
+    store.add(0, 1, 0.5, "onehop")
+    store.add(0, 2, 0.3, "bucket")
+    store.add(2, 3, 0.2, "bucket")
+
+    blocks = list(store.iter_pair_blocks(block_size=2))
+    streamed = np.vstack(blocks)
+
+    assert len(blocks) == 2
+    assert np.allclose(streamed[np.lexsort((streamed[:, 1], streamed[:, 0]))], store.to_pairs())
+    assert store.pair_count() == store.to_pairs().shape[0]
+
+
 def test_bucket_candidates_respect_type_and_partition():
     z = np.array(
         [

@@ -52,6 +52,29 @@ def test_multilevel_pipeline_runs_and_writes_diagnostics(tmp_path):
     assert validate_loaded.num_nodes == results[0].graph.num_nodes
 
 
+def test_multilevel_pipeline_streams_default_mutual_best_without_to_pairs(tmp_path, monkeypatch):
+    graph = generate_synthetic_graph(
+        num_users=8,
+        num_items=5,
+        num_tags=3,
+        seed=123,
+    )
+    config = small_config(tmp_path)
+    config["diagnostics"] = dict(config["diagnostics"], enable_spectral=False)
+    config["candidates"] = dict(config["candidates"], pair_block_size=2)
+
+    def fail_to_pairs(*_args, **_kwargs):
+        raise AssertionError("default mutual-best pipeline should stream pair blocks")
+
+    monkeypatch.setattr(multilevel_module.BoundedCandidateStore, "to_pairs", fail_to_pairs)
+    monkeypatch.setattr(multilevel_module.ArrayCandidateStore, "to_pairs", fail_to_pairs)
+
+    results = run_multilevel_coarsening(graph, config)
+
+    assert results
+    assert results[0].graph.num_nodes < graph.num_nodes
+
+
 def test_multilevel_pipeline_writes_spectral_diagnostics_closed_loop(tmp_path):
     graph = generate_synthetic_graph(
         num_users=10,

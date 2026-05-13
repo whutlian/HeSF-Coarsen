@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from hesf_coarsen.coarsen.assignment import Assignment
@@ -105,24 +107,56 @@ def _assignment_from_pair_arrays(
     )
 
 
-def run_mutual_best_matching(
+@dataclass
+class MutualBestState:
+    best_cost: np.ndarray
+    best_neighbor: np.ndarray
+
+
+def initialize_mutual_best_state(graph: HeteroGraph) -> MutualBestState:
+    missing_neighbor = np.iinfo(np.int64).max
+    return MutualBestState(
+        best_cost=np.full(graph.num_nodes, np.inf, dtype=np.float64),
+        best_neighbor=np.full(graph.num_nodes, missing_neighbor, dtype=np.int64),
+    )
+
+
+def _update_directed_best(
+    state: MutualBestState,
+    nodes: np.ndarray,
+    neighbors: np.ndarray,
+    costs: np.ndarray,
+) -> None:
+    if len(nodes) == 0:
+        return
+    unique_nodes, inverse = np.unique(nodes, return_inverse=True)
+    block_best_cost = np.full(len(unique_nodes), np.inf, dtype=np.float64)
+    np.minimum.at(block_best_cost, inverse, costs)
+
+    improved = block_best_cost < state.best_cost[unique_nodes]
+    if np.any(improved):
+        improved_nodes = unique_nodes[improved]
+        state.best_cost[improved_nodes] = block_best_cost[improved]
+        state.best_neighbor[improved_nodes] = np.iinfo(np.int64).max
+
+    eligible = costs == state.best_cost[nodes]
+    if np.any(eligible):
+        np.minimum.at(state.best_neighbor, nodes[eligible], neighbors[eligible])
+
+
+def mutual_best_update_block(
     graph: HeteroGraph,
+    state: MutualBestState,
     scored_pairs: np.ndarray,
     config: dict,
     partition_id: np.ndarray | None = None,
-) -> Assignment:
+) -> None:
+    if scored_pairs.size == 0:
+        return
+
     coarsen_cfg = config.get("coarsening", {})
     same_type_only = bool(coarsen_cfg.get("same_type_only", True))
     same_partition_only = bool(coarsen_cfg.get("same_partition_only", True))
-    max_matched_pairs = coarsen_cfg.get("max_matched_pairs")
-    if max_matched_pairs is not None:
-        max_matched_pairs = max(0, int(max_matched_pairs))
-        if max_matched_pairs == 0:
-            return _singleton_assignment(graph)
-
-    if scored_pairs.size == 0:
-        return _singleton_assignment(graph)
-
     pairs = np.asarray(scored_pairs)
     left = pairs[:, 0].astype(np.int64, copy=False)
     right = pairs[:, 1].astype(np.int64, copy=False)
@@ -138,36 +172,41 @@ def run_mutual_best_matching(
         same_partition[valid] = partition_id[left[valid]] == partition_id[right[valid]]
         valid &= same_partition
     if not np.any(valid):
-        return _singleton_assignment(graph)
+        return
 
     left = left[valid]
     right = right[valid]
     costs = costs[valid]
+    _update_directed_best(state, left, right, costs)
+    _update_directed_best(state, right, left, costs)
 
-    best_cost = np.full(graph.num_nodes, np.inf, dtype=np.float64)
-    np.minimum.at(best_cost, left, costs)
-    np.minimum.at(best_cost, right, costs)
+
+def finalize_mutual_best(
+    graph: HeteroGraph,
+    state: MutualBestState,
+    config: dict,
+) -> Assignment:
+    coarsen_cfg = config.get("coarsening", {})
+    max_matched_pairs = coarsen_cfg.get("max_matched_pairs")
+    if max_matched_pairs is not None:
+        max_matched_pairs = max(0, int(max_matched_pairs))
+        if max_matched_pairs == 0:
+            return _singleton_assignment(graph)
 
     missing_neighbor = np.iinfo(np.int64).max
-    best_neighbor = np.full(graph.num_nodes, missing_neighbor, dtype=np.int64)
-    left_best = costs == best_cost[left]
-    right_best = costs == best_cost[right]
-    if np.any(left_best):
-        np.minimum.at(best_neighbor, left[left_best], right[left_best])
-    if np.any(right_best):
-        np.minimum.at(best_neighbor, right[right_best], left[right_best])
-
-    has_neighbor = best_neighbor != missing_neighbor
+    has_neighbor = state.best_neighbor != missing_neighbor
     candidate_nodes = np.flatnonzero(has_neighbor).astype(np.int64)
-    candidate_partners = best_neighbor[candidate_nodes]
+    if len(candidate_nodes) == 0:
+        return _singleton_assignment(graph)
+    candidate_partners = state.best_neighbor[candidate_nodes]
     mutual_mask = (candidate_nodes < candidate_partners) & (
-        best_neighbor[candidate_partners] == candidate_nodes
+        state.best_neighbor[candidate_partners] == candidate_nodes
     )
     mutual_left = candidate_nodes[mutual_mask]
     if len(mutual_left) == 0:
         return _singleton_assignment(graph)
-    mutual_right = best_neighbor[mutual_left]
-    mutual_cost = best_cost[mutual_left]
+    mutual_right = state.best_neighbor[mutual_left]
+    mutual_cost = state.best_cost[mutual_left]
 
     if max_matched_pairs is not None and len(mutual_left) > max_matched_pairs:
         order = np.lexsort((mutual_right, mutual_left, mutual_cost))
@@ -176,6 +215,17 @@ def run_mutual_best_matching(
         mutual_right = mutual_right[keep]
 
     return _assignment_from_pair_arrays(graph, mutual_left, mutual_right)
+
+
+def run_mutual_best_matching(
+    graph: HeteroGraph,
+    scored_pairs: np.ndarray,
+    config: dict,
+    partition_id: np.ndarray | None = None,
+) -> Assignment:
+    state = initialize_mutual_best_state(graph)
+    mutual_best_update_block(graph, state, scored_pairs, config, partition_id=partition_id)
+    return finalize_mutual_best(graph, state, config)
 
 
 def run_matching(
