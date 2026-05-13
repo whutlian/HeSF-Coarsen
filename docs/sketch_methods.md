@@ -42,7 +42,13 @@ Relation weighting supports:
 - `inverse_energy`: weights proportional to `(vol(r) + epsilon)^eta / (E_r + epsilon)^gamma`.
 - `feature_smoothness`: uses type-wise features when available, otherwise falls back to a random basis.
 
-The energy estimator loops over relation edges, optionally sampled per relation, and uses normalized edge differences. It does not materialize relation matrices.
+The relation energy estimator loops over relation edges, optionally sampled per relation, and uses normalized edge differences over a shared basis `Z_X`:
+
+```text
+E_r ~= tr(Z_X^T L_r Z_X) / tr(Z_X^T Z_X)
+```
+
+For engineering-scale runs, `Z_X` is either the sketch/probe basis already used by ChebHeat weighting or a feature-seeded basis for `feature_smoothness`. This implements the sampled normalized edge-energy estimator without materializing relation matrices.
 
 ## Meta-Path Fused Operators
 
@@ -55,7 +61,14 @@ S_F H = sum_r alpha_r S_r H + sum_m beta_m S_m H
 
 The implementation supports integer relation IDs and accepts either integer type IDs or type names for `start_type` / `end_type`. Type names are inferred from relation schema names such as `author__writes__paper` or `user_to_item`, and can also be supplied through `metapath_sketch.type_names`. The operator input is masked to `start_type`; after each step, rows outside the current type are zeroed. This preserves type restrictions and avoids constructing `A_r1 @ A_r2` or any two-hop candidate set. Guardrails cap paths and path length unless `allow_large_metapath_sketch` is enabled. When `auto_paths: true` and no paths are supplied, the default Chebyshev config generates short `relation forward + relation backward` and `relation backward + relation forward` paths from the relation schema so operators such as User-Item-User and Paper-Author-Paper enter `L_F`.
 
-`metapath_sketch.operator_weight_total` sets total beta mass. Relation weights are scaled by `1 - operator_weight_total`, and meta-path weights are normalized from each path's optional `weight` field or from `metapath_sketch.operator_weights`. This keeps `sum_r alpha_r + sum_m beta_m = 1`.
+`metapath_sketch.operator_weight_total` sets total beta mass. Relation weights are scaled by `1 - operator_weight_total`. Meta-path weights are estimated with `metapath_sketch.weighting`, using the same `uniform`, `volume`, `inverse_energy`, and `feature_smoothness` methods as relation weights. For `inverse_energy`, each path uses:
+
+```text
+E_m = tr(Z_X^T L_m Z_X) / tr(Z_X^T Z_X)
+beta_m proportional to (vol(m) + epsilon)^eta / (E_m + epsilon)^gamma
+```
+
+`vol(m)` is estimated from the path's relation volumes without materializing the relation product. Manual beta proportions remain available with `metapath_sketch.weighting.method: manual` plus `operator_weights` or per-path `weight`. This keeps `sum_r alpha_r + sum_m beta_m = 1`.
 
 ## Diagnostics
 

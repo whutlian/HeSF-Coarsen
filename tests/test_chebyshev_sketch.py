@@ -126,6 +126,9 @@ def test_default_lowpass_sketch_uses_relation_weighted_chebyshev_heat():
     assert diagnostics["metapath_sketch"]["enabled"] is True
     assert diagnostics["metapath_sketch"]["num_paths"] > 0
     assert diagnostics["metapath_sketch"]["operator_mode"] == "fused_laplacian"
+    assert diagnostics["metapath_sketch"]["weighting_method"] == "inverse_energy"
+    assert diagnostics["metapath_sketch"]["energy_basis_object"] == "Z_X"
+    assert diagnostics["metapath_sketch"]["energy_estimates"]
     assert diagnostics["metapath_sketch"]["operator_weight_total"] > 0.0
     total_weight = diagnostics["fusion"]["relation_weight_stats"]["sum"]
     total_weight += diagnostics["metapath_sketch"]["operator_weight_total"]

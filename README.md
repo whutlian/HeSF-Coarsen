@@ -241,7 +241,7 @@ This path only handles dense blocks such as sketches and candidate scoring matri
 ## Diagnostics
 
 Diagnostics include node counts by type, edge counts by relation, compression ratio, candidate count distribution, candidate source counts, matched-pair count, singleton ratio, relation weight preservation, and per-stage runtime.
-Sketch diagnostics are also written for each level. They include the low-pass sketch method, dimension, dtype, Chebyshev order and heat times when applicable, relation fusion weights and energy estimates, beta-weighted meta-path fused-operator metadata, NaN/Inf counts, row norm stats, and per-component sketch runtime. See `docs/sketch_methods.md` for configuration details and guardrails.
+Sketch diagnostics are also written for each level. They include the low-pass sketch method, dimension, dtype, Chebyshev order and heat times when applicable, relation fusion weights and sampled `Z_X` energy estimates, estimated beta-weighted meta-path fused-operator metadata, NaN/Inf counts, row norm stats, and per-component sketch runtime. See `docs/sketch_methods.md` for configuration details and guardrails.
 Spectral diagnostics are enabled by default and are written under `diagnostics.json` as `spectral`. They report sketch Dirichlet energy before/after coarsening, relation-weighted fused energy preservation, relation-wise energy errors, ChebHeat sketch inner-product error, optional small-graph eigenvalue sanity, and small-graph baseline comparisons against random, heavy-edge, GraphZoom-style, and ConvMatch-style pairings.
 
 Enable sampled large-graph envelopes with config:

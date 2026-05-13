@@ -1,6 +1,7 @@
 import numpy as np
 
 from hesf_coarsen.io.schema import HeteroGraph, RelationAdj, RelationSpec
+from hesf_coarsen.sketch.metapath import compute_metapath_weights
 from hesf_coarsen.sketch.relation_weights import _basis_for_energy, compute_relation_weights
 
 
@@ -74,6 +75,49 @@ def test_inverse_energy_relation_weight_prefers_smooth_relation():
     assert result.weights[0] > result.weights[1]
     assert result.energy_estimates[0] < result.energy_estimates[1]
     assert result.diagnostics["relation_weighting_method"] == "inverse_energy"
+    assert result.diagnostics["energy_basis_object"] == "Z_X"
+    assert result.diagnostics["energy_estimator"] == "sampled_normalized_edge_energy"
+
+
+def test_inverse_energy_metapath_weight_prefers_smooth_path():
+    graph = _smooth_noisy_graph()
+    basis = np.array([[0.0], [0.0], [10.0], [-10.0]], dtype=np.float32)
+    paths = [
+        {
+            "name": "smooth_relation_path",
+            "start_type": 0,
+            "end_type": 0,
+            "steps": [{"relation_id": 0, "direction": "forward"}],
+        },
+        {
+            "name": "noisy_relation_path",
+            "start_type": 0,
+            "end_type": 0,
+            "steps": [{"relation_id": 1, "direction": "forward"}],
+        },
+    ]
+
+    result = compute_metapath_weights(
+        graph,
+        {
+            "metapath_sketch": {
+                "weighting": {
+                    "method": "inverse_energy",
+                    "eta": 0.0,
+                    "gamma": 1.0,
+                    "epsilon": 1e-3,
+                }
+            }
+        },
+        paths,
+        basis=basis,
+    )
+
+    assert np.isclose(sum(result.weights.values()), 1.0)
+    assert result.weights["smooth_relation_path"] > result.weights["noisy_relation_path"]
+    assert result.energy_estimates["smooth_relation_path"] < result.energy_estimates["noisy_relation_path"]
+    assert result.diagnostics["metapath_weighting_method"] == "inverse_energy"
+    assert result.diagnostics["energy_basis_object"] == "Z_X"
 
 
 def test_feature_smoothness_basis_uses_low_dim_feature_projection():

@@ -7,13 +7,22 @@ from typing import Any
 import numpy as np
 
 from hesf_coarsen.io.schema import HeteroGraph
-from hesf_coarsen.sketch.operators import apply_relation_step
+from hesf_coarsen.sketch.operators import apply_metapath_operator, apply_relation_step
+from hesf_coarsen.sketch.relation_weights import _basis_for_energy, _normalize
 from hesf_coarsen.sketch.random_probe import generate_probe
 
 
 @dataclass(frozen=True)
 class MetaPathSketchResult:
     sketch: np.ndarray
+    diagnostics: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class MetaPathWeightResult:
+    weights: dict[str, float]
+    energy_estimates: dict[str, float]
+    volume_estimates: dict[str, float]
     diagnostics: dict[str, Any]
 
 
@@ -206,6 +215,140 @@ def metapath_path_diagnostics(
             for idx, path in enumerate(paths)
         ],
     }
+
+
+def _metapath_weighting_config(config: dict[str, Any]) -> dict[str, Any]:
+    cfg = config.get("metapath_sketch", {})
+    raw = cfg.get("weighting", cfg.get("operator_weighting", None))
+    if raw is None:
+        raw = config.get("fusion", {}).get("relation_weighting", {"method": "inverse_energy"})
+    if isinstance(raw, dict):
+        result = dict(raw)
+    else:
+        result = {"method": str(raw).lower()}
+    if "method" not in result:
+        result["method"] = "inverse_energy"
+    return result
+
+
+def _metapath_volume(graph: HeteroGraph, path: dict[str, Any], epsilon: float) -> float:
+    relation_volumes: list[float] = []
+    for step in path.get("steps", []):
+        rel = graph.relations[int(step["relation_id"])]
+        relation_volumes.append(float(np.sum(rel.weight.astype(np.float64))))
+    if not relation_volumes:
+        return float(np.sum(graph.node_type == int(path["start_type"])))
+    logs = [np.log(max(value, 0.0) + float(epsilon)) for value in relation_volumes]
+    return float(np.exp(float(np.mean(logs))))
+
+
+def _metapath_energy(
+    graph: HeteroGraph,
+    path: dict[str, Any],
+    basis: np.ndarray,
+    *,
+    epsilon: float,
+) -> float:
+    B = np.asarray(basis, dtype=np.float32)
+    if B.ndim == 1:
+        B = B[:, None]
+    smoothed = apply_metapath_operator(graph, B, path, require_closed=True)
+    active = graph.node_type == int(path["start_type"])
+    denom = float(np.sum(B[active].astype(np.float64) * B[active].astype(np.float64))) + float(epsilon)
+    if denom <= 0.0:
+        return 0.0
+    residual = B[active].astype(np.float64) - smoothed[active].astype(np.float64)
+    energy = float(np.sum(B[active].astype(np.float64) * residual) / denom)
+    return float(max(energy, 0.0))
+
+
+def _manual_metapath_raw_weights(paths: list[dict[str, Any]], cfg: dict[str, Any]) -> dict[str, float]:
+    configured = cfg.get("operator_weights")
+    if isinstance(configured, dict):
+        return {
+            str(path.get("name", f"metapath_{idx}")): float(
+                configured.get(str(path.get("name", f"metapath_{idx}")), path.get("weight", 1.0))
+            )
+            for idx, path in enumerate(paths)
+        }
+    if isinstance(configured, (list, tuple)):
+        if len(configured) != len(paths):
+            raise ValueError("metapath_sketch.operator_weights length must match resolved paths")
+        return {
+            str(path.get("name", f"metapath_{idx}")): float(value)
+            for idx, (path, value) in enumerate(zip(paths, configured))
+        }
+    return {
+        str(path.get("name", f"metapath_{idx}")): float(path.get("weight", 1.0))
+        for idx, path in enumerate(paths)
+    }
+
+
+def compute_metapath_weights(
+    graph: HeteroGraph,
+    config: dict[str, Any] | None,
+    paths: list[dict[str, Any]],
+    *,
+    basis: np.ndarray | None = None,
+) -> MetaPathWeightResult:
+    """Compute normalized non-negative beta_m proportions for meta-path operators."""
+
+    config = config or {}
+    cfg = config.get("metapath_sketch", {})
+    weight_cfg = _metapath_weighting_config(config)
+    method = str(weight_cfg.get("method", "inverse_energy")).lower()
+    if method in {"reliability", "reliability_weighted"}:
+        method = "inverse_energy"
+    if method not in {"manual", "uniform", "volume", "inverse_energy", "feature_smoothness"}:
+        raise ValueError(f"unsupported metapath_sketch.weighting.method: {method}")
+
+    named_paths = [
+        {**path, "name": str(path.get("name", f"metapath_{idx}"))}
+        for idx, path in enumerate(paths)
+    ]
+    path_names = [str(path["name"]) for path in named_paths]
+    epsilon = float(weight_cfg.get("epsilon", 1e-8))
+    eta = float(weight_cfg.get("eta", 0.5))
+    gamma = float(weight_cfg.get("gamma", 1.0))
+    volumes = {name: _metapath_volume(graph, path, epsilon) for name, path in zip(path_names, named_paths)}
+    energies = {name: 0.0 for name in path_names}
+    basis_source = None
+
+    if method in {"inverse_energy", "feature_smoothness"}:
+        B, basis_source = _basis_for_energy(graph, config, weight_cfg, basis, method)
+        for name, path in zip(path_names, named_paths):
+            energies[name] = _metapath_energy(graph, path, B, epsilon=epsilon)
+
+    if method == "manual":
+        raw = _manual_metapath_raw_weights(named_paths, cfg)
+    elif method == "uniform":
+        raw = {name: 1.0 for name in path_names}
+    elif method == "volume":
+        raw = {name: (volumes[name] + epsilon) ** eta for name in path_names}
+    else:
+        raw = {
+            name: (volumes[name] + epsilon) ** eta / ((energies[name] + epsilon) ** gamma)
+            for name in path_names
+        }
+    weights = _normalize(raw)
+    values = list(weights.values())
+    diagnostics: dict[str, Any] = {
+        "metapath_weighting_method": method,
+        "metapath_weights": {str(k): float(v) for k, v in weights.items()},
+        "metapath_weight_stats": {
+            "sum": float(sum(values)),
+            "min": float(min(values, default=0.0)),
+            "max": float(max(values, default=0.0)),
+            "num_paths": int(len(values)),
+        },
+        "metapath_energy_estimates": {str(k): float(v) for k, v in energies.items()},
+        "metapath_volume_estimates": {str(k): float(v) for k, v in volumes.items()},
+    }
+    if basis_source is not None:
+        diagnostics["energy_basis_source"] = basis_source
+        diagnostics["energy_basis_object"] = "Z_X"
+        diagnostics["energy_estimator"] = "trace_normalized_metapath_laplacian"
+    return MetaPathWeightResult(weights, energies, volumes, diagnostics)
 
 
 def _mask_type(graph: HeteroGraph, H: np.ndarray, type_id: int) -> np.ndarray:

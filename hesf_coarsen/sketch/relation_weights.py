@@ -249,4 +249,6 @@ def compute_relation_weights(
     }
     if basis_source is not None:
         diagnostics["energy_basis_source"] = basis_source
+        diagnostics["energy_basis_object"] = "Z_X"
+        diagnostics["energy_estimator"] = "sampled_normalized_edge_energy"
     return RelationWeightResult(weights, energies, volumes, diagnostics)

@@ -9,7 +9,11 @@ from hesf_coarsen.io.schema import HeteroGraph
 from hesf_coarsen.ops.fused_operator import apply_fused_smoothing
 from hesf_coarsen.progress import progress_iter
 from hesf_coarsen.sketch.chebyshev import chebyshev_heat_filter
-from hesf_coarsen.sketch.metapath import metapath_path_diagnostics, resolve_metapath_paths
+from hesf_coarsen.sketch.metapath import (
+    compute_metapath_weights,
+    metapath_path_diagnostics,
+    resolve_metapath_paths,
+)
 from hesf_coarsen.sketch.relation_weights import compute_relation_weights
 from hesf_coarsen.sketch.random_probe import generate_probe
 
@@ -63,11 +67,14 @@ def _heat_component_dims(sketch_cfg: dict[str, Any], heat_times: list[float], he
 
 
 def _metapath_operator_weights(
+    graph: HeteroGraph,
+    config: dict[str, Any],
     paths: list[dict[str, Any]],
+    basis: np.ndarray,
     metapath_cfg: dict[str, Any],
-) -> tuple[list[tuple[dict[str, Any], float]], dict[str, float], float]:
+) -> tuple[list[tuple[dict[str, Any], float]], dict[str, float], float, dict[str, Any]]:
     if not paths:
-        return [], {}, 0.0
+        return [], {}, 0.0, {}
     total_weight = float(
         metapath_cfg.get(
             "operator_weight_total",
@@ -76,28 +83,19 @@ def _metapath_operator_weights(
     )
     if total_weight < 0.0 or total_weight >= 1.0:
         raise ValueError("metapath_sketch.operator_weight_total must be in [0, 1)")
-
-    configured = metapath_cfg.get("operator_weights")
-    raw: list[float] = []
-    if isinstance(configured, dict):
-        for path in paths:
-            raw.append(float(configured.get(str(path.get("name")), path.get("weight", 1.0))))
-    elif isinstance(configured, (list, tuple)):
-        if len(configured) != len(paths):
-            raise ValueError("metapath_sketch.operator_weights length must match resolved paths")
-        raw = [float(value) for value in configured]
-    else:
-        raw = [float(path.get("weight", 1.0)) for path in paths]
-    raw = [max(value, 0.0) for value in raw]
-    raw_total = float(sum(raw))
-    if raw_total <= 0.0 or total_weight == 0.0:
-        return [], {str(path.get("name")): 0.0 for path in paths}, 0.0
-    weights = [total_weight * value / raw_total for value in raw]
+    weight_result = compute_metapath_weights(graph, config, paths, basis=basis)
+    if total_weight == 0.0:
+        zero_weights = {str(path.get("name", f"metapath_{idx}")): 0.0 for idx, path in enumerate(paths)}
+        return [], zero_weights, 0.0, weight_result.diagnostics
+    weights = [
+        total_weight * float(weight_result.weights.get(str(path.get("name", f"metapath_{idx}")), 0.0))
+        for idx, path in enumerate(paths)
+    ]
     path_weights = {
         str(path.get("name", f"metapath_{idx}")): float(weight)
         for idx, (path, weight) in enumerate(zip(paths, weights))
     }
-    return list(zip(paths, weights)), path_weights, total_weight
+    return list(zip(paths, weights)), path_weights, total_weight, weight_result.diagnostics
 
 
 def _compute_lazy_sketch(
@@ -202,7 +200,13 @@ def _compute_chebyshev_heat_sketch(
     meta_diag = {"enabled": False, "num_paths": 0, "paths": []}
     if metapath_enabled:
         paths, auto_generated, type_names = resolve_metapath_paths(graph, config)
-        metapath_weights, path_weights, beta_total = _metapath_operator_weights(paths, metapath_cfg)
+        metapath_weights, path_weights, beta_total, metapath_weight_diag = _metapath_operator_weights(
+            graph,
+            config,
+            paths,
+            weight_basis,
+            metapath_cfg,
+        )
         alpha_total = 1.0 - beta_total
         scaled_relation_weights = {
             relation_id: float(weight) * alpha_total
@@ -236,6 +240,17 @@ def _compute_chebyshev_heat_sketch(
             enabled=True,
             operator_mode="fused_laplacian",
         )
+        meta_diag.update(
+            {
+                "weighting_method": metapath_weight_diag.get("metapath_weighting_method"),
+                "energy_estimates": metapath_weight_diag.get("metapath_energy_estimates", {}),
+                "volume_estimates": metapath_weight_diag.get("metapath_volume_estimates", {}),
+                "weight_stats": metapath_weight_diag.get("metapath_weight_stats", {}),
+            }
+        )
+        for key in ("energy_basis_source", "energy_basis_object", "energy_estimator"):
+            if key in metapath_weight_diag:
+                meta_diag[key] = metapath_weight_diag[key]
 
     components: list[np.ndarray] = []
     component_runtime: dict[str, float] = {}

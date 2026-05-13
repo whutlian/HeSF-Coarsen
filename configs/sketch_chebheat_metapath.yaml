@@ -25,6 +25,13 @@ metapath_sketch:
   enabled: true
   dim: 8
   operator_weight_total: 0.25
+  weighting:
+    method: inverse_energy
+    eta: 0.5
+    gamma: 1.0
+    epsilon: 1.0e-8
+    energy_basis: random
+    seed: 42
   max_paths: 3
   max_path_length: 3
   auto_paths: true
