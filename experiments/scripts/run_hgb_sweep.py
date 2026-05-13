@@ -76,6 +76,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--graph-root", type=Path, help="Optional converted graph root override.")
     parser.add_argument("--output", type=Path, default=Path("outputs/experiments/hgb_sweep"))
     parser.add_argument("--python", default=sys.executable)
+    parser.add_argument("--progress", action="store_true", help="emit live progress from each coarsening run")
+    parser.add_argument("--progress-backend", choices=["auto", "plain", "tqdm"], default="plain")
+    parser.add_argument("--progress-interval", type=float)
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
@@ -91,19 +94,31 @@ def main(argv: list[str] | None = None) -> int:
                 [args.python, "-m", "hesf_coarsen.cli.main", "import-hgb", "--name", item.dataset, "--root", str(raw_root), "--output", str(graph_dir)],
                 cwd=root,
                 log_path=args.output / "_imports" / f"{item.dataset}.log",
+                stream_output=args.progress,
             )
         run_dir = args.output / item.run_name
         config = deepcopy(item.config)
+        if args.progress:
+            config.setdefault("progress", {})["enabled"] = True
+        if args.progress_backend is not None:
+            config.setdefault("progress", {})["backend"] = args.progress_backend
+        if args.progress_interval is not None:
+            config.setdefault("progress", {})["min_interval_seconds"] = args.progress_interval
         config["output"] = {"dir": str(run_dir)}
         write_config_snapshot(run_dir / "config.yaml", config)
         write_command_metadata(run_dir, run_name=item.run_name, dataset=item.dataset, status="created")
         if args.dry_run:
             continue
         command = [args.python, "-m", "hesf_coarsen.cli.main", "coarsen", "--config", str(run_dir / "config.yaml"), "--input", str(graph_dir), "--output", str(run_dir)]
+        if args.progress:
+            command.extend(["--progress", "--progress-backend", args.progress_backend])
+            if args.progress_interval is not None:
+                command.extend(["--progress-interval", str(args.progress_interval)])
         completed = run_subprocess_with_log(
             command,
             cwd=root,
             log_path=run_dir / "run.log",
+            stream_output=args.progress,
         )
         status = "success" if completed.returncode == 0 else "failed"
         write_command_metadata(run_dir, run_name=item.run_name, dataset=item.dataset, command=command, status=status, returncode=completed.returncode)

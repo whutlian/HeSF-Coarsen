@@ -97,6 +97,33 @@ def test_hgb_sweep_config_generation():
     assert ann and all(item.config["candidates"]["enable_partition_ann"] for item in ann)
 
 
+def test_hgb_sweep_progress_dry_run_writes_progress_config(tmp_path):
+    from experiments.scripts.run_hgb_sweep import main
+
+    exit_code = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(tmp_path),
+            "--dry-run",
+            "--progress",
+            "--progress-backend",
+            "plain",
+            "--progress-interval",
+            "0.25",
+        ]
+    )
+
+    assert exit_code == 0
+    config_paths = sorted(tmp_path.glob("hgb_ACM_*/config.yaml"))
+    assert config_paths
+    config = yaml.safe_load(config_paths[0].read_text(encoding="utf-8"))
+    assert config["progress"]["enabled"] is True
+    assert config["progress"]["backend"] == "plain"
+    assert config["progress"]["min_interval_seconds"] == 0.25
+
+
 def test_summarizer_writes_csv_and_failures(tmp_path):
     from experiments.scripts.summarize_experiments import summarize_experiments
 

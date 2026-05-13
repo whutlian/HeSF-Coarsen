@@ -117,12 +117,37 @@ def run_subprocess_with_log(
     cwd: str | Path | None = None,
     log_path: str | Path,
     env: Mapping[str, str] | None = None,
+    stream_output: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     merged_env = os.environ.copy()
     if env:
         merged_env.update({str(k): str(v) for k, v in env.items()})
+    if stream_output:
+        with log_path.open("w", encoding="utf-8") as handle:
+            handle.write("$ " + " ".join(map(str, command)) + "\n\n")
+            handle.write("OUTPUT\n")
+            handle.flush()
+            process = subprocess.Popen(
+                list(command),
+                cwd=cwd,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=merged_env,
+            )
+            output_parts: list[str] = []
+            assert process.stdout is not None
+            for line in process.stdout:
+                output_parts.append(line)
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                handle.write(line)
+                handle.flush()
+            returncode = process.wait()
+            handle.write(f"\nRETURN_CODE {returncode}\n")
+        return subprocess.CompletedProcess(list(command), returncode, "".join(output_parts), "")
     completed = subprocess.run(
         list(command),
         cwd=cwd,
