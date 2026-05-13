@@ -4,11 +4,27 @@ import numpy as np
 
 from hesf_coarsen.io.schema import HeteroGraph
 from hesf_coarsen.ops.fused_operator import apply_fused_smoothing
+from hesf_coarsen.sketch.operators import apply_fused_operator
 
 
 def compute_conv_response_sketch(
     graph: HeteroGraph,
     H: np.ndarray,
     relation_weights: dict[int, float] | None = None,
+    *,
+    operator: str = "fused_operator",
 ) -> np.ndarray:
-    return apply_fused_smoothing(graph, H.astype(np.float32, copy=False), relation_weights)
+    """Compute a ConvMatch-style relation convolution response sketch.
+
+    The default explicit path applies C = sum_r alpha_r S_r H through the
+    sketch fused-operator apply-function. ``lazy_smoothing`` keeps the previous
+    low-pass baseline with a self term for comparisons.
+    """
+
+    H = H.astype(np.float32, copy=False)
+    operator = str(operator)
+    if operator == "fused_operator":
+        return apply_fused_operator(graph, H, relation_weights)
+    if operator == "lazy_smoothing":
+        return apply_fused_smoothing(graph, H, relation_weights)
+    raise ValueError(f"unsupported conv response operator: {operator}")

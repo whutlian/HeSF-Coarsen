@@ -21,6 +21,13 @@ def test_default_config_uses_canonical_sketch_schema():
     assert config["fusion"]["estimate_operator_norm"] is True
     assert config["fusion"]["chebyshev_rescale_if_needed"] is True
     assert config["coarsening"]["feature_aggregation"] == "mean"
+    assert config["scoring"]["spec_volume_weighting"] is True
+    assert config["scoring"]["relation_profile_distance"] == "jsd"
+    assert config["scoring"]["conv_response_operator"] == "fused_operator"
+    assert config["scoring"]["boundary_mode"] == "node_risk"
+    assert config["scoring"]["boundary_hub_gamma"] > 0.0
+    assert config["scoring"]["boundary_terminal_gamma"] > 0.0
+    assert config["features"]["projector"] == "gaussian_random"
     assert "include_metapath_filters" not in config["fusion"]
     assert "include_metapath_filters" not in DEFAULT_CONFIG["fusion"]
 

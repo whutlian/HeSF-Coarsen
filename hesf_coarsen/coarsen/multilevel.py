@@ -383,7 +383,12 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         relation_weights = compute_relation_fusion_weights(current, Z.astype(np.float32), config)
         progress_message(config, f"level {level}: scoring fusion weights done")
         progress_message(config, f"level {level}: scoring conv response start")
-        conv = compute_conv_response_sketch(current, Z.astype(np.float32, copy=False), relation_weights)
+        conv = compute_conv_response_sketch(
+            current,
+            Z.astype(np.float32, copy=False),
+            relation_weights,
+            operator=str(config.get("scoring", {}).get("conv_response_operator", "fused_operator")),
+        )
         progress_message(config, f"level {level}: scoring conv response done")
         progress_message(config, f"level {level}: scoring candidate pairs start")
         scoring_config = _config_with_level_feature_store(config, level)

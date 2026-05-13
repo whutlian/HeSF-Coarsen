@@ -410,6 +410,118 @@ def test_feature_projection_is_typewise_low_dim_float16():
     assert view.blocks[0].dtype == np.float16
 
 
+def test_feature_projection_accepts_projector_alias_for_sparse_random():
+    graph = HeteroGraph(
+        num_nodes=4,
+        node_type=np.array([0, 0, 0, 0], dtype=np.int32),
+        relations={},
+        features={
+            0: np.arange(4 * 12, dtype=np.float32).reshape(4, 12) / 7.0,
+        },
+    )
+    config = {
+        "seed": 17,
+        "features": {
+            "projected_dim": 3,
+            "projection_dtype": "float32",
+            "projector": "sparse_random",
+        },
+    }
+
+    first = merge_cost_module._prepare_typewise_feature_view(graph, graph.features, config)
+    second = merge_cost_module._prepare_typewise_feature_view(graph, graph.features, config)
+
+    assert first is not None
+    assert second is not None
+    assert first.blocks[0].shape == (4, 3)
+    assert first.blocks[0].dtype == np.float32
+    assert np.array_equal(first.blocks[0], second.blocks[0])
+
+
+def test_feature_sparse_random_projection_differs_by_type_seed():
+    feature = np.eye(10, dtype=np.float32)
+
+    type0 = merge_cost_module._project_type_feature(
+        feature,
+        type_id=0,
+        projected_dim=4,
+        seed=29,
+        dtype=np.dtype("float32"),
+        projection_method="sparse_random",
+    )
+    type1 = merge_cost_module._project_type_feature(
+        feature,
+        type_id=1,
+        projected_dim=4,
+        seed=29,
+        dtype=np.dtype("float32"),
+        projection_method="sparse_random",
+    )
+
+    assert type0.shape == (10, 4)
+    assert np.count_nonzero(type0 == 0.0) > 0
+    assert not np.array_equal(type0, type1)
+
+
+def test_feature_projection_method_pca_uses_low_rank_basis():
+    graph = HeteroGraph(
+        num_nodes=4,
+        node_type=np.array([0, 0, 0, 0], dtype=np.int32),
+        relations={},
+        features={
+            0: np.array(
+                [
+                    [1.0, 0.0, 0.0],
+                    [2.0, 0.0, 0.0],
+                    [4.0, 0.0, 0.0],
+                    [8.0, 0.0, 0.0],
+                ],
+                dtype=np.float32,
+            ),
+        },
+    )
+
+    view = merge_cost_module._prepare_typewise_feature_view(
+        graph,
+        graph.features,
+        {"features": {"projected_dim": 1, "projection_dtype": "float32", "projection_method": "pca"}},
+    )
+
+    assert view is not None
+    assert view.blocks[0].shape == (4, 1)
+    assert np.allclose(np.abs(view.blocks[0][:, 0]), [2.75, 1.75, 0.25, 4.25], atol=1e-5)
+
+
+def test_feature_incremental_pca_projection_can_use_memmap_store(tmp_path):
+    graph = HeteroGraph(
+        num_nodes=6,
+        node_type=np.array([0, 0, 0, 0, 0, 0], dtype=np.int32),
+        relations={},
+        features={
+            0: np.arange(6 * 5, dtype=np.float32).reshape(6, 5),
+        },
+    )
+
+    view = merge_cost_module._prepare_typewise_feature_view(
+        graph,
+        graph.features,
+        {
+            "features": {
+                "projected_dim": 2,
+                "projection_dtype": "float32",
+                "projection_method": "incremental_pca",
+                "projection_mmap_dir": str(tmp_path / "feature_store"),
+                "projection_chunk_size": 3,
+            }
+        },
+    )
+
+    assert view is not None
+    assert isinstance(view.blocks[0], np.memmap)
+    assert view.blocks[0].shape == (6, 2)
+    assert (tmp_path / "feature_store" / "features_type_0_projected.npy").exists()
+
+
 def test_feature_projection_can_use_typewise_memmap_store(tmp_path):
     graph = HeteroGraph(
         num_nodes=5,

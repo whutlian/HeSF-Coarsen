@@ -215,6 +215,7 @@ coarsening:
 features:
   projected_dim: 32
   projection_dtype: float16
+  projector: gaussian_random
   projection_mmap_dir: outputs/projected_features
   projection_chunk_size: 100000
 ```
@@ -236,7 +237,26 @@ acceleration:
   scoring_batch_size: 65536
 ```
 
-This path only handles dense blocks such as sketches and candidate scoring matrices. Relation arrays, candidate generation, and graph structure stay CPU-resident. Candidate scoring uses block-local Torch batches: each batch copies only the unique rows touched by candidate pairs for sketch, relation-profile, and convolution-response terms. Raw features stay type-wise: scoring gathers same-type feature rows per candidate batch and uses `features.projected_dim` plus `features.projection_dtype` to keep high-dimensional features compressed before distance computation. When `features.projection_mmap_dir` is set, each level writes chunked fp16 projected feature blocks under `projection_mmap_dir/level_<n>` and scoring gathers from those memmaps instead of keeping projected feature blocks only in RAM. `max_dense_bytes` applies to the batch-local dense block, and `scoring_batch_size` controls candidate pairs per scoring batch.
+This path only handles dense blocks such as sketches and candidate scoring matrices. Relation arrays, candidate generation, and graph structure stay CPU-resident. Candidate scoring uses block-local Torch batches where the term is a plain squared row distance, while pair-specific terms such as volume-weighted spectral variation, JSD relation profiles, and boundary risk stay in CPU batch code. Raw features stay type-wise: scoring gathers same-type feature rows per candidate batch and uses `features.projected_dim`, `features.projector`, and `features.projection_dtype` to keep high-dimensional features compressed before distance computation. `features.projector` supports `gaussian_random`, `sparse_random`, `pca`, and `incremental_pca`; PCA modes use a deterministic NumPy SVD fallback for portability. When `features.projection_mmap_dir` is set, each level writes chunked fp16 projected feature blocks under `projection_mmap_dir/level_<n>` and scoring gathers from those memmaps instead of keeping projected feature blocks only in RAM. `max_dense_bytes` applies to the batch-local dense block, and `scoring_batch_size` controls candidate pairs per scoring batch.
+
+## Merge Scoring
+
+The local merge objective is configurable through `scoring`:
+
+```yaml
+scoring:
+  lambda_spec: 1.0
+  lambda_rel: 0.2
+  lambda_feat: 0.1
+  lambda_conv: 0.3
+  lambda_boundary: 0.1
+  spec_volume_weighting: true
+  relation_profile_distance: jsd
+  conv_response_operator: fused_operator
+  boundary_mode: node_risk
+```
+
+`spec_volume_weighting` applies `vol(i) vol(j) / (vol(i) + vol(j))` to the low-pass sketch distance. `relation_profile_distance: jsd` uses Jensen-Shannon divergence over normalized relation profiles; `l2` remains available as an ablation. `conv_response_operator: fused_operator` computes an explicit relation convolution response, while `lazy_smoothing` keeps the older baseline. `boundary_mode: node_risk` scores `max(b_i, b_j)` from cut-boundary, hub, and terminal-node risk components.
 
 ## Diagnostics
 
