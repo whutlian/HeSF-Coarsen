@@ -50,6 +50,7 @@ fusion:
 metapath_sketch:
   enabled: true
   dim: 8
+  operator_weight_total: 0.25
   max_paths: 3
   max_path_length: 3
   auto_paths: true

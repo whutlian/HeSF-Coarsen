@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from hesf_coarsen.io.schema import HeteroGraph
@@ -33,6 +35,7 @@ def chebyshev_heat_filter(
     heat_time: float,
     order: int,
     quadrature_points: int | None = None,
+    metapath_weights: list[tuple[dict[str, Any], float]] | None = None,
     symmetric_relation_operator: bool = True,
     reverse_relation_policy: str = "include_all",
     progress_config: dict | None = None,
@@ -53,6 +56,7 @@ def chebyshev_heat_filter(
             graph,
             H,
             relation_weights,
+            metapath_weights=metapath_weights,
             symmetric_relation_operator=symmetric_relation_operator,
             reverse_relation_policy=reverse_relation_policy,
         )

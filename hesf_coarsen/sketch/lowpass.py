@@ -9,7 +9,7 @@ from hesf_coarsen.io.schema import HeteroGraph
 from hesf_coarsen.ops.fused_operator import apply_fused_smoothing
 from hesf_coarsen.progress import progress_iter
 from hesf_coarsen.sketch.chebyshev import chebyshev_heat_filter
-from hesf_coarsen.sketch.metapath import compute_metapath_sketch
+from hesf_coarsen.sketch.metapath import metapath_path_diagnostics, resolve_metapath_paths
 from hesf_coarsen.sketch.relation_weights import compute_relation_weights
 from hesf_coarsen.sketch.random_probe import generate_probe
 
@@ -60,6 +60,44 @@ def _heat_component_dims(sketch_cfg: dict[str, Any], heat_times: list[float], he
     base = int(heat_dim) // len(heat_times)
     remainder = int(heat_dim) % len(heat_times)
     return [base + (1 if idx < remainder else 0) for idx in range(len(heat_times))]
+
+
+def _metapath_operator_weights(
+    paths: list[dict[str, Any]],
+    metapath_cfg: dict[str, Any],
+) -> tuple[list[tuple[dict[str, Any], float]], dict[str, float], float]:
+    if not paths:
+        return [], {}, 0.0
+    total_weight = float(
+        metapath_cfg.get(
+            "operator_weight_total",
+            metapath_cfg.get("operator_weight", 0.25),
+        )
+    )
+    if total_weight < 0.0 or total_weight >= 1.0:
+        raise ValueError("metapath_sketch.operator_weight_total must be in [0, 1)")
+
+    configured = metapath_cfg.get("operator_weights")
+    raw: list[float] = []
+    if isinstance(configured, dict):
+        for path in paths:
+            raw.append(float(configured.get(str(path.get("name")), path.get("weight", 1.0))))
+    elif isinstance(configured, (list, tuple)):
+        if len(configured) != len(paths):
+            raise ValueError("metapath_sketch.operator_weights length must match resolved paths")
+        raw = [float(value) for value in configured]
+    else:
+        raw = [float(path.get("weight", 1.0)) for path in paths]
+    raw = [max(value, 0.0) for value in raw]
+    raw_total = float(sum(raw))
+    if raw_total <= 0.0 or total_weight == 0.0:
+        return [], {str(path.get("name")): 0.0 for path in paths}, 0.0
+    weights = [total_weight * value / raw_total for value in raw]
+    path_weights = {
+        str(path.get("name", f"metapath_{idx}")): float(weight)
+        for idx, (path, weight) in enumerate(zip(paths, weights))
+    }
+    return list(zip(paths, weights)), path_weights, total_weight
 
 
 def _compute_lazy_sketch(
@@ -148,10 +186,9 @@ def _compute_chebyshev_heat_sketch(
     quadrature_points = None if quadrature_points in (None, "") else int(quadrature_points)
     metapath_cfg = config.get("metapath_sketch", {})
     metapath_enabled = bool(metapath_cfg.get("enabled", False))
-    metapath_dim = int(metapath_cfg.get("dim", 8)) if metapath_enabled else 0
-    heat_dim = max(total_dim - metapath_dim, 0) if metapath_enabled else total_dim
-    if heat_dim <= 0 and not metapath_enabled:
-        raise ValueError("sketch.dim must allocate at least one heat or meta-path dimension")
+    heat_dim = total_dim
+    if heat_dim <= 0:
+        raise ValueError("sketch.dim must be positive")
     heat_dims = _heat_component_dims(sketch_cfg, heat_times, heat_dim)
     fusion_cfg = config.get("fusion", {})
     symmetric = bool(fusion_cfg.get("symmetric_relation_operator", True))
@@ -161,6 +198,44 @@ def _compute_chebyshev_heat_sketch(
     weight_basis_dim = max(1, min(heat_dim or total_dim, int(sketch_cfg.get("weight_basis_dim", 8))))
     weight_basis = generate_probe(graph.num_nodes, weight_basis_dim, seed, probe=probe)
     relation_result = compute_relation_weights(graph, config, basis=weight_basis)
+    metapath_weights: list[tuple[dict[str, Any], float]] = []
+    meta_diag = {"enabled": False, "num_paths": 0, "paths": []}
+    if metapath_enabled:
+        paths, auto_generated, type_names = resolve_metapath_paths(graph, config)
+        metapath_weights, path_weights, beta_total = _metapath_operator_weights(paths, metapath_cfg)
+        alpha_total = 1.0 - beta_total
+        scaled_relation_weights = {
+            relation_id: float(weight) * alpha_total
+            for relation_id, weight in relation_result.weights.items()
+        }
+        relation_diagnostics = dict(relation_result.diagnostics)
+        relation_diagnostics["relation_weights"] = {
+            str(k): float(v) for k, v in scaled_relation_weights.items()
+        }
+        stats_values = list(scaled_relation_weights.values())
+        relation_diagnostics["relation_weight_stats"] = {
+            **dict(relation_diagnostics.get("relation_weight_stats", {})),
+            "sum": float(sum(stats_values)),
+            "min": float(min(stats_values, default=0.0)),
+            "max": float(max(stats_values, default=0.0)),
+            "num_relations": int(len(stats_values)),
+        }
+        relation_diagnostics["relation_operator_weight_total"] = float(alpha_total)
+        relation_result = type(relation_result)(
+            weights=scaled_relation_weights,
+            energy_estimates=relation_result.energy_estimates,
+            volume_estimates=relation_result.volume_estimates,
+            diagnostics=relation_diagnostics,
+        )
+        meta_diag = metapath_path_diagnostics(
+            graph,
+            paths,
+            type_names,
+            auto_generated=auto_generated,
+            path_weights=path_weights,
+            enabled=True,
+            operator_mode="fused_laplacian",
+        )
 
     components: list[np.ndarray] = []
     component_runtime: dict[str, float] = {}
@@ -185,6 +260,7 @@ def _compute_chebyshev_heat_sketch(
             heat_time=heat_time,
             order=order,
             quadrature_points=quadrature_points,
+            metapath_weights=metapath_weights,
             symmetric_relation_operator=symmetric,
             reverse_relation_policy=reverse_policy,
             progress_config=config,
@@ -192,14 +268,6 @@ def _compute_chebyshev_heat_sketch(
         )
         components.append(component)
         component_runtime[f"heat_{heat_time}"] = float(perf_counter() - component_start)
-
-    meta_diag = {"enabled": False, "num_paths": 0, "paths": []}
-    if metapath_enabled:
-        component_start = perf_counter()
-        meta_result = compute_metapath_sketch(graph, config)
-        components.append(meta_result.sketch)
-        meta_diag = meta_result.diagnostics
-        component_runtime["metapath"] = float(perf_counter() - component_start)
 
     if not components:
         Z = np.empty((graph.num_nodes, 0), dtype=np.float32)

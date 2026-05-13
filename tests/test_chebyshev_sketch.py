@@ -125,3 +125,9 @@ def test_default_lowpass_sketch_uses_relation_weighted_chebyshev_heat():
     assert diagnostics["fusion"]["relation_weight_stats"]["num_relations"] == len(graph.relations)
     assert diagnostics["metapath_sketch"]["enabled"] is True
     assert diagnostics["metapath_sketch"]["num_paths"] > 0
+    assert diagnostics["metapath_sketch"]["operator_mode"] == "fused_laplacian"
+    assert diagnostics["metapath_sketch"]["operator_weight_total"] > 0.0
+    total_weight = diagnostics["fusion"]["relation_weight_stats"]["sum"]
+    total_weight += diagnostics["metapath_sketch"]["operator_weight_total"]
+    assert np.isclose(total_weight, 1.0)
+    assert "metapath" not in diagnostics["sketch_component_runtime_sec"]

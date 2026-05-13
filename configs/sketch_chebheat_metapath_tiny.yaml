@@ -32,6 +32,7 @@ fusion:
 metapath_sketch:
   enabled: true
   dim: 4
+  operator_weight_total: 0.25
   max_paths: 3
   max_path_length: 3
   seed: 123

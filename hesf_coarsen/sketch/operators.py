@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from hesf_coarsen.io.schema import HeteroGraph
@@ -59,6 +61,7 @@ def _effective_relation_weights(
         return dict(relation_weights)
     if reverse_relation_policy == "auto" and not symmetric_relation_operator:
         return dict(relation_weights)
+    target_total = float(sum(max(float(value), 0.0) for value in relation_weights.values()))
     dropped = _detected_reverse_relation_ids(graph)
     kept = {
         relation_id: weight
@@ -67,10 +70,10 @@ def _effective_relation_weights(
     }
     total = float(sum(max(float(value), 0.0) for value in kept.values()))
     if total <= 0.0:
-        uniform = 1.0 / max(len(kept), 1)
+        uniform = target_total / max(len(kept), 1)
         return {int(relation_id): uniform for relation_id in kept}
     return {
-        int(relation_id): max(float(weight), 0.0) / total
+        int(relation_id): target_total * max(float(weight), 0.0) / total
         for relation_id, weight in kept.items()
     }
 
@@ -112,12 +115,13 @@ def apply_fused_operator(
     H: np.ndarray,
     relation_weights: dict[int, float] | None,
     *,
+    metapath_weights: list[tuple[dict[str, Any], float]] | None = None,
     symmetric_relation_operator: bool = True,
     reverse_relation_policy: str = "include_all",
     weights_cache: dict[int, np.ndarray] | None = None,
     backend: str = "numpy",
 ) -> np.ndarray:
-    """Apply S_F H = sum_r alpha_r S_r H relation by relation."""
+    """Apply S_F H = sum_r alpha_r S_r H + sum_m beta_m S_m H."""
 
     H = np.asarray(H, dtype=np.float32)
     if H.shape[0] != graph.num_nodes:
@@ -150,6 +154,16 @@ def apply_fused_operator(
             weights_cache=weights_cache,
             backend=backend,
         )
+    for path, weight in metapath_weights or []:
+        weight = float(weight)
+        if weight == 0.0:
+            continue
+        out += np.float32(weight) * apply_metapath_operator(
+            graph,
+            H,
+            path,
+            require_closed=True,
+        )
     return out.astype(np.float32, copy=False)
 
 
@@ -158,6 +172,7 @@ def apply_fused_laplacian(
     H: np.ndarray,
     relation_weights: dict[int, float] | None,
     *,
+    metapath_weights: list[tuple[dict[str, Any], float]] | None = None,
     symmetric_relation_operator: bool = True,
     reverse_relation_policy: str = "include_all",
     backend: str = "numpy",
@@ -169,10 +184,56 @@ def apply_fused_laplacian(
         graph,
         H,
         relation_weights,
+        metapath_weights=metapath_weights,
         symmetric_relation_operator=symmetric_relation_operator,
         reverse_relation_policy=reverse_relation_policy,
         backend=backend,
     )
+
+
+def _mask_type(graph: HeteroGraph, H: np.ndarray, type_id: int) -> np.ndarray:
+    out = np.zeros_like(H, dtype=np.float32)
+    out[graph.node_type == int(type_id)] = H[graph.node_type == int(type_id)]
+    return out
+
+
+def apply_metapath_operator(
+    graph: HeteroGraph,
+    H: np.ndarray,
+    path: dict[str, Any],
+    *,
+    require_closed: bool = False,
+) -> np.ndarray:
+    """Apply S_m H = S_rl ... S_r1 H through chained relation SpMM steps."""
+
+    H = np.asarray(H, dtype=np.float32)
+    if H.shape[0] != graph.num_nodes:
+        raise ValueError("H must have one row per graph node")
+    start_type = int(path["start_type"])
+    end_type = int(path["end_type"])
+    if require_closed and start_type != end_type:
+        raise ValueError("meta-path fused Laplacian operator requires start_type == end_type")
+    current_type = start_type
+    current = _mask_type(graph, H, start_type)
+    for step in path.get("steps", []):
+        relation_id = int(step["relation_id"])
+        direction = str(step.get("direction", "forward")).lower()
+        rel = graph.relations[relation_id]
+        expected_type = rel.src_type if direction == "forward" else rel.dst_type
+        next_type = rel.dst_type if direction == "forward" else rel.src_type
+        if current_type != expected_type:
+            raise ValueError(
+                f"meta-path {path.get('name', '<unnamed>')} expects current type "
+                f"{expected_type} before relation {relation_id}, got {current_type}"
+            )
+        current = apply_relation_step(graph, current, relation_id, direction)
+        current = _mask_type(graph, current, next_type)
+        current_type = int(next_type)
+    if current_type != end_type:
+        raise ValueError(
+            f"meta-path {path.get('name', '<unnamed>')} ends at type {current_type}, expected {end_type}"
+        )
+    return current.astype(np.float32, copy=False)
 
 
 def apply_relation_step(

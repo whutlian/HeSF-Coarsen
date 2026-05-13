@@ -135,6 +135,79 @@ def _auto_metapath_paths(
     return paths[:max_paths]
 
 
+def resolve_metapath_paths(
+    graph: HeteroGraph,
+    config: dict[str, Any],
+) -> tuple[list[dict[str, Any]], bool, dict[str, int]]:
+    cfg = config.get("metapath_sketch", {})
+    max_paths = int(cfg.get("max_paths", 3))
+    max_path_length = int(cfg.get("max_path_length", 3))
+    type_names = _type_name_map(graph, config)
+    raw_paths = list(cfg.get("paths", []))
+    auto_generated = False
+    if not raw_paths and bool(cfg.get("auto_paths", False)):
+        raw_paths = _auto_metapath_paths(graph, max_paths, type_names)
+        auto_generated = True
+    allow_large = bool(cfg.get("allow_large_metapath_sketch", False))
+    if not allow_large and len(raw_paths) > max_paths:
+        raise ValueError("metapath_sketch.paths exceeds max_paths")
+
+    paths: list[dict[str, Any]] = []
+    for path_index, path in enumerate(raw_paths):
+        if not allow_large and len(path.get("steps", [])) > max_path_length:
+            raise ValueError("meta-path length exceeds max_path_length")
+        resolved = dict(path)
+        resolved["name"] = str(path.get("name", f"metapath_{path_index}"))
+        resolved["start_type"] = _parse_type(path["start_type"], type_names)
+        resolved["end_type"] = _parse_type(path["end_type"], type_names)
+        resolved["steps"] = [
+            {
+                "relation_id": int(step["relation_id"]),
+                "direction": str(step.get("direction", "forward")).lower(),
+            }
+            for step in path.get("steps", [])
+        ]
+        paths.append(resolved)
+    return paths, auto_generated, type_names
+
+
+def metapath_path_diagnostics(
+    graph: HeteroGraph,
+    paths: list[dict[str, Any]],
+    type_names: dict[str, int],
+    *,
+    auto_generated: bool,
+    path_weights: dict[str, float] | None = None,
+    enabled: bool = True,
+    operator_mode: str = "chained_sketch_channels",
+) -> dict[str, Any]:
+    weights = path_weights or {}
+    return {
+        "enabled": bool(enabled),
+        "operator_mode": operator_mode,
+        "num_paths": int(len(paths)),
+        "auto_generated_paths": bool(auto_generated),
+        "operator_weight_total": float(sum(weights.values())),
+        "path_weights": {str(name): float(weight) for name, weight in weights.items()},
+        "paths": [
+            {
+                "name": str(path.get("name", f"metapath_{idx}")),
+                "length": int(len(path.get("steps", []))),
+                "start_type": int(path["start_type"]),
+                "end_type": int(path["end_type"]),
+                "start_type_name": _type_display_name(int(path["start_type"]), type_names),
+                "end_type_name": _type_display_name(int(path["end_type"]), type_names),
+                "relation_names": [
+                    graph.relation_specs[int(step["relation_id"])].name
+                    for step in path.get("steps", [])
+                    if int(step["relation_id"]) in graph.relation_specs
+                ],
+            }
+            for idx, path in enumerate(paths)
+        ],
+    }
+
+
 def _mask_type(graph: HeteroGraph, H: np.ndarray, type_id: int) -> np.ndarray:
     out = np.zeros_like(H, dtype=np.float32)
     mask = graph.node_type == int(type_id)
@@ -154,20 +227,7 @@ def compute_metapath_sketch(
             {"enabled": False, "num_paths": 0, "paths": []},
         )
 
-    max_paths = int(cfg.get("max_paths", 3))
-    max_path_length = int(cfg.get("max_path_length", 3))
-    type_names = _type_name_map(graph, config)
-    paths = list(cfg.get("paths", []))
-    auto_generated = False
-    if not paths and bool(cfg.get("auto_paths", False)):
-        paths = _auto_metapath_paths(graph, max_paths, type_names)
-        auto_generated = True
-    allow_large = bool(cfg.get("allow_large_metapath_sketch", False))
-    if not allow_large and len(paths) > max_paths:
-        raise ValueError("metapath_sketch.paths exceeds max_paths")
-    for path in paths:
-        if not allow_large and len(path.get("steps", [])) > max_path_length:
-            raise ValueError("meta-path length exceeds max_path_length")
+    paths, auto_generated, type_names = resolve_metapath_paths(graph, config)
 
     total_dim = int(cfg.get("dim", 8))
     seed = int(cfg.get("seed", config.get("seed", 12345)))
@@ -179,8 +239,8 @@ def compute_metapath_sketch(
     for path_index, (path, dim) in enumerate(zip(paths, dims)):
         start = perf_counter()
         name = str(path.get("name", f"metapath_{path_index}"))
-        start_type = _parse_type(path["start_type"], type_names)
-        end_type = _parse_type(path["end_type"], type_names)
+        start_type = int(path["start_type"])
+        end_type = int(path["end_type"])
         current_type = start_type
         H = generate_probe(graph.num_nodes, dim, seed + path_index, probe=str(cfg.get("probe", "rademacher")))
         H = _mask_type(graph, H, start_type)

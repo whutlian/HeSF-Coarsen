@@ -1,7 +1,12 @@
 import numpy as np
 
 from hesf_coarsen.io.schema import HeteroGraph, RelationAdj, RelationSpec
-from hesf_coarsen.sketch.operators import apply_fused_operator, apply_relation_operator
+from hesf_coarsen.sketch.operators import (
+    apply_fused_laplacian,
+    apply_fused_operator,
+    apply_metapath_operator,
+    apply_relation_operator,
+)
 
 
 def _reverse_pair_graph() -> HeteroGraph:
@@ -62,3 +67,37 @@ def test_drop_detected_reverse_relation_policy_drops_reverse_and_renormalizes():
 
     assert np.allclose(actual, expected)
     assert not np.allclose(actual, include_all)
+
+
+def test_fused_operator_includes_weighted_metapath_operator_without_materializing_product():
+    graph = _reverse_pair_graph()
+    H = np.arange(graph.num_nodes * 2, dtype=np.float32).reshape(graph.num_nodes, 2) / 10.0
+    path = {
+        "name": "author_paper_author",
+        "start_type": 0,
+        "end_type": 0,
+        "steps": [
+            {"relation_id": 0, "direction": "forward"},
+            {"relation_id": 0, "direction": "backward"},
+        ],
+    }
+
+    metapath = apply_metapath_operator(graph, H, path)
+    expected = 0.4 * apply_relation_operator(graph, H, 2, direction="symmetric")
+    expected += 0.6 * metapath
+    actual = apply_fused_operator(
+        graph,
+        H,
+        relation_weights={2: 0.4},
+        metapath_weights=[(path, 0.6)],
+    )
+    laplacian = apply_fused_laplacian(
+        graph,
+        H,
+        relation_weights={2: 0.4},
+        metapath_weights=[(path, 0.6)],
+    )
+
+    assert np.allclose(actual, expected)
+    assert np.allclose(laplacian, H - expected)
+    assert np.allclose(metapath[graph.node_type == 1], 0.0)

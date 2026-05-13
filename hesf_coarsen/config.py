@@ -68,6 +68,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "metapath_sketch": {
         "enabled": True,
         "dim": 8,
+        "operator_weight_total": 0.25,
         "max_paths": 3,
         "max_path_length": 3,
         "auto_paths": True,
