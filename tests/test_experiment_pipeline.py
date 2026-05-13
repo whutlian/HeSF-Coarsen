@@ -115,7 +115,13 @@ def test_summarizer_writes_csv_and_failures(tmp_path):
                 "matched_pairs": 5,
                 "singleton_ratio": 0.0,
                 "relation_weight_abs_error": {"0": 0.0},
-                "runtime_by_stage": {"sketch": 1.0, "candidates": 2.0},
+                "runtime_by_stage": {"sketch": 1.0, "candidates": 2.0, "spectral_diagnostics": 0.5},
+                "spectral": {
+                    "sketch_dirichlet_energy_relative_error": 0.1,
+                    "relation_weighted_fused_energy_relative_error": 0.2,
+                    "relation_energy_relative_error_max": 0.3,
+                    "chebheat_sketch_inner_product_relative_error": 0.4,
+                },
             }
         ),
         encoding="utf-8",
@@ -134,8 +140,13 @@ def test_summarizer_writes_csv_and_failures(tmp_path):
     summarize_experiments([tmp_path / "runs"], tmp_path / "summary")
 
     all_rows = list(csv.DictReader((tmp_path / "summary" / "all_runs.csv").open()))
+    quality_rows = list(csv.DictReader((tmp_path / "summary" / "quality_summary.csv").open()))
     failed_rows = list(csv.DictReader((tmp_path / "summary" / "failures.csv").open()))
     assert {row["status"] for row in all_rows} == {"success", "failed"}
+    assert quality_rows[0]["spectral_sketch_dirichlet_energy_relative_error"] == "0.1"
+    assert quality_rows[0]["spectral_relation_weighted_fused_energy_relative_error"] == "0.2"
+    assert quality_rows[0]["spectral_relation_energy_relative_error_max"] == "0.3"
+    assert quality_rows[0]["spectral_chebheat_sketch_inner_product_relative_error"] == "0.4"
     assert failed_rows[0]["failure_reason"] == "boom"
     assert (tmp_path / "summary" / "report.md").exists()
 
@@ -222,6 +233,7 @@ def test_spectral_diagnostics_api_returns_bounded_metrics(tmp_path):
 
     graph = generate_synthetic_graph(num_users=8, num_items=5, num_tags=3, seed=1401)
     result = run_multilevel_coarsening(graph, _tiny_config(tmp_path / "run"))[0]
+    z = np.arange(graph.num_nodes * 3, dtype=np.float32).reshape(graph.num_nodes, 3) / 10.0
 
     diagnostics = compute_spectral_diagnostics(
         original=graph,
@@ -230,11 +242,25 @@ def test_spectral_diagnostics_api_returns_bounded_metrics(tmp_path):
         seed=11,
         num_signals=3,
         smoothing_steps=1,
+        relation_weights={relation_id: 1.0 for relation_id in graph.relations},
+        Z=z,
+        exact_eigenvalue_max_nodes=64,
+        baseline_methods=["random", "heavy_edge", "graphzoom_style", "convmatch_style"],
+        baseline_max_nodes=64,
     )
 
     assert "dirichlet_energy_relative_error" in diagnostics
     assert diagnostics["dirichlet_energy_relative_error"] >= 0.0
     assert diagnostics["relation_energy_relative_error_max"] >= 0.0
+    assert "relation_weighted_fused_energy_relative_error" in diagnostics
+    assert "chebheat_sketch_inner_product_relative_error" in diagnostics
+    assert "exact_eigenvalue_sanity" in diagnostics
+    assert set(diagnostics["baseline_comparison"]) == {
+        "random",
+        "heavy_edge",
+        "graphzoom_style",
+        "convmatch_style",
+    }
 
 
 def test_synthetic_scale_estimate_has_expected_fields():

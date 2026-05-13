@@ -48,7 +48,13 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
                         "disk_usage_bytes": disk_usage_bytes(run_dir),
                         "runtime_total": sum(
                             float(row.get(f"runtime_by_stage.{key}", 0) or 0)
-                            for key in ("sketch", "candidates", "scoring", "matching_and_aggregation")
+                            for key in (
+                                "sketch",
+                                "candidates",
+                                "scoring",
+                                "matching_and_aggregation",
+                                "spectral_diagnostics",
+                            )
                         ),
                     }
                 )
@@ -60,6 +66,22 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
                         "matched_pairs": row.get("matched_pairs", ""),
                         "singleton_ratio": row.get("singleton_ratio", ""),
                         "candidate_count_mean": row.get("candidate_count_mean", ""),
+                        "spectral_sketch_dirichlet_energy_relative_error": row.get(
+                            "spectral.sketch_dirichlet_energy_relative_error",
+                            "",
+                        ),
+                        "spectral_relation_weighted_fused_energy_relative_error": row.get(
+                            "spectral.relation_weighted_fused_energy_relative_error",
+                            "",
+                        ),
+                        "spectral_relation_energy_relative_error_max": row.get(
+                            "spectral.relation_energy_relative_error_max",
+                            "",
+                        ),
+                        "spectral_chebheat_sketch_inner_product_relative_error": row.get(
+                            "spectral.chebheat_sketch_inner_product_relative_error",
+                            "",
+                        ),
                     }
                 )
         else:

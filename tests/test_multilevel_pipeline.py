@@ -52,6 +52,44 @@ def test_multilevel_pipeline_runs_and_writes_diagnostics(tmp_path):
     assert validate_loaded.num_nodes == results[0].graph.num_nodes
 
 
+def test_multilevel_pipeline_writes_spectral_diagnostics_closed_loop(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=10,
+        num_items=6,
+        num_tags=4,
+        seed=24,
+    )
+    config = small_config(tmp_path)
+    config["diagnostics"] = dict(
+        config["diagnostics"],
+        enable_spectral=True,
+        spectral_num_signals=3,
+        spectral_smoothing_steps=1,
+        spectral_exact_eigenvalue_max_nodes=64,
+        spectral_baseline_max_nodes=64,
+        spectral_baselines=["random", "heavy_edge", "graphzoom_style", "convmatch_style"],
+    )
+
+    results = run_multilevel_coarsening(graph, config)
+
+    spectral = results[0].diagnostics["spectral"]
+    assert "relation_weighted_fused_energy_relative_error" in spectral
+    assert "chebheat_sketch_inner_product_relative_error" in spectral
+    assert "relation_energy_relative_error_max" in spectral
+    assert "sketch_dirichlet_energy_relative_error" in spectral
+    assert "exact_eigenvalue_sanity" in spectral
+    assert set(spectral["baseline_comparison"]) == {
+        "random",
+        "heavy_edge",
+        "graphzoom_style",
+        "convmatch_style",
+    }
+    with (tmp_path / "level_1" / "diagnostics.json").open("r", encoding="utf-8") as handle:
+        saved = json.load(handle)
+    assert "spectral" in saved
+    assert "relation_weighted_fused_energy_relative_error" in saved["spectral"]
+
+
 def test_multilevel_pipeline_runs_lazy_and_chebyshev_sketches(tmp_path):
     graph = generate_synthetic_graph(
         num_users=10,

@@ -20,6 +20,7 @@ from hesf_coarsen.candidates.partition_ann import generate_partition_ann_candida
 from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph_chunked
 from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.eval.diagnostics import compute_diagnostics, save_diagnostics
+from hesf_coarsen.eval.spectral_diagnostics import compute_spectral_diagnostics
 from hesf_coarsen.io.edge_list import load_graph, save_graph
 from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
 from hesf_coarsen.matching.greedy import run_matching
@@ -434,6 +435,43 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             "metapath_sketch",
             {"enabled": False, "num_paths": 0, "paths": []},
         )
+        diagnostics_cfg = config.get("diagnostics", {})
+        if bool(diagnostics_cfg.get("enable_spectral", True)):
+            progress_message(config, f"level {level}: spectral diagnostics start")
+            start_spectral = perf_counter()
+            spectral_num_signals = int(
+                diagnostics_cfg.get("spectral_num_signals", min(Z.shape[1], 4))
+            )
+            spectral_input = Z[:, : max(1, min(spectral_num_signals, Z.shape[1]))].astype(
+                np.float32,
+                copy=False,
+            )
+            diagnostics["spectral"] = compute_spectral_diagnostics(
+                original=current,
+                coarse=coarse,
+                assignment=assignment,
+                seed=int(config.get("seed", 12345)) + level,
+                num_signals=int(spectral_input.shape[1]),
+                smoothing_steps=int(diagnostics_cfg.get("spectral_smoothing_steps", 1)),
+                relation_weights=relation_weights,
+                Z=spectral_input,
+                exact_eigenvalue_max_nodes=diagnostics_cfg.get(
+                    "spectral_exact_eigenvalue_max_nodes",
+                    256,
+                ),
+                baseline_methods=diagnostics_cfg.get(
+                    "spectral_baselines",
+                    ["random", "heavy_edge", "graphzoom_style", "convmatch_style"],
+                ),
+                baseline_max_nodes=diagnostics_cfg.get("spectral_baseline_max_nodes", 5000),
+            )
+            runtime["spectral_diagnostics"] = perf_counter() - start_spectral
+            diagnostics["runtime_by_stage"] = dict(runtime)
+            progress_message(
+                config,
+                f"level {level}: spectral diagnostics done in "
+                f"{runtime['spectral_diagnostics']:.2f}s",
+            )
         save_graph(coarse, level_dir)
         _save_assignment(assignment, level_dir / "assignment.npz")
         save_diagnostics(diagnostics, level_dir / "diagnostics.json")

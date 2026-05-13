@@ -237,6 +237,7 @@ This path only handles dense blocks such as sketches and candidate scoring matri
 
 Diagnostics include node counts by type, edge counts by relation, compression ratio, candidate count distribution, candidate source counts, matched-pair count, singleton ratio, relation weight preservation, and per-stage runtime.
 Sketch diagnostics are also written for each level. They include the low-pass sketch method, dimension, dtype, Chebyshev order and heat times when applicable, relation fusion weights and energy estimates, meta-path sketch metadata, NaN/Inf counts, row norm stats, and per-component sketch runtime. See `docs/sketch_methods.md` for configuration details and guardrails.
+Spectral diagnostics are enabled by default and are written under `diagnostics.json` as `spectral`. They report sketch Dirichlet energy before/after coarsening, relation-weighted fused energy preservation, relation-wise energy errors, ChebHeat sketch inner-product error, optional small-graph eigenvalue sanity, and small-graph baseline comparisons against random, heavy-edge, GraphZoom-style, and ConvMatch-style pairings.
 
 Enable sampled large-graph envelopes with config:
 
@@ -244,6 +245,16 @@ Enable sampled large-graph envelopes with config:
 diagnostics:
   enable_large_graph_envelope: true
   edge_sample_size: 1024
+  enable_spectral: true
+  spectral_num_signals: 4
+  spectral_smoothing_steps: 1
+  spectral_exact_eigenvalue_max_nodes: 256
+  spectral_baseline_max_nodes: 5000
+  spectral_baselines:
+    - random
+    - heavy_edge
+    - graphzoom_style
+    - convmatch_style
 ```
 
 When enabled, `diagnostics.json` includes `large_graph_envelope` with exact graph array bytes, current process RSS when available, runtime totals and the slowest stage, candidate-store byte estimates, candidate count quantiles, artifact directory sizes for candidate/incident mmap outputs, and bounded per-relation edge samples. Edge samples are deterministic, capped by `edge_sample_size` per relation, and report sample weight statistics, self-loop counts, and sampled unique endpoint counts without materializing two-hop neighborhoods.
@@ -258,7 +269,7 @@ When enabled, `diagnostics.json` includes `large_graph_envelope` with exact grap
 - Torch acceleration covers dense helper kernels, low-pass sketch normalization, and block-local dense candidate scoring only.
 - The Chebyshev heat-kernel sketch supports relation-weighted fused operators and chained meta-path sketch channels without materializing relation products. Reverse-relation dropping is exact-array based and intended for explicit reverse relation pairs.
 - Large-graph diagnostics are sampled envelopes. They are intended for memory and runtime sanity checks, not exact distributional profiling.
-- Spectral diagnostics use relation-wise edge energy approximations, not eigendecomposition.
+- Spectral diagnostics use sparse relation-wise energy checks by default. Exact eigenvalue sanity and baseline comparisons are bounded by node-count limits and skipped on large levels.
 
 ## Next Engineering Steps
 

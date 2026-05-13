@@ -111,6 +111,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "diagnostics": {
         "enable_large_graph_envelope": False,
         "edge_sample_size": 1024,
+        "enable_spectral": True,
+        "spectral_num_signals": 4,
+        "spectral_smoothing_steps": 1,
+        "spectral_exact_eigenvalue_max_nodes": 256,
+        "spectral_baseline_max_nodes": 5000,
+        "spectral_baselines": [
+            "random",
+            "heavy_edge",
+            "graphzoom_style",
+            "convmatch_style",
+        ],
     },
     "output": {
         "dir": "outputs/default_run",
