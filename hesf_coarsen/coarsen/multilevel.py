@@ -35,9 +35,9 @@ from hesf_coarsen.partition.type_partition import default_partition
 from hesf_coarsen.progress import progress_iter, progress_message
 from hesf_coarsen.scoring.conv_response import compute_conv_response_sketch
 from hesf_coarsen.scoring.merge_cost import (
+    ScoreTermAccumulator,
     prepare_pair_scoring_context,
-    score_candidate_pairs,
-    score_pair_block,
+    score_pair_block_with_terms,
 )
 from hesf_coarsen.scoring.relation_profile import compute_relation_profiles
 from hesf_coarsen.sketch.lowpass import compute_lowpass_sketch
@@ -407,6 +407,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         matching_method_normalized = matching_method.lower().replace("-", "_")
         level_matching_config = _config_for_level(config, current.num_nodes)
         streaming_mutual_best = matching_method_normalized == "mutual_best"
+        score_term_accumulator = ScoreTermAccumulator.from_config(scoring_config)
         scored = None
         scored_pair_count = 0
         streaming_state = None
@@ -439,7 +440,8 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 config=config,
                 unit="block",
             ):
-                scored_block = score_pair_block(scoring_context, pair_block)
+                scored_block, term_values = score_pair_block_with_terms(scoring_context, pair_block)
+                score_term_accumulator.update(term_values)
                 scored_pair_count += int(scored_block.shape[0])
                 mutual_best_update_block(
                     current,
@@ -450,9 +452,8 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 )
         else:
             pairs = store.to_pairs()
-            scored = score_candidate_pairs(
+            scoring_context = prepare_pair_scoring_context(
                 current,
-                pairs,
                 Z,
                 relation_profiles,
                 conv,
@@ -460,7 +461,10 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 scoring_config,
                 partition_id=partition_id,
             )
+            scored, term_values = score_pair_block_with_terms(scoring_context, pairs)
+            score_term_accumulator.update(term_values)
             scored_pair_count = int(scored.shape[0])
+        score_term_summary = score_term_accumulator.summary()
         progress_message(config, f"level {level}: scoring candidate pairs done")
         runtime["scoring"] = perf_counter() - start
         progress_message(
@@ -563,6 +567,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             {"enabled": False, "num_paths": 0, "paths": []},
         )
         diagnostics["feature_aggregation"] = feature_aggregation_diag
+        diagnostics["score_terms"] = score_term_summary
         diagnostics_cfg = config.get("diagnostics", {})
         if bool(diagnostics_cfg.get("enable_spectral", True)):
             progress_message(config, f"level {level}: spectral diagnostics start")

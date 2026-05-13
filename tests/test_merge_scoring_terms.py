@@ -3,6 +3,7 @@ import numpy as np
 from hesf_coarsen.io.schema import HeteroGraph, RelationAdj, RelationSpec
 from hesf_coarsen.scoring.merge_cost import (
     prepare_pair_scoring_context,
+    score_pair_block_with_terms,
     score_candidate_pairs,
     score_pair_block,
 )
@@ -76,6 +77,60 @@ def test_score_pair_block_matches_full_scoring_and_filters_cross_type():
 
     assert np.allclose(streamed, full)
     assert streamed.shape == (2, 3)
+
+
+def test_score_pair_block_with_terms_reports_unweighted_components():
+    graph = _same_type_graph_with_degrees()
+    pairs = np.array([[0, 3, 0.0]], dtype=np.float64)
+    z = np.array(
+        [
+            [0.0, 0.0],
+            [0.0, 0.0],
+            [0.0, 0.0],
+            [3.0, 4.0],
+        ],
+        dtype=np.float32,
+    )
+    profiles = np.array(
+        [
+            [1.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    conv = np.array(
+        [
+            [0.0, 0.0],
+            [0.0, 0.0],
+            [0.0, 0.0],
+            [1.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    config = {
+        "scoring": {
+            "lambda_spec": 2.0,
+            "lambda_rel": 3.0,
+            "lambda_feat": 0.0,
+            "lambda_conv": 5.0,
+            "lambda_boundary": 0.0,
+            "spec_volume_weighting": True,
+            "relation_profile_distance": "jsd",
+        },
+        "acceleration": {"dense_backend": "numpy"},
+    }
+    context = prepare_pair_scoring_context(graph, z, profiles, conv, None, config)
+
+    scored, terms = score_pair_block_with_terms(context, pairs)
+
+    assert set(terms) == {"spec", "rel", "feat", "conv", "boundary"}
+    assert np.isclose(terms["spec"][0], (2.0 * 1.0 / 3.0) * 25.0)
+    assert np.isclose(terms["rel"][0], np.log(2.0), atol=1e-6)
+    assert np.isclose(terms["conv"][0], 1.0)
+    expected = 2.0 * terms["spec"][0] + 3.0 * terms["rel"][0] + 5.0 * terms["conv"][0]
+    assert np.isclose(scored[0, 2], expected)
 
 
 def test_spec_term_uses_local_variation_volume_factor():

@@ -10,6 +10,9 @@ from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
 from hesf_coarsen.progress import progress_iter
 
 
+SCORE_TERM_NAMES = ("spec", "rel", "feat", "conv", "boundary")
+
+
 @dataclass(frozen=True)
 class TypewiseFeatureView:
     blocks: dict[int, np.ndarray]
@@ -40,6 +43,83 @@ class PairScoringContext:
     batch_size: int
     use_torch: bool
     acceleration: dict
+
+
+class ScoreTermAccumulator:
+    """Streaming summary for unweighted scoring term distributions."""
+
+    def __init__(self, sample_size: int = 200_000, seed: int = 12345):
+        self.sample_size = max(int(sample_size), 0)
+        self._rng = np.random.default_rng(int(seed))
+        self._count = {name: 0 for name in SCORE_TERM_NAMES}
+        self._sum = {name: 0.0 for name in SCORE_TERM_NAMES}
+        self._samples = {
+            name: np.empty(0, dtype=np.float64) for name in SCORE_TERM_NAMES
+        }
+
+    @classmethod
+    def from_config(cls, config: dict) -> "ScoreTermAccumulator":
+        diagnostics_cfg = config.get("diagnostics", {})
+        return cls(
+            sample_size=int(diagnostics_cfg.get("score_term_sample_size", 200_000)),
+            seed=int(diagnostics_cfg.get("score_term_seed", config.get("seed", 12345))),
+        )
+
+    def update(self, terms: dict[str, np.ndarray]) -> None:
+        for name in SCORE_TERM_NAMES:
+            values = np.asarray(terms.get(name, np.empty(0)), dtype=np.float64).ravel()
+            if values.size == 0:
+                continue
+            values = values[np.isfinite(values)]
+            if values.size == 0:
+                continue
+            old_count = int(self._count[name])
+            self._count[name] = old_count + int(values.size)
+            self._sum[name] += float(values.sum())
+            if self.sample_size <= 0:
+                continue
+
+            current = self._samples[name]
+            fill = min(self.sample_size - len(current), len(values))
+            if fill > 0:
+                current = np.concatenate([current, values[:fill].astype(np.float64, copy=False)])
+                values = values[fill:]
+            if values.size:
+                seen_before = old_count + fill
+                positions = seen_before + np.arange(1, values.size + 1, dtype=np.float64)
+                keep = self._rng.random(values.size) < (float(self.sample_size) / positions)
+                if np.any(keep):
+                    slots = self._rng.integers(0, self.sample_size, size=int(np.sum(keep)))
+                    current[slots] = values[keep]
+            self._samples[name] = current
+
+    def summary(self) -> dict[str, dict[str, float | int]]:
+        summary: dict[str, dict[str, float | int]] = {}
+        for name in SCORE_TERM_NAMES:
+            count = int(self._count[name])
+            samples = self._samples[name]
+            if count == 0 or samples.size == 0:
+                summary[name] = {
+                    "count": count,
+                    "sample_count": int(samples.size),
+                    "sample_fraction": 0.0,
+                    "mean": 0.0,
+                    "p50": 0.0,
+                    "p95": 0.0,
+                    "p99": 0.0,
+                }
+                continue
+            p50, p95, p99 = np.percentile(samples, [50, 95, 99])
+            summary[name] = {
+                "count": count,
+                "sample_count": int(samples.size),
+                "sample_fraction": float(samples.size / max(count, 1)),
+                "mean": float(self._sum[name] / max(count, 1)),
+                "p50": float(p50),
+                "p95": float(p95),
+                "p99": float(p99),
+            }
+        return summary
 
 
 def _projection_dtype(config: dict) -> np.dtype:
@@ -488,6 +568,67 @@ def _scoring_pair_cost_batches(
     return cost
 
 
+def _scoring_pair_term_batches(
+    graph: HeteroGraph,
+    candidate_pairs: np.ndarray,
+    Z: np.ndarray,
+    relation_profiles: np.ndarray,
+    conv_sketch: np.ndarray,
+    feature_view: TypewiseFeatureView | None,
+    *,
+    relation_profile_distance: str,
+    relation_profile_epsilon: float,
+    spec_volume_weighting: bool,
+    spec_volume_epsilon: float,
+    boundary_mode: str,
+    boundary_risk: np.ndarray | None,
+    partition_id: np.ndarray | None,
+    node_volume: np.ndarray,
+    batch_size: int,
+    config: dict,
+    include_conv: bool,
+) -> dict[str, np.ndarray]:
+    batch_size = max(int(batch_size), 1)
+    terms = {
+        name: np.zeros(candidate_pairs.shape[0], dtype=np.float32)
+        for name in SCORE_TERM_NAMES
+    }
+    starts = range(0, candidate_pairs.shape[0], batch_size)
+    for start in progress_iter(
+        starts,
+        total=ceil(candidate_pairs.shape[0] / batch_size) if len(candidate_pairs) else 0,
+        desc="score dense batches",
+        config=config,
+        unit="batch",
+    ):
+        stop = min(start + batch_size, candidate_pairs.shape[0])
+        batch = candidate_pairs[start:stop]
+        terms["spec"][start:stop] = _spectral_pair_cost(
+            Z,
+            batch,
+            node_volume,
+            volume_weighting=spec_volume_weighting,
+            epsilon=spec_volume_epsilon,
+        )
+        terms["rel"][start:stop] = _relation_profile_pair_cost(
+            relation_profiles,
+            batch,
+            method=relation_profile_distance,
+            epsilon=relation_profile_epsilon,
+        )
+        if include_conv:
+            terms["conv"][start:stop] = _squared_l2_pair_cost(conv_sketch, batch)
+        terms["feat"][start:stop] = _typewise_feature_pair_cost(graph, batch, feature_view)
+        terms["boundary"][start:stop] = _boundary_pair_penalty(
+            graph,
+            batch,
+            boundary_risk,
+            partition_id,
+            mode=boundary_mode,
+        )
+    return terms
+
+
 def _numpy_weighted_pairwise_dense_cost(
     graph: HeteroGraph,
     candidate_pairs: np.ndarray,
@@ -599,15 +740,40 @@ def prepare_pair_scoring_context(
 
 
 def score_pair_block(context: PairScoringContext, pairs: np.ndarray) -> np.ndarray:
+    scored, _terms = score_pair_block_with_terms(context, pairs)
+    return scored
+
+
+def _weighted_cost_from_terms(
+    context: PairScoringContext,
+    terms: dict[str, np.ndarray],
+) -> np.ndarray:
+    return (
+        context.lambda_spec * terms["spec"]
+        + context.lambda_rel * terms["rel"]
+        + context.lambda_feat * terms["feat"]
+        + context.lambda_conv * terms["conv"]
+        + context.lambda_boundary * terms["boundary"]
+    ).astype(np.float32, copy=False)
+
+
+def score_pair_block_with_terms(
+    context: PairScoringContext,
+    pairs: np.ndarray,
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     if pairs.size == 0:
-        return np.empty((0, 3), dtype=np.float64)
+        return np.empty((0, 3), dtype=np.float64), {
+            name: np.empty(0, dtype=np.float32) for name in SCORE_TERM_NAMES
+        }
 
     graph = context.graph
     candidate_pairs = pairs[:, :2].astype(np.int64, copy=False)
     valid = graph.node_type[candidate_pairs[:, 0]] == graph.node_type[candidate_pairs[:, 1]]
     candidate_pairs = candidate_pairs[valid]
     if candidate_pairs.size == 0:
-        return np.empty((0, 3), dtype=np.float64)
+        return np.empty((0, 3), dtype=np.float64), {
+            name: np.empty(0, dtype=np.float32) for name in SCORE_TERM_NAMES
+        }
 
     use_torch = context.use_torch
     if use_torch:
@@ -616,18 +782,13 @@ def score_pair_block(context: PairScoringContext, pairs: np.ndarray) -> np.ndarr
 
             device = str(context.acceleration.get("device", "auto"))
             max_bytes = context.acceleration.get("max_dense_bytes")
-            dense_cost = _scoring_pair_cost_batches(
+            terms = _scoring_pair_term_batches(
                 graph,
                 candidate_pairs,
                 context.Z,
                 context.relation_profiles,
                 context.conv_sketch,
                 context.feature_view,
-                lambda_spec=context.lambda_spec,
-                lambda_rel=context.lambda_rel,
-                lambda_feat=0.0,
-                lambda_conv=0.0,
-                lambda_boundary=context.lambda_boundary,
                 relation_profile_distance=context.relation_profile_distance,
                 relation_profile_epsilon=context.relation_profile_epsilon,
                 spec_volume_weighting=context.spec_volume_weighting,
@@ -640,11 +801,8 @@ def score_pair_block(context: PairScoringContext, pairs: np.ndarray) -> np.ndarr
                 config=context.config,
                 include_conv=False,
             )
-            dense_blocks = [
-                (context.conv_sketch.astype(np.float32, copy=False), context.lambda_conv),
-            ]
-            dense_cost += torch_weighted_pairwise_dense_cost(
-                dense_blocks,
+            terms["conv"] = torch_weighted_pairwise_dense_cost(
+                [(context.conv_sketch.astype(np.float32, copy=False), 1.0)],
                 candidate_pairs,
                 device=device,
                 batch_size=context.batch_size,
@@ -652,33 +810,20 @@ def score_pair_block(context: PairScoringContext, pairs: np.ndarray) -> np.ndarr
                 progress_config=context.config,
                 progress_desc="score dense batches",
             )
-            if context.feature_view is not None and context.lambda_feat != 0.0:
-                feature_cost = _feature_pair_cost_batches(
-                    graph,
-                    candidate_pairs,
-                    context.feature_view,
-                    batch_size=context.batch_size,
-                    config=context.config,
-                )
-                dense_cost += np.float32(context.lambda_feat) * feature_cost
+            dense_cost = _weighted_cost_from_terms(context, terms)
         except (ImportError, RuntimeError, MemoryError):
             if not bool(context.acceleration.get("fallback_to_numpy", True)):
                 raise
             use_torch = False
 
     if not use_torch:
-        dense_cost = _numpy_weighted_pairwise_dense_cost(
+        terms = _scoring_pair_term_batches(
             graph,
             candidate_pairs,
             context.Z,
             context.relation_profiles,
             context.conv_sketch,
             context.feature_view,
-            lambda_spec=context.lambda_spec,
-            lambda_rel=context.lambda_rel,
-            lambda_feat=context.lambda_feat,
-            lambda_conv=context.lambda_conv,
-            lambda_boundary=context.lambda_boundary,
             relation_profile_distance=context.relation_profile_distance,
             relation_profile_epsilon=context.relation_profile_epsilon,
             spec_volume_weighting=context.spec_volume_weighting,
@@ -689,12 +834,14 @@ def score_pair_block(context: PairScoringContext, pairs: np.ndarray) -> np.ndarr
             node_volume=context.node_volume,
             batch_size=context.batch_size,
             config=context.config,
+            include_conv=True,
         )
+        dense_cost = _weighted_cost_from_terms(context, terms)
 
     scored = np.empty((candidate_pairs.shape[0], 3), dtype=np.float64)
     scored[:, :2] = candidate_pairs
     scored[:, 2] = dense_cost.astype(np.float64, copy=False)
-    return scored
+    return scored, terms
 
 
 def score_candidate_pair_block(

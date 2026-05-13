@@ -148,6 +148,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "spectral_smoothing_steps": 1,
         "spectral_exact_eigenvalue_max_nodes": 256,
         "spectral_baseline_max_nodes": 5000,
+        "score_term_sample_size": 200_000,
         "spectral_baselines": [
             "random",
             "heavy_edge",

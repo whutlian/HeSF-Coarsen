@@ -75,6 +75,33 @@ def test_multilevel_pipeline_streams_default_mutual_best_without_to_pairs(tmp_pa
     assert results[0].graph.num_nodes < graph.num_nodes
 
 
+def test_multilevel_pipeline_writes_score_term_diagnostics(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=8,
+        num_items=5,
+        num_tags=3,
+        seed=124,
+    )
+    config = small_config(tmp_path)
+    config["diagnostics"] = dict(config["diagnostics"], enable_spectral=False)
+    config["candidates"] = dict(config["candidates"], pair_block_size=2)
+
+    result = run_multilevel_coarsening(graph, config)[0]
+
+    score_terms = result.diagnostics["score_terms"]
+    assert set(score_terms) == {"spec", "rel", "feat", "conv", "boundary"}
+    for term_stats in score_terms.values():
+        assert term_stats["count"] > 0
+        assert term_stats["sample_count"] > 0
+        for key in ("mean", "p50", "p95", "p99"):
+            assert key in term_stats
+            assert np.isfinite(term_stats[key])
+
+    with (tmp_path / "level_1" / "diagnostics.json").open("r", encoding="utf-8") as handle:
+        saved = json.load(handle)
+    assert saved["score_terms"]["spec"]["count"] == score_terms["spec"]["count"]
+
+
 def test_multilevel_pipeline_writes_spectral_diagnostics_closed_loop(tmp_path):
     graph = generate_synthetic_graph(
         num_users=10,
