@@ -6,7 +6,7 @@ from hesf_coarsen.io.edge_list import generate_synthetic_graph
 from hesf_coarsen.io.schema import HeteroGraph, RelationAdj, RelationSpec
 from hesf_coarsen.sketch.chebyshev import chebyshev_heat_coefficients, chebyshev_heat_filter
 from hesf_coarsen.sketch.lowpass import compute_lowpass_sketch
-from hesf_coarsen.sketch.operators import apply_fused_operator
+from hesf_coarsen.sketch.operators import apply_fused_operator, estimate_fused_operator_norm
 
 
 def _line_graph() -> HeteroGraph:
@@ -24,6 +24,26 @@ def _line_graph() -> HeteroGraph:
     return HeteroGraph(
         num_nodes=3,
         node_type=np.zeros(3, dtype=np.int32),
+        relations=relations,
+        relation_specs=specs,
+    )
+
+
+def _bidirectional_relation_graph() -> HeteroGraph:
+    relations = {
+        0: RelationAdj(
+            src=np.array([0, 1], dtype=np.int64),
+            dst=np.array([1, 0], dtype=np.int64),
+            weight=np.ones(2, dtype=np.float32),
+            src_type=0,
+            dst_type=0,
+            relation_id=0,
+        )
+    }
+    specs = {0: RelationSpec(0, "node__links__node", 0, 0)}
+    return HeteroGraph(
+        num_nodes=2,
+        node_type=np.zeros(2, dtype=np.int32),
         relations=relations,
         relation_specs=specs,
     )
@@ -64,6 +84,63 @@ def test_chebyshev_heat_filter_matches_tiny_dense_heat_kernel():
 
     assert relative_error < 0.15
     assert np.all(np.isfinite(actual))
+
+
+def test_fused_operator_norm_estimator_detects_unscaled_symmetric_risk():
+    graph = _bidirectional_relation_graph()
+    relation_weights = {0: 1.0}
+
+    unscaled = estimate_fused_operator_norm(
+        graph,
+        relation_weights,
+        symmetric_relation_scale=1.0,
+        num_iterations=12,
+        seed=7,
+    )
+    scaled = estimate_fused_operator_norm(
+        graph,
+        relation_weights,
+        symmetric_relation_scale=0.5,
+        num_iterations=12,
+        seed=7,
+    )
+
+    assert unscaled > 1.5
+    assert scaled <= 1.05
+
+
+def test_chebyshev_lowpass_diagnostics_record_operator_norm_and_rescale():
+    graph = _bidirectional_relation_graph()
+    config = dict(DEFAULT_CONFIG)
+    config["sketch"] = {
+        "method": "chebyshev_heat",
+        "dim": 4,
+        "order": 3,
+        "heat_times": [1.0],
+        "chebyshev_quadrature_points": 128,
+        "seed": 11,
+        "dtype": "float32",
+        "row_normalize": True,
+    }
+    config["fusion"] = {
+        "symmetric_relation_operator": True,
+        "symmetric_relation_scale": 1.0,
+        "estimate_operator_norm": True,
+        "operator_norm_iterations": 12,
+        "chebyshev_rescale_if_needed": True,
+        "reverse_relation_policy": "include_all",
+        "relation_weighting": {"method": "uniform"},
+    }
+    config["metapath_sketch"] = {"enabled": False}
+
+    Z = compute_lowpass_sketch(graph, config)
+    diagnostics = config["_last_sketch_diagnostics"]
+
+    assert Z.shape == (graph.num_nodes, 4)
+    assert diagnostics["fusion"]["estimated_operator_norm"] > 1.5
+    assert diagnostics["fusion"]["chebyshev_operator_scale"] < 1.0
+    assert diagnostics["fusion"]["chebyshev_scaling_assumption"] == "rescaled_to_unit_interval"
+    assert diagnostics["fusion"]["symmetric_relation_scale"] == 1.0
 
 
 def test_chebyshev_lowpass_sketch_has_configured_dtype_and_no_invalid_values():

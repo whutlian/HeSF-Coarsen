@@ -10,7 +10,7 @@ fused Laplacian. `sketch.method: lazy` remains available as an explicit baseline
 
 ## Chebyshev Heat-Kernel Sketch
 
-`sketch.method: chebyshev_heat` applies a Chebyshev approximation to `exp(-t L_F)` for each configured heat time. When meta-paths are enabled, they are part of the same fused Laplacian through beta-weighted chained operators. The recurrence uses the normalized Laplacian scaling `lambda_max = 2`, so the scaled operator is `L_F - I = -S_F`.
+`sketch.method: chebyshev_heat` applies a Chebyshev approximation to `exp(-t L_F)` for each configured heat time. When meta-paths are enabled, they are part of the same fused Laplacian through beta-weighted chained operators. The recurrence uses the normalized Laplacian scaling `lambda_max = 2`, so the scaled operator is `L_F - I = -S_F`. The default configuration estimates `||S_F||` by matrix-free power iteration; if the estimate exceeds one and `fusion.chebyshev_rescale_if_needed: true`, the recurrence uses a rescaled `S_F / ||S_F||` guard and records that in diagnostics.
 
 Chebyshev coefficients are computed with numerical Chebyshev quadrature, not SciPy:
 
@@ -33,7 +33,7 @@ S_F H = sum_r alpha_r S_r H + sum_m beta_m S_m H
 L_F H = H - S_F H
 ```
 
-No dense adjacency, fused sparse matrix, or relation-product matrix is built. By default `fusion.symmetric_relation_operator: true` applies each directed relation as a symmetric block operator by passing messages forward and backward. `fusion.reverse_relation_policy: include_all` keeps every relation. `drop_detected_reverse_for_spectral_operator` detects exact explicit reverse relation arrays, drops the higher relation id from the spectral operator, and renormalizes the remaining relation weights while preserving the total relation mass assigned by `1 - sum_m beta_m`.
+No dense adjacency, fused sparse matrix, or relation-product matrix is built. By default `fusion.symmetric_relation_operator: true` applies each directed relation as `0.5 * (forward + backward)` through `fusion.symmetric_relation_scale: 0.5`; this keeps already-bidirectional relations from doubling the relation operator norm. `fusion.reverse_relation_policy: include_all` keeps every relation. `drop_detected_reverse_for_spectral_operator` detects exact explicit reverse relation arrays, drops the higher relation id from the spectral operator, and renormalizes the remaining relation weights while preserving the total relation mass assigned by `1 - sum_m beta_m`.
 
 Relation weighting supports:
 
@@ -75,7 +75,7 @@ beta_m proportional to (vol(m) + epsilon)^eta / (E_m + epsilon)^gamma
 Each coarsening level writes sketch metadata into `diagnostics.json`:
 
 - `sketch`: method, dimension, dtype, Chebyshev order, heat times, runtime, NaN/Inf counts, row norm stats.
-- `fusion`: relation weighting method, normalized weights, weight stats, energy estimates, volume estimates.
+- `fusion`: relation weighting method, normalized weights, weight stats, energy estimates, volume estimates, `estimated_operator_norm`, and `chebyshev_scaling_assumption`.
 - `metapath_sketch`: enabled flag, fused-operator mode, total beta mass, per-path beta weights, type endpoints, and relation names.
 
 ## Config Examples

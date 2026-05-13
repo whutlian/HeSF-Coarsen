@@ -45,6 +45,33 @@ def _reverse_pair_graph() -> HeteroGraph:
     return HeteroGraph(4, node_type, relations, specs)
 
 
+def _bidirectional_relation_graph() -> HeteroGraph:
+    node_type = np.zeros(2, dtype=np.int32)
+    relations = {
+        0: RelationAdj(
+            src=np.array([0, 1], dtype=np.int64),
+            dst=np.array([1, 0], dtype=np.int64),
+            weight=np.ones(2, dtype=np.float32),
+            src_type=0,
+            dst_type=0,
+            relation_id=0,
+        )
+    }
+    specs = {0: RelationSpec(0, "node__links__node", 0, 0)}
+    return HeteroGraph(2, node_type, relations, specs)
+
+
+def test_symmetric_relation_operator_scales_forward_and_backward_by_default():
+    graph = _bidirectional_relation_graph()
+    H = np.array([[1.0, -1.0], [2.0, 3.0]], dtype=np.float32)
+
+    forward = apply_relation_operator(graph, H, 0, direction="forward")
+    backward = apply_relation_operator(graph, H, 0, direction="backward")
+    actual = apply_relation_operator(graph, H, 0, direction="symmetric")
+
+    assert np.allclose(actual, 0.5 * (forward + backward))
+
+
 def test_drop_detected_reverse_relation_policy_drops_reverse_and_renormalizes():
     graph = _reverse_pair_graph()
     H = np.arange(graph.num_nodes * 2, dtype=np.float32).reshape(graph.num_nodes, 2) / 10.0

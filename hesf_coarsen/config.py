@@ -54,6 +54,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "fusion": {
         "symmetric_relation_operator": True,
+        "symmetric_relation_scale": 0.5,
+        "estimate_operator_norm": True,
+        "operator_norm_iterations": 8,
+        "operator_norm_probe_dim": 4,
+        "operator_norm_tolerance": 1e-3,
+        "chebyshev_rescale_if_needed": True,
         "reverse_relation_policy": "include_all",
         "relation_weighting": {
             "method": "inverse_energy",

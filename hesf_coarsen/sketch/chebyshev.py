@@ -37,7 +37,9 @@ def chebyshev_heat_filter(
     quadrature_points: int | None = None,
     metapath_weights: list[tuple[dict[str, Any], float]] | None = None,
     symmetric_relation_operator: bool = True,
+    symmetric_relation_scale: float = 0.5,
     reverse_relation_policy: str = "include_all",
+    operator_scale: float = 1.0,
     progress_config: dict | None = None,
     progress_desc: str = "chebyshev recurrence",
 ) -> np.ndarray:
@@ -50,14 +52,18 @@ def chebyshev_heat_filter(
         raise ValueError("basis must have one row per graph node")
 
     coeffs = chebyshev_heat_coefficients(heat_time, order, quadrature_points)
+    operator_scale = float(operator_scale)
+    if operator_scale <= 0.0:
+        raise ValueError("operator_scale must be positive")
 
     def apply_scaled(H: np.ndarray) -> np.ndarray:
-        return -apply_fused_operator(
+        return -np.float32(operator_scale) * apply_fused_operator(
             graph,
             H,
             relation_weights,
             metapath_weights=metapath_weights,
             symmetric_relation_operator=symmetric_relation_operator,
+            symmetric_relation_scale=symmetric_relation_scale,
             reverse_relation_policy=reverse_relation_policy,
         )
 

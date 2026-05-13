@@ -14,6 +14,7 @@ from hesf_coarsen.sketch.metapath import (
     metapath_path_diagnostics,
     resolve_metapath_paths,
 )
+from hesf_coarsen.sketch.operators import estimate_fused_operator_norm
 from hesf_coarsen.sketch.relation_weights import compute_relation_weights
 from hesf_coarsen.sketch.random_probe import generate_probe
 
@@ -190,6 +191,7 @@ def _compute_chebyshev_heat_sketch(
     heat_dims = _heat_component_dims(sketch_cfg, heat_times, heat_dim)
     fusion_cfg = config.get("fusion", {})
     symmetric = bool(fusion_cfg.get("symmetric_relation_operator", True))
+    symmetric_relation_scale = float(fusion_cfg.get("symmetric_relation_scale", 0.5))
     reverse_policy = str(fusion_cfg.get("reverse_relation_policy", "include_all"))
 
     start_total = perf_counter()
@@ -252,6 +254,48 @@ def _compute_chebyshev_heat_sketch(
             if key in metapath_weight_diag:
                 meta_diag[key] = metapath_weight_diag[key]
 
+    estimate_norm = bool(fusion_cfg.get("estimate_operator_norm", True))
+    rescale_if_needed = bool(fusion_cfg.get("chebyshev_rescale_if_needed", True))
+    norm_tolerance = float(fusion_cfg.get("operator_norm_tolerance", 1.0e-3))
+    estimated_operator_norm: float | None = None
+    chebyshev_operator_scale = 1.0
+    chebyshev_scaling_assumption = "unit_interval_unverified"
+    if estimate_norm:
+        estimated_operator_norm = estimate_fused_operator_norm(
+            graph,
+            relation_result.weights,
+            metapath_weights=metapath_weights,
+            symmetric_relation_operator=symmetric,
+            symmetric_relation_scale=symmetric_relation_scale,
+            reverse_relation_policy=reverse_policy,
+            num_iterations=int(fusion_cfg.get("operator_norm_iterations", 8)),
+            probe_dim=int(fusion_cfg.get("operator_norm_probe_dim", 4)),
+            seed=int(fusion_cfg.get("operator_norm_seed", seed + 17)),
+        )
+        if estimated_operator_norm > 1.0 + norm_tolerance:
+            if rescale_if_needed:
+                chebyshev_operator_scale = 1.0 / max(estimated_operator_norm, 1.0e-12)
+                chebyshev_scaling_assumption = "rescaled_to_unit_interval"
+            else:
+                chebyshev_scaling_assumption = "operator_norm_exceeds_unit_interval"
+        else:
+            chebyshev_scaling_assumption = "unit_interval_verified"
+
+    fusion_diag = dict(relation_result.diagnostics)
+    fusion_diag.update(
+        {
+            "symmetric_relation_operator": bool(symmetric),
+            "symmetric_relation_scale": float(symmetric_relation_scale),
+            "operator_norm_estimation_enabled": bool(estimate_norm),
+            "estimated_operator_norm": (
+                None if estimated_operator_norm is None else float(estimated_operator_norm)
+            ),
+            "chebyshev_operator_scale": float(chebyshev_operator_scale),
+            "chebyshev_rescale_if_needed": bool(rescale_if_needed),
+            "chebyshev_scaling_assumption": chebyshev_scaling_assumption,
+        }
+    )
+
     components: list[np.ndarray] = []
     component_runtime: dict[str, float] = {}
     heat_components = [
@@ -277,7 +321,9 @@ def _compute_chebyshev_heat_sketch(
             quadrature_points=quadrature_points,
             metapath_weights=metapath_weights,
             symmetric_relation_operator=symmetric,
+            symmetric_relation_scale=symmetric_relation_scale,
             reverse_relation_policy=reverse_policy,
+            operator_scale=chebyshev_operator_scale,
             progress_config=config,
             progress_desc=f"chebyshev heat t={heat_time}",
         )
@@ -304,7 +350,7 @@ def _compute_chebyshev_heat_sketch(
         "nan_count": int(np.isnan(Z_out).sum()),
         "inf_count": int(np.isinf(Z_out).sum()),
         "row_norm_stats": _row_norm_stats(Z_out),
-        "fusion": relation_result.diagnostics,
+        "fusion": fusion_diag,
         "metapath_sketch": meta_diag,
     }
     _store_diagnostics(config, diagnostics, diag)

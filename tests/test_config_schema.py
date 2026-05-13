@@ -17,6 +17,9 @@ def test_default_config_uses_canonical_sketch_schema():
     assert config["metapath_sketch"]["weighting"]["method"] == "inverse_energy"
     assert isinstance(config["fusion"]["relation_weighting"], dict)
     assert config["fusion"]["relation_weighting"]["method"] == "inverse_energy"
+    assert config["fusion"]["symmetric_relation_scale"] == 0.5
+    assert config["fusion"]["estimate_operator_norm"] is True
+    assert config["fusion"]["chebyshev_rescale_if_needed"] is True
     assert "include_metapath_filters" not in config["fusion"]
     assert "include_metapath_filters" not in DEFAULT_CONFIG["fusion"]
 

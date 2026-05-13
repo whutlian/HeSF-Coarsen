@@ -84,6 +84,7 @@ def apply_relation_operator(
     relation_id: int,
     *,
     direction: str = "symmetric",
+    symmetric_relation_scale: float = 0.5,
     weights_cache: dict[int, np.ndarray] | None = None,
     backend: str = "numpy",
 ) -> np.ndarray:
@@ -101,11 +102,17 @@ def apply_relation_operator(
     if direction == "backward":
         return apply_relation_transpose(graph, int(relation_id), H, normalize=True)
     if direction == "symmetric":
-        return apply_relation(graph, int(relation_id), H, normalize=True) + apply_relation_transpose(
-            graph,
-            int(relation_id),
-            H,
-            normalize=True,
+        scale = float(symmetric_relation_scale)
+        if scale < 0.0:
+            raise ValueError("symmetric_relation_scale must be non-negative")
+        return np.float32(scale) * (
+            apply_relation(graph, int(relation_id), H, normalize=True)
+            + apply_relation_transpose(
+                graph,
+                int(relation_id),
+                H,
+                normalize=True,
+            )
         )
     raise ValueError(f"unsupported relation operator direction: {direction}")
 
@@ -117,6 +124,7 @@ def apply_fused_operator(
     *,
     metapath_weights: list[tuple[dict[str, Any], float]] | None = None,
     symmetric_relation_operator: bool = True,
+    symmetric_relation_scale: float = 0.5,
     reverse_relation_policy: str = "include_all",
     weights_cache: dict[int, np.ndarray] | None = None,
     backend: str = "numpy",
@@ -151,6 +159,7 @@ def apply_fused_operator(
             H,
             relation_id,
             direction=direction,
+            symmetric_relation_scale=symmetric_relation_scale,
             weights_cache=weights_cache,
             backend=backend,
         )
@@ -174,6 +183,7 @@ def apply_fused_laplacian(
     *,
     metapath_weights: list[tuple[dict[str, Any], float]] | None = None,
     symmetric_relation_operator: bool = True,
+    symmetric_relation_scale: float = 0.5,
     reverse_relation_policy: str = "include_all",
     backend: str = "numpy",
 ) -> np.ndarray:
@@ -186,9 +196,55 @@ def apply_fused_laplacian(
         relation_weights,
         metapath_weights=metapath_weights,
         symmetric_relation_operator=symmetric_relation_operator,
+        symmetric_relation_scale=symmetric_relation_scale,
         reverse_relation_policy=reverse_relation_policy,
         backend=backend,
     )
+
+
+def estimate_fused_operator_norm(
+    graph: HeteroGraph,
+    relation_weights: dict[int, float] | None,
+    *,
+    metapath_weights: list[tuple[dict[str, Any], float]] | None = None,
+    symmetric_relation_operator: bool = True,
+    symmetric_relation_scale: float = 0.5,
+    reverse_relation_policy: str = "include_all",
+    num_iterations: int = 8,
+    probe_dim: int = 4,
+    seed: int = 12345,
+    backend: str = "numpy",
+) -> float:
+    """Estimate ||S_F||_2 without materializing the fused operator."""
+
+    if graph.num_nodes <= 0:
+        return 0.0
+    iterations = max(int(num_iterations), 1)
+    width = max(int(probe_dim), 1)
+    rng = np.random.default_rng(int(seed))
+    current = rng.standard_normal((graph.num_nodes, width)).astype(np.float32)
+    norm = float(np.linalg.norm(current))
+    if norm <= 0.0:
+        return 0.0
+    current /= np.float32(norm)
+    estimate = 0.0
+    for _ in range(iterations):
+        candidate = apply_fused_operator(
+            graph,
+            current,
+            relation_weights,
+            metapath_weights=metapath_weights,
+            symmetric_relation_operator=symmetric_relation_operator,
+            symmetric_relation_scale=symmetric_relation_scale,
+            reverse_relation_policy=reverse_relation_policy,
+            backend=backend,
+        )
+        candidate_norm = float(np.linalg.norm(candidate))
+        if candidate_norm <= 0.0:
+            return 0.0
+        estimate = candidate_norm / max(float(np.linalg.norm(current)), 1e-12)
+        current = candidate / np.float32(candidate_norm)
+    return float(estimate)
 
 
 def _mask_type(graph: HeteroGraph, H: np.ndarray, type_id: int) -> np.ndarray:
