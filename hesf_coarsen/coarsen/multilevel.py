@@ -184,6 +184,16 @@ def _config_for_level(config: dict, num_nodes: int) -> dict:
     return level_config
 
 
+def _config_with_level_feature_store(config: dict, level: int) -> dict:
+    feature_cfg = config.get("features", {})
+    mmap_dir = feature_cfg.get("projection_mmap_dir")
+    if mmap_dir in {None, ""}:
+        return config
+    level_config = deepcopy(config)
+    level_config.setdefault("features", {})["projection_mmap_dir"] = str(Path(mmap_dir) / f"level_{level}")
+    return level_config
+
+
 def _make_candidate_store(
     graph: HeteroGraph,
     config: dict,
@@ -344,6 +354,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         conv = compute_conv_response_sketch(current, Z.astype(np.float32, copy=False), relation_weights)
         progress_message(config, f"level {level}: scoring conv response done")
         progress_message(config, f"level {level}: scoring candidate pairs start")
+        scoring_config = _config_with_level_feature_store(config, level)
         scored = score_candidate_pairs(
             current,
             pairs,
@@ -351,7 +362,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             relation_profiles,
             conv,
             current.features,
-            config,
+            scoring_config,
             partition_id=partition_id,
         )
         progress_message(config, f"level {level}: scoring candidate pairs done")
@@ -414,6 +425,11 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                     "incident_index_mmap": (
                         Path(candidate_cfg["incident_index_mmap_dir"]) / f"level_{level}"
                         if candidate_cfg.get("incident_index_mmap_dir") is not None
+                        else None
+                    ),
+                    "projected_features": (
+                        Path(config["features"]["projection_mmap_dir"]) / f"level_{level}"
+                        if config.get("features", {}).get("projection_mmap_dir") is not None
                         else None
                     ),
                     "aggregation_shards": (

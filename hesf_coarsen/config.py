@@ -107,6 +107,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "features": {
         "projected_dim": 32,
         "projection_dtype": "float16",
+        "projection_mmap_dir": None,
+        "projection_chunk_size": 100_000,
     },
     "diagnostics": {
         "enable_large_graph_envelope": False,

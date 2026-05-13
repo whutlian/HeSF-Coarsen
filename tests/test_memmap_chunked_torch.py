@@ -410,6 +410,54 @@ def test_feature_projection_is_typewise_low_dim_float16():
     assert view.blocks[0].dtype == np.float16
 
 
+def test_feature_projection_can_use_typewise_memmap_store(tmp_path):
+    graph = HeteroGraph(
+        num_nodes=5,
+        node_type=np.array([0, 0, 0, 1, 1], dtype=np.int32),
+        relations={},
+        features={
+            0: np.arange(3 * 8, dtype=np.float32).reshape(3, 8),
+            1: np.arange(2 * 6, dtype=np.float32).reshape(2, 6) / 10.0,
+        },
+    )
+    pairs = np.array([[0, 1, 0.0], [3, 4, 0.0]], dtype=np.float64)
+    z = np.zeros((graph.num_nodes, 2), dtype=np.float32)
+    profiles = np.zeros((graph.num_nodes, 2), dtype=np.float32)
+    conv = np.zeros((graph.num_nodes, 2), dtype=np.float32)
+    base_config = {
+        "seed": 11,
+        "features": {"projected_dim": 2, "projection_dtype": "float16"},
+        "scoring": {
+            "lambda_spec": 0.0,
+            "lambda_rel": 0.0,
+            "lambda_feat": 1.0,
+            "lambda_conv": 0.0,
+            "lambda_boundary": 0.0,
+        },
+        "acceleration": {"dense_backend": "numpy", "scoring_batch_size": 1},
+    }
+    mmap_config = {
+        **base_config,
+        "features": {
+            **base_config["features"],
+            "projection_mmap_dir": str(tmp_path / "feature_store"),
+            "projection_chunk_size": 2,
+        },
+    }
+
+    view = merge_cost_module._prepare_typewise_feature_view(graph, graph.features, mmap_config)
+    memory_scores = score_candidate_pairs(graph, pairs, z, profiles, conv, graph.features, base_config)
+    mmap_scores = score_candidate_pairs(graph, pairs, z, profiles, conv, graph.features, mmap_config)
+
+    assert view is not None
+    assert isinstance(view.blocks[0], np.memmap)
+    assert isinstance(view.blocks[1], np.memmap)
+    assert view.blocks[0].dtype == np.float16
+    assert (tmp_path / "feature_store" / "features_type_0_projected.npy").exists()
+    assert (tmp_path / "feature_store" / "features_type_1_projected.npy").exists()
+    assert np.allclose(mmap_scores, memory_scores, atol=1e-3)
+
+
 def test_lowpass_sketch_accepts_torch_dense_backend():
     graph = generate_synthetic_graph(num_users=5, num_items=4, num_tags=2, seed=505)
     config = {

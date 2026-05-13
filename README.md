@@ -212,6 +212,11 @@ candidates:
   ann_budget_K: 8
 coarsening:
   matching_method: mutual_best
+features:
+  projected_dim: 32
+  projection_dtype: float16
+  projection_mmap_dir: outputs/projected_features
+  projection_chunk_size: 100000
 ```
 
 With `mmap_dir` set, each level writes `candidate_ids.npy`, `candidate_scores.npy`, `candidate_sources.npy`, and `candidate_counts.npy` under `mmap_dir/level_<n>`. With `incident_index_mmap_dir` set, capped two-hop also writes `incident_middle.npy`, `incident_endpoint_type.npy`, `incident_endpoints.npy`, and `incident_indptr.npy` under `incident_index_mmap_dir/level_<n>`. Chunked one-hop, capped two-hop, and SimHash bucket generation keep per-node budgets in the same store API used by the default path. Chunked capped two-hop builds an incident index once per level, keyed by `(middle_node, endpoint_type)`, then slices that index per middle-node chunk instead of rescanning all relation edges. In memmap mode, the index builder writes sorted temporary edge chunks and merges them into the final mmap arrays. Multilevel aggregation writes sort-reduce shards under `output.dir/level_<n>/_aggregation_shards`, and diagnostics include that directory size when the sort reducer is active.
@@ -231,7 +236,7 @@ acceleration:
   scoring_batch_size: 65536
 ```
 
-This path only handles dense blocks such as sketches and candidate scoring matrices. Relation arrays, candidate generation, and graph structure stay CPU-resident. Candidate scoring uses block-local Torch batches: each batch copies only the unique rows touched by candidate pairs for sketch, relation-profile, and convolution-response terms. Raw features stay type-wise: scoring gathers same-type feature rows per candidate batch and uses `features.projected_dim` plus `features.projection_dtype` to keep high-dimensional features compressed before distance computation. `max_dense_bytes` applies to the batch-local dense block, and `scoring_batch_size` controls candidate pairs per scoring batch.
+This path only handles dense blocks such as sketches and candidate scoring matrices. Relation arrays, candidate generation, and graph structure stay CPU-resident. Candidate scoring uses block-local Torch batches: each batch copies only the unique rows touched by candidate pairs for sketch, relation-profile, and convolution-response terms. Raw features stay type-wise: scoring gathers same-type feature rows per candidate batch and uses `features.projected_dim` plus `features.projection_dtype` to keep high-dimensional features compressed before distance computation. When `features.projection_mmap_dir` is set, each level writes chunked fp16 projected feature blocks under `projection_mmap_dir/level_<n>` and scoring gathers from those memmaps instead of keeping projected feature blocks only in RAM. `max_dense_bytes` applies to the batch-local dense block, and `scoring_batch_size` controls candidate pairs per scoring batch.
 
 ## Diagnostics
 

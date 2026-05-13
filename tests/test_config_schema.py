@@ -41,3 +41,16 @@ def test_main_chebheat_config_enables_metapath_sketch():
     assert config["metapath_sketch"]["enabled"] is True
     assert config["metapath_sketch"]["auto_paths"] is True
     assert config["metapath_sketch"]["dim"] > 0
+
+
+def test_large_graph_configs_enable_projected_feature_store():
+    for path in [
+        "configs/ogbn_mag_A_cpu_chunked.yaml",
+        "configs/ogbn_mag_B_cpu_ann.yaml",
+        "configs/ogbn_mag_C_torch_ann.yaml",
+    ]:
+        config = load_config(path)
+
+        assert config["features"]["projection_mmap_dir"]
+        assert config["features"]["projection_dtype"] == "float16"
+        assert int(config["features"]["projection_chunk_size"]) > 0

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil
+from pathlib import Path
 
 import numpy as np
 
@@ -30,17 +31,60 @@ def _project_type_feature(
     projected_dim: int,
     seed: int,
     dtype: np.dtype,
+    mmap_dir: Path | None = None,
+    chunk_size: int = 100_000,
 ) -> np.ndarray:
-    feature = np.asarray(feature, dtype=np.float32)
-    if projected_dim <= 0 or feature.shape[1] <= projected_dim:
+    feature = np.asarray(feature)
+    if feature.ndim != 2:
+        raise ValueError(f"features for type {type_id} must be 2D")
+    output_dim = feature.shape[1] if projected_dim <= 0 else min(feature.shape[1], projected_dim)
+    if mmap_dir is None and (projected_dim <= 0 or feature.shape[1] <= projected_dim):
         return feature.astype(dtype, copy=False)
-    rng = np.random.default_rng(int(seed) + 1009 * int(type_id))
-    projection = rng.normal(
-        loc=0.0,
-        scale=1.0 / np.sqrt(float(projected_dim)),
-        size=(feature.shape[1], projected_dim),
-    ).astype(np.float32)
-    return (feature @ projection).astype(dtype)
+
+    if mmap_dir is None:
+        projected = np.empty((feature.shape[0], output_dim), dtype=dtype)
+    else:
+        mmap_dir.mkdir(parents=True, exist_ok=True)
+        projected_path = mmap_dir / f"features_type_{int(type_id)}_projected.npy"
+        if projected_path.exists():
+            projected = np.lib.format.open_memmap(projected_path, mode="r+")
+            if projected.shape != (feature.shape[0], output_dim) or projected.dtype != dtype:
+                mmap_handle = getattr(projected, "_mmap", None)
+                if mmap_handle is not None:
+                    mmap_handle.close()
+                projected = np.lib.format.open_memmap(
+                    projected_path,
+                    mode="w+",
+                    dtype=dtype,
+                    shape=(feature.shape[0], output_dim),
+                )
+        else:
+            projected = np.lib.format.open_memmap(
+                projected_path,
+                mode="w+",
+                dtype=dtype,
+                shape=(feature.shape[0], output_dim),
+            )
+
+    chunk_size = max(int(chunk_size), 1)
+    if projected_dim <= 0 or feature.shape[1] <= projected_dim:
+        for start in range(0, feature.shape[0], chunk_size):
+            stop = min(start + chunk_size, feature.shape[0])
+            projected[start:stop] = feature[start:stop].astype(dtype, copy=False)
+    else:
+        rng = np.random.default_rng(int(seed) + 1009 * int(type_id))
+        projection = rng.normal(
+            loc=0.0,
+            scale=1.0 / np.sqrt(float(output_dim)),
+            size=(feature.shape[1], output_dim),
+        ).astype(np.float32)
+        for start in range(0, feature.shape[0], chunk_size):
+            stop = min(start + chunk_size, feature.shape[0])
+            block = feature[start:stop].astype(np.float32, copy=False)
+            projected[start:stop] = (block @ projection).astype(dtype, copy=False)
+    if isinstance(projected, np.memmap):
+        projected.flush()
+    return projected
 
 
 def _prepare_typewise_feature_view(
@@ -54,6 +98,9 @@ def _prepare_typewise_feature_view(
     projected_dim = int(feature_cfg.get("projected_dim", 32))
     dtype = _projection_dtype(config)
     seed = int(config.get("seed", 12345))
+    mmap_dir_value = feature_cfg.get("projection_mmap_dir")
+    mmap_dir = None if mmap_dir_value in {None, ""} else Path(mmap_dir_value)
+    chunk_size = int(feature_cfg.get("projection_chunk_size", 100_000))
     blocks: dict[int, np.ndarray] = {}
     local_index = np.full(graph.num_nodes, -1, dtype=np.int64)
     for type_id, feature in sorted(features.items()):
@@ -66,6 +113,8 @@ def _prepare_typewise_feature_view(
             projected_dim=projected_dim,
             seed=seed,
             dtype=dtype,
+            mmap_dir=mmap_dir,
+            chunk_size=chunk_size,
         )
     return TypewiseFeatureView(blocks=blocks, local_index=local_index)
 

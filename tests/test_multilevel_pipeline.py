@@ -221,6 +221,34 @@ def test_multilevel_pipeline_uses_chunked_aggregation(tmp_path, monkeypatch):
     assert calls[0]["output_dir"] == tmp_path / "level_1"
 
 
+def test_multilevel_pipeline_writes_level_projected_feature_store(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=10,
+        num_items=6,
+        num_tags=4,
+        seed=44,
+        feature_dim=12,
+    )
+    config = small_config(tmp_path / "run")
+    config["features"] = dict(
+        config["features"],
+        projected_dim=3,
+        projection_dtype="float16",
+        projection_mmap_dir=str(tmp_path / "projected_features"),
+        projection_chunk_size=2,
+    )
+
+    results = run_multilevel_coarsening(graph, config)
+
+    assert results
+    projected_path = tmp_path / "projected_features" / "level_1" / "features_type_0_projected.npy"
+    assert projected_path.exists()
+    projected = np.load(projected_path, mmap_mode="r")
+    assert isinstance(projected, np.memmap)
+    assert projected.dtype == np.float16
+    assert projected.shape[1] == 3
+
+
 def test_multilevel_pipeline_accepts_partition_ann_candidate_source(tmp_path):
     graph = generate_synthetic_graph(
         num_users=10,

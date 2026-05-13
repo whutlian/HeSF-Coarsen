@@ -44,6 +44,11 @@ candidates:
   ann_window_size: 8
   ann_budget_K: 8
   simhash_bits: 16
+features:
+  projected_dim: 32
+  projection_dtype: float16
+  projection_mmap_dir: outputs/ogbn_mag_A_cpu_chunked/projected_features
+  projection_chunk_size: 100000
 diagnostics:
   enable_large_graph_envelope: true
   edge_sample_size: 1024

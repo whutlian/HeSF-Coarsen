@@ -86,6 +86,8 @@ scoring:
 features:
   projected_dim: 32
   projection_dtype: float16
+  projection_mmap_dir:
+  projection_chunk_size: 100000
 diagnostics:
   enable_large_graph_envelope: false
   edge_sample_size: 1024
