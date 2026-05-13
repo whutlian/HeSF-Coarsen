@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from math import ceil
 
 import numpy as np
@@ -8,23 +9,105 @@ from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
 from hesf_coarsen.progress import progress_iter
 
 
-def _global_feature_matrix(graph: HeteroGraph) -> np.ndarray | None:
-    if graph.features is None:
+@dataclass(frozen=True)
+class TypewiseFeatureView:
+    blocks: dict[int, np.ndarray]
+    local_index: np.ndarray
+
+
+def _projection_dtype(config: dict) -> np.dtype:
+    name = str(config.get("features", {}).get("projection_dtype", "float16"))
+    dtype = np.dtype(name)
+    if dtype not in {np.dtype("float16"), np.dtype("float32")}:
+        raise ValueError("features.projection_dtype must be float16 or float32")
+    return dtype
+
+
+def _project_type_feature(
+    feature: np.ndarray,
+    *,
+    type_id: int,
+    projected_dim: int,
+    seed: int,
+    dtype: np.dtype,
+) -> np.ndarray:
+    feature = np.asarray(feature, dtype=np.float32)
+    if projected_dim <= 0 or feature.shape[1] <= projected_dim:
+        return feature.astype(dtype, copy=False)
+    rng = np.random.default_rng(int(seed) + 1009 * int(type_id))
+    projection = rng.normal(
+        loc=0.0,
+        scale=1.0 / np.sqrt(float(projected_dim)),
+        size=(feature.shape[1], projected_dim),
+    ).astype(np.float32)
+    return (feature @ projection).astype(dtype)
+
+
+def _prepare_typewise_feature_view(
+    graph: HeteroGraph,
+    features: dict[int, np.ndarray] | None,
+    config: dict,
+) -> TypewiseFeatureView | None:
+    if not features:
         return None
-    max_dim = max(feature.shape[1] for feature in graph.features.values())
-    X = np.zeros((graph.num_nodes, max_dim), dtype=np.float32)
-    for type_id, feature in graph.features.items():
+    feature_cfg = config.get("features", {})
+    projected_dim = int(feature_cfg.get("projected_dim", 32))
+    dtype = _projection_dtype(config)
+    seed = int(config.get("seed", 12345))
+    blocks: dict[int, np.ndarray] = {}
+    local_index = np.full(graph.num_nodes, -1, dtype=np.int64)
+    for type_id, feature in sorted(features.items()):
+        type_id = int(type_id)
         nodes = nodes_of_type(graph, type_id)
-        X[nodes, : feature.shape[1]] = feature
-    return X
+        local_index[nodes] = np.arange(len(nodes), dtype=np.int64)
+        blocks[type_id] = _project_type_feature(
+            feature,
+            type_id=type_id,
+            projected_dim=projected_dim,
+            seed=seed,
+            dtype=dtype,
+        )
+    return TypewiseFeatureView(blocks=blocks, local_index=local_index)
+
+
+def _typewise_feature_pair_cost(
+    graph: HeteroGraph,
+    batch: np.ndarray,
+    feature_view: TypewiseFeatureView | None,
+) -> np.ndarray:
+    if feature_view is None or len(batch) == 0:
+        return np.zeros(len(batch), dtype=np.float32)
+    left = batch[:, 0]
+    right = batch[:, 1]
+    out = np.zeros(len(batch), dtype=np.float32)
+    batch_types = graph.node_type[left]
+    for type_id in np.unique(batch_types):
+        type_id = int(type_id)
+        block = feature_view.blocks.get(type_id)
+        if block is None:
+            continue
+        mask = batch_types == type_id
+        left_local = feature_view.local_index[left[mask]]
+        right_local = feature_view.local_index[right[mask]]
+        valid = (left_local >= 0) & (right_local >= 0)
+        if not np.any(valid):
+            continue
+        masked_positions = np.flatnonzero(mask)
+        diff = (
+            block[left_local[valid]].astype(np.float32)
+            - block[right_local[valid]].astype(np.float32)
+        )
+        out[masked_positions[valid]] = np.sum(diff * diff, axis=1)
+    return out
 
 
 def _numpy_weighted_pairwise_dense_cost(
+    graph: HeteroGraph,
     candidate_pairs: np.ndarray,
     Z: np.ndarray,
     relation_profiles: np.ndarray,
     conv_sketch: np.ndarray,
-    X: np.ndarray | None,
+    feature_view: TypewiseFeatureView | None,
     *,
     lambda_spec: float,
     lambda_rel: float,
@@ -59,11 +142,7 @@ def _numpy_weighted_pairwise_dense_cost(
             (conv_sketch[left] - conv_sketch[right]) ** 2,
             axis=1,
         )
-        feat_values = (
-            np.zeros(len(batch), dtype=np.float32)
-            if X is None
-            else np.sum((X[left] - X[right]) ** 2, axis=1)
-        )
+        feat_values = _typewise_feature_pair_cost(graph, batch, feature_view)
         dense_cost[start:stop] = (
             lambda_spec * spec_values
             + lambda_rel * rel_values
@@ -91,7 +170,11 @@ def score_candidate_pairs(
     lambda_feat = float(scoring.get("lambda_feat", 0.1))
     lambda_conv = float(scoring.get("lambda_conv", 0.3))
     lambda_boundary = float(scoring.get("lambda_boundary", 0.1))
-    X = _global_feature_matrix(graph) if features is not None else None
+    feature_view = (
+        _prepare_typewise_feature_view(graph, features, config)
+        if features is not None and lambda_feat != 0.0
+        else None
+    )
     acceleration = config.get("acceleration", {})
 
     candidate_pairs = pairs[:, :2].astype(np.int64, copy=False)
@@ -112,8 +195,6 @@ def score_candidate_pairs(
                 (relation_profiles.astype(np.float32, copy=False), lambda_rel),
                 (conv_sketch.astype(np.float32, copy=False), lambda_conv),
             ]
-            if X is not None and lambda_feat != 0.0:
-                dense_blocks.append((X.astype(np.float32, copy=False), lambda_feat))
             dense_cost = torch_weighted_pairwise_dense_cost(
                 dense_blocks,
                 candidate_pairs,
@@ -123,6 +204,15 @@ def score_candidate_pairs(
                 progress_config=config,
                 progress_desc="score dense batches",
             )
+            if feature_view is not None and lambda_feat != 0.0:
+                feature_cost = _feature_pair_cost_batches(
+                    graph,
+                    candidate_pairs,
+                    feature_view,
+                    batch_size=int(acceleration.get("scoring_batch_size", 65_536)),
+                    config=config,
+                )
+                dense_cost += np.float32(lambda_feat) * feature_cost
         except (ImportError, RuntimeError, MemoryError):
             if not bool(acceleration.get("fallback_to_numpy", True)):
                 raise
@@ -130,11 +220,12 @@ def score_candidate_pairs(
 
     if not use_torch:
         dense_cost = _numpy_weighted_pairwise_dense_cost(
+            graph,
             candidate_pairs,
             Z,
             relation_profiles,
             conv_sketch,
-            X,
+            feature_view,
             lambda_spec=lambda_spec,
             lambda_rel=lambda_rel,
             lambda_feat=lambda_feat,
@@ -160,3 +251,30 @@ def score_candidate_pairs(
     if not rows:
         return np.empty((0, 3), dtype=np.float64)
     return np.asarray(rows, dtype=np.float64)
+
+
+def _feature_pair_cost_batches(
+    graph: HeteroGraph,
+    candidate_pairs: np.ndarray,
+    feature_view: TypewiseFeatureView,
+    *,
+    batch_size: int,
+    config: dict,
+) -> np.ndarray:
+    batch_size = max(int(batch_size), 1)
+    out = np.empty(candidate_pairs.shape[0], dtype=np.float32)
+    starts = range(0, candidate_pairs.shape[0], batch_size)
+    for start in progress_iter(
+        starts,
+        total=ceil(candidate_pairs.shape[0] / batch_size) if len(candidate_pairs) else 0,
+        desc="score feature batches",
+        config=config,
+        unit="batch",
+    ):
+        stop = min(start + batch_size, candidate_pairs.shape[0])
+        out[start:stop] = _typewise_feature_pair_cost(
+            graph,
+            candidate_pairs[start:stop],
+            feature_view,
+        )
+    return out

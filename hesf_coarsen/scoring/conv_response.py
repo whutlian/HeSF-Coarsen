@@ -11,4 +11,4 @@ def compute_conv_response_sketch(
     H: np.ndarray,
     relation_weights: dict[int, float] | None = None,
 ) -> np.ndarray:
-    return apply_fused_smoothing(graph, H.astype(np.float32), relation_weights)
+    return apply_fused_smoothing(graph, H.astype(np.float32, copy=False), relation_weights)

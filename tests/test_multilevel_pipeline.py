@@ -1,4 +1,5 @@
 import json
+import inspect
 
 import numpy as np
 
@@ -231,3 +232,10 @@ def test_multilevel_pipeline_emits_stage_progress_when_enabled(tmp_path, capsys)
     assert "chebyshev heat components" in captured.err
     assert "scoring relation profiles" in captured.err
     assert "score dense batches" in captured.err
+
+
+def test_multilevel_scoring_path_does_not_build_global_feature_dense_matrix():
+    source = inspect.getsource(multilevel_module)
+
+    assert "_global_feature_matrix" not in source
+    assert "np.concatenate([Z.astype(np.float32), X]" not in source

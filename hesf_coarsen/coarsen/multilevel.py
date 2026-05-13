@@ -155,16 +155,6 @@ def _save_checkpoint(
     _write_json_atomic(level_dir / "checkpoint.json", checkpoint)
 
 
-def _global_feature_matrix(graph: HeteroGraph) -> np.ndarray | None:
-    if graph.features is None:
-        return None
-    width = max(feature.shape[1] for feature in graph.features.values())
-    X = np.zeros((graph.num_nodes, width), dtype=np.float32)
-    for type_id, feature in graph.features.items():
-        X[nodes_of_type(graph, type_id), : feature.shape[1]] = feature
-    return X
-
-
 def _add_fallback_candidates(
     graph: HeteroGraph,
     partition_id: np.ndarray,
@@ -346,13 +336,11 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         progress_message(config, f"level {level}: scoring relation profiles start")
         relation_profiles = compute_relation_profiles(current)
         progress_message(config, f"level {level}: scoring relation profiles done")
-        X = _global_feature_matrix(current)
-        H = Z.astype(np.float32) if X is None else np.concatenate([Z.astype(np.float32), X], axis=1)
         progress_message(config, f"level {level}: scoring fusion weights start")
         relation_weights = compute_relation_fusion_weights(current, Z.astype(np.float32), config)
         progress_message(config, f"level {level}: scoring fusion weights done")
         progress_message(config, f"level {level}: scoring conv response start")
-        conv = compute_conv_response_sketch(current, H, relation_weights)
+        conv = compute_conv_response_sketch(current, Z.astype(np.float32, copy=False), relation_weights)
         progress_message(config, f"level {level}: scoring conv response done")
         progress_message(config, f"level {level}: scoring candidate pairs start")
         scored = score_candidate_pairs(

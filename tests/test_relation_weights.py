@@ -1,7 +1,7 @@
 import numpy as np
 
 from hesf_coarsen.io.schema import HeteroGraph, RelationAdj, RelationSpec
-from hesf_coarsen.sketch.relation_weights import compute_relation_weights
+from hesf_coarsen.sketch.relation_weights import _basis_for_energy, compute_relation_weights
 
 
 def _smooth_noisy_graph() -> HeteroGraph:
@@ -74,3 +74,31 @@ def test_inverse_energy_relation_weight_prefers_smooth_relation():
     assert result.weights[0] > result.weights[1]
     assert result.energy_estimates[0] < result.energy_estimates[1]
     assert result.diagnostics["relation_weighting_method"] == "inverse_energy"
+
+
+def test_feature_smoothness_basis_uses_low_dim_feature_projection():
+    graph = HeteroGraph(
+        4,
+        np.array([0, 0, 1, 1], dtype=np.int32),
+        {},
+        features={
+            0: np.arange(2 * 8, dtype=np.float32).reshape(2, 8),
+            1: np.arange(2 * 6, dtype=np.float32).reshape(2, 6),
+        },
+    )
+
+    basis, source = _basis_for_energy(
+        graph,
+        {
+            "seed": 17,
+            "features": {"projected_dim": 3, "projection_dtype": "float16"},
+            "fusion": {"relation_weighting": {"energy_basis_dim": 5}},
+        },
+        {"energy_basis_dim": 5},
+        None,
+        "feature_smoothness",
+    )
+
+    assert source == "features"
+    assert basis.shape == (4, 3)
+    assert basis.dtype == np.float16

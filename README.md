@@ -231,7 +231,7 @@ acceleration:
   scoring_batch_size: 65536
 ```
 
-This path only handles dense blocks such as sketches and candidate scoring matrices. Relation arrays, candidate generation, and graph structure stay CPU-resident. Candidate scoring uses block-local Torch batches: each batch copies only the unique rows touched by candidate pairs for sketch, relation-profile, convolution-response, and feature distance terms. `max_dense_bytes` applies to the batch-local dense block, and `scoring_batch_size` controls candidate pairs per scoring batch.
+This path only handles dense blocks such as sketches and candidate scoring matrices. Relation arrays, candidate generation, and graph structure stay CPU-resident. Candidate scoring uses block-local Torch batches: each batch copies only the unique rows touched by candidate pairs for sketch, relation-profile, and convolution-response terms. Raw features stay type-wise: scoring gathers same-type feature rows per candidate batch and uses `features.projected_dim` plus `features.projection_dtype` to keep high-dimensional features compressed before distance computation. `max_dense_bytes` applies to the batch-local dense block, and `scoring_batch_size` controls candidate pairs per scoring batch.
 
 ## Diagnostics
 

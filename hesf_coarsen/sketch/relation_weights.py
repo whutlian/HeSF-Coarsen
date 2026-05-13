@@ -57,19 +57,60 @@ def _random_basis(graph: HeteroGraph, dim: int, seed: int) -> np.ndarray:
     return rng.choice(np.array([-1.0, 1.0], dtype=np.float32), size=(graph.num_nodes, int(dim)))
 
 
-def _feature_basis(graph: HeteroGraph) -> np.ndarray | None:
+def _feature_projection_dtype(config: dict[str, Any]) -> np.dtype:
+    name = str(config.get("features", {}).get("projection_dtype", "float16"))
+    dtype = np.dtype(name)
+    if dtype not in {np.dtype("float16"), np.dtype("float32")}:
+        raise ValueError("features.projection_dtype must be float16 or float32")
+    return dtype
+
+
+def _project_feature_block(
+    feature: np.ndarray,
+    *,
+    type_id: int,
+    target_dim: int,
+    seed: int,
+    dtype: np.dtype,
+) -> np.ndarray:
+    feature = np.asarray(feature, dtype=np.float32)
+    if feature.shape[1] <= target_dim:
+        out = np.zeros((feature.shape[0], target_dim), dtype=dtype)
+        out[:, : feature.shape[1]] = feature.astype(dtype, copy=False)
+        return out
+    rng = np.random.default_rng(int(seed) + 1009 * int(type_id))
+    projection = rng.normal(
+        loc=0.0,
+        scale=1.0 / np.sqrt(float(target_dim)),
+        size=(feature.shape[1], target_dim),
+    ).astype(np.float32)
+    return (feature @ projection).astype(dtype)
+
+
+def _feature_basis(graph: HeteroGraph, config: dict[str, Any]) -> np.ndarray | None:
     if not graph.features:
         return None
-    width = max(feature.shape[1] for feature in graph.features.values())
-    basis = np.zeros((graph.num_nodes, width), dtype=np.float32)
+    max_width = max(feature.shape[1] for feature in graph.features.values())
+    projected_dim = int(config.get("features", {}).get("projected_dim", 32))
+    width = max_width if projected_dim <= 0 else min(max_width, projected_dim)
+    dtype = _feature_projection_dtype(config)
+    seed = int(config.get("seed", 12345))
+    basis = np.zeros((graph.num_nodes, width), dtype=dtype)
     for type_id, feature in graph.features.items():
-        basis[nodes_of_type(graph, int(type_id)), : feature.shape[1]] = feature.astype(np.float32, copy=False)
+        basis[nodes_of_type(graph, int(type_id))] = _project_feature_block(
+            feature,
+            type_id=int(type_id),
+            target_dim=width,
+            seed=seed,
+            dtype=dtype,
+        )
     return basis
 
 
 def _basis_for_energy(
     graph: HeteroGraph,
     config: dict[str, Any],
+    weight_cfg: dict[str, Any],
     basis: np.ndarray | None,
     method: str,
 ) -> tuple[np.ndarray, str]:
@@ -81,11 +122,11 @@ def _basis_for_energy(
             raise ValueError("basis must have one row per graph node")
         return B, "provided"
     if method == "feature_smoothness":
-        feature_basis = _feature_basis(graph)
+        feature_basis = _feature_basis(graph, config)
         if feature_basis is not None:
             return feature_basis, "features"
-    dim = int(config.get("energy_basis_dim", 8))
-    seed = int(config.get("seed", 12345))
+    dim = int(weight_cfg.get("energy_basis_dim", 8))
+    seed = int(weight_cfg.get("seed", config.get("seed", 12345)))
     return _random_basis(graph, dim, seed), "random"
 
 
@@ -164,7 +205,7 @@ def compute_relation_weights(
     energies = {relation_id: 0.0 for relation_id in relation_ids}
     basis_source = None
     if method in {"inverse_energy", "feature_smoothness"}:
-        B, basis_source = _basis_for_energy(graph, weight_cfg, basis, method)
+        B, basis_source = _basis_for_energy(graph, config, weight_cfg, basis, method)
         for relation_id in progress_iter(
             relation_ids,
             total=len(relation_ids),

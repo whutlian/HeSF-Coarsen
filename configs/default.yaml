@@ -85,6 +85,7 @@ scoring:
   lambda_boundary: 0.1
 features:
   projected_dim: 32
+  projection_dtype: float16
 diagnostics:
   enable_large_graph_envelope: false
   edge_sample_size: 1024

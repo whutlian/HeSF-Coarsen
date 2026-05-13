@@ -17,6 +17,7 @@ from hesf_coarsen.ops.torch_dense import (
     torch_weighted_pairwise_dense_cost,
 )
 from hesf_coarsen.scoring.merge_cost import score_candidate_pairs
+from hesf_coarsen.scoring import merge_cost as merge_cost_module
 from hesf_coarsen.scoring.relation_profile import compute_relation_profiles
 from hesf_coarsen.sketch.lowpass import compute_lowpass_sketch
 
@@ -333,6 +334,80 @@ def test_torch_scoring_backend_uses_block_local_dense_batches():
     torch_scores = score_candidate_pairs(graph, pairs, z, profiles, conv, None, torch_config)
 
     assert np.allclose(torch_scores, numpy_scores, atol=1e-5)
+
+
+def test_feature_scoring_uses_typewise_blocks_without_global_dense_matrix(monkeypatch):
+    graph = HeteroGraph(
+        num_nodes=5,
+        node_type=np.array([0, 0, 0, 1, 1], dtype=np.int32),
+        relations={},
+        features={
+            0: np.array(
+                [
+                    [1.0, 2.0, 3.0],
+                    [2.0, 3.0, 5.0],
+                    [4.0, 2.0, 1.0],
+                ],
+                dtype=np.float32,
+            ),
+            1: np.array(
+                [
+                    [10.0, 1.0],
+                    [8.0, 4.0],
+                ],
+                dtype=np.float32,
+            ),
+        },
+    )
+    pairs = np.array([[0, 1, 0.0], [3, 4, 0.0]], dtype=np.float64)
+    z = np.zeros((graph.num_nodes, 2), dtype=np.float32)
+    profiles = np.zeros((graph.num_nodes, 2), dtype=np.float32)
+    conv = np.zeros((graph.num_nodes, 2), dtype=np.float32)
+    config = {
+        "features": {"projected_dim": 4},
+        "scoring": {
+            "lambda_spec": 0.0,
+            "lambda_rel": 0.0,
+            "lambda_feat": 1.0,
+            "lambda_conv": 0.0,
+            "lambda_boundary": 0.0,
+        },
+        "acceleration": {"dense_backend": "numpy", "scoring_batch_size": 1},
+    }
+
+    original_zeros = merge_cost_module.np.zeros
+
+    def reject_global_dense(shape, *args, **kwargs):
+        if shape == (graph.num_nodes, 3):
+            raise AssertionError("feature scoring must not build a global dense feature matrix")
+        return original_zeros(shape, *args, **kwargs)
+
+    monkeypatch.setattr(merge_cost_module.np, "zeros", reject_global_dense)
+
+    scored = score_candidate_pairs(graph, pairs, z, profiles, conv, graph.features, config)
+
+    assert np.allclose(scored[:, 2], [6.0, 13.0])
+
+
+def test_feature_projection_is_typewise_low_dim_float16():
+    graph = HeteroGraph(
+        num_nodes=3,
+        node_type=np.array([0, 0, 0], dtype=np.int32),
+        relations={},
+        features={
+            0: np.arange(3 * 8, dtype=np.float32).reshape(3, 8),
+        },
+    )
+
+    view = merge_cost_module._prepare_typewise_feature_view(
+        graph,
+        graph.features,
+        {"seed": 11, "features": {"projected_dim": 2, "projection_dtype": "float16"}},
+    )
+
+    assert view is not None
+    assert view.blocks[0].shape == (3, 2)
+    assert view.blocks[0].dtype == np.float16
 
 
 def test_lowpass_sketch_accepts_torch_dense_backend():
