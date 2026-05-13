@@ -194,6 +194,38 @@ def _config_with_level_feature_store(config: dict, level: int) -> dict:
     return level_config
 
 
+def _feature_aggregation_options(config: dict) -> tuple[str, np.ndarray | dict[int, np.ndarray] | None, dict]:
+    coarsening_cfg = config.get("coarsening", {})
+    method = str(coarsening_cfg.get("feature_aggregation", "mean")).lower()
+    weights = coarsening_cfg.get("feature_aggregation_weights")
+    weight_path = coarsening_cfg.get("feature_aggregation_weight_path")
+    if weight_path not in {None, ""}:
+        weights = np.load(Path(weight_path))
+    elif isinstance(weights, dict):
+        weights = {
+            int(type_id): np.asarray(values, dtype=np.float32)
+            for type_id, values in weights.items()
+        }
+    elif weights is not None:
+        weights = np.asarray(weights, dtype=np.float32)
+    pagerank_iterations = int(coarsening_cfg.get("feature_aggregation_pagerank_iterations", 20))
+    pagerank_damping = float(coarsening_cfg.get("feature_aggregation_pagerank_damping", 0.85))
+    diagnostics = {
+        "method": method,
+        "uses_weights": bool(method != "mean"),
+        "weight_source": {
+            "mean": "cluster_count",
+            "degree_weighted": "incident_edge_weight_mass",
+            "pagerank_weighted": "pagerank",
+            "custom_weight": "custom",
+        }.get(method, method),
+        "custom_weight_path": None if weight_path in {None, ""} else str(weight_path),
+        "pagerank_iterations": pagerank_iterations if method == "pagerank_weighted" else None,
+        "pagerank_damping": pagerank_damping if method == "pagerank_weighted" else None,
+    }
+    return method, weights, diagnostics
+
+
 def _make_candidate_store(
     graph: HeteroGraph,
     config: dict,
@@ -385,10 +417,12 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         progress_message(config, f"level {level}: matching done")
         aggregation_chunk_size = int(config.get("coarsening", {}).get("aggregation_chunk_size", 1_000_000))
         aggregation_reducer = str(config.get("coarsening", {}).get("aggregation_reducer", "sort"))
+        feature_aggregation, feature_weights, feature_aggregation_diag = _feature_aggregation_options(config)
         progress_message(
             config,
             f"level {level}: chunked aggregation start "
-            f"(chunk_size={aggregation_chunk_size}, reducer={aggregation_reducer})",
+            f"(chunk_size={aggregation_chunk_size}, reducer={aggregation_reducer}, "
+            f"feature_aggregation={feature_aggregation})",
         )
         coarse = coarsen_graph_chunked(
             current,
@@ -396,6 +430,14 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             chunk_size=aggregation_chunk_size,
             output_dir=level_dir,
             reducer=aggregation_reducer,
+            feature_aggregation=feature_aggregation,
+            feature_weights=feature_weights,
+            pagerank_iterations=int(
+                config.get("coarsening", {}).get("feature_aggregation_pagerank_iterations", 20)
+            ),
+            pagerank_damping=float(
+                config.get("coarsening", {}).get("feature_aggregation_pagerank_damping", 0.85)
+            ),
         )
         progress_message(config, f"level {level}: chunked aggregation done")
         runtime["matching_and_aggregation"] = perf_counter() - start
@@ -451,6 +493,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             "metapath_sketch",
             {"enabled": False, "num_paths": 0, "paths": []},
         )
+        diagnostics["feature_aggregation"] = feature_aggregation_diag
         diagnostics_cfg = config.get("diagnostics", {})
         if bool(diagnostics_cfg.get("enable_spectral", True)):
             progress_message(config, f"level {level}: spectral diagnostics start")

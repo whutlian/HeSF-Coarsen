@@ -221,6 +221,44 @@ def test_multilevel_pipeline_uses_chunked_aggregation(tmp_path, monkeypatch):
     assert calls[0]["output_dir"] == tmp_path / "level_1"
 
 
+def test_multilevel_pipeline_records_feature_aggregation_method(tmp_path, monkeypatch):
+    graph = generate_synthetic_graph(
+        num_users=10,
+        num_items=6,
+        num_tags=4,
+        seed=45,
+    )
+    config = small_config(tmp_path)
+    config["coarsening"] = dict(
+        config["coarsening"],
+        feature_aggregation="degree_weighted",
+    )
+    calls = []
+
+    def fake_chunked_aggregation(graph_arg, assignment, **kwargs):
+        calls.append(kwargs)
+        return aggregate_edges.coarsen_graph(
+            graph_arg,
+            assignment,
+            feature_aggregation=kwargs.get("feature_aggregation"),
+            feature_weights=kwargs.get("feature_weights"),
+        )
+
+    monkeypatch.setattr(
+        multilevel_module,
+        "coarsen_graph_chunked",
+        fake_chunked_aggregation,
+        raising=False,
+    )
+
+    results = run_multilevel_coarsening(graph, config)
+
+    assert results
+    assert calls[0]["feature_aggregation"] == "degree_weighted"
+    assert results[0].diagnostics["feature_aggregation"]["method"] == "degree_weighted"
+    assert results[0].diagnostics["feature_aggregation"]["uses_weights"] is True
+
+
 def test_multilevel_pipeline_writes_level_projected_feature_store(tmp_path):
     graph = generate_synthetic_graph(
         num_users=10,

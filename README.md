@@ -243,6 +243,7 @@ This path only handles dense blocks such as sketches and candidate scoring matri
 Diagnostics include node counts by type, edge counts by relation, compression ratio, candidate count distribution, candidate source counts, matched-pair count, singleton ratio, relation weight preservation, and per-stage runtime.
 Sketch diagnostics are also written for each level. They include the low-pass sketch method, dimension, dtype, Chebyshev order and heat times when applicable, relation fusion weights and sampled `Z_X` energy estimates, estimated beta-weighted meta-path fused-operator metadata, NaN/Inf counts, row norm stats, and per-component sketch runtime. See `docs/sketch_methods.md` for configuration details and guardrails.
 Spectral diagnostics are enabled by default and are written under `diagnostics.json` as `spectral`. They report sketch Dirichlet energy before/after coarsening, relation-weighted fused energy preservation, relation-wise energy errors, ChebHeat sketch inner-product error, optional small-graph eigenvalue sanity, and small-graph baseline comparisons against random, heavy-edge, GraphZoom-style, and ConvMatch-style pairings.
+Coarse feature aggregation is controlled by `coarsening.feature_aggregation`. The default `mean` preserves the existing cluster average. `degree_weighted`, `pagerank_weighted`, and `custom_weight` compute weighted means and record the selected method under `diagnostics.json` as `feature_aggregation`.
 
 Enable sampled large-graph envelopes with config:
 

@@ -12,9 +12,120 @@ from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.io.schema import HeteroGraph, RelationAdj, RelationSpec, nodes_of_type, validate_schema
 
 
-def _aggregate_features(graph: HeteroGraph, assignment: Assignment) -> dict[int, np.ndarray] | None:
+_FEATURE_AGGREGATION_METHODS = {
+    "mean",
+    "degree_weighted",
+    "pagerank_weighted",
+    "custom_weight",
+}
+
+
+def _incident_weight_mass(graph: HeteroGraph) -> np.ndarray:
+    weights = np.zeros(graph.num_nodes, dtype=np.float32)
+    for rel in graph.relations.values():
+        np.add.at(weights, rel.src, rel.weight.astype(np.float32, copy=False))
+        np.add.at(weights, rel.dst, rel.weight.astype(np.float32, copy=False))
+    return weights
+
+
+def _pagerank_weights(
+    graph: HeteroGraph,
+    *,
+    iterations: int = 20,
+    damping: float = 0.85,
+) -> np.ndarray:
+    if graph.num_nodes == 0:
+        return np.empty(0, dtype=np.float32)
+    iterations = max(int(iterations), 1)
+    damping = min(max(float(damping), 0.0), 1.0)
+    degree = _incident_weight_mass(graph).astype(np.float64, copy=False)
+    rank = np.full(graph.num_nodes, 1.0 / graph.num_nodes, dtype=np.float64)
+    teleport = (1.0 - damping) / graph.num_nodes
+    for _ in range(iterations):
+        next_rank = np.full(graph.num_nodes, teleport, dtype=np.float64)
+        dangling_mass = float(rank[degree <= 0.0].sum())
+        if dangling_mass:
+            next_rank += damping * dangling_mass / graph.num_nodes
+        for rel in graph.relations.values():
+            weight = rel.weight.astype(np.float64, copy=False)
+            src_denom = np.maximum(degree[rel.src], 1.0e-12)
+            dst_denom = np.maximum(degree[rel.dst], 1.0e-12)
+            np.add.at(next_rank, rel.dst, damping * rank[rel.src] * weight / src_denom)
+            np.add.at(next_rank, rel.src, damping * rank[rel.dst] * weight / dst_denom)
+        total = float(next_rank.sum())
+        rank = next_rank / max(total, 1.0e-12)
+    return rank.astype(np.float32)
+
+
+def _custom_feature_weights(
+    graph: HeteroGraph,
+    feature_weights: np.ndarray | dict[int, np.ndarray] | None,
+) -> np.ndarray:
+    if feature_weights is None:
+        raise ValueError("coarsening.feature_aggregation=custom_weight requires feature weights")
+    if isinstance(feature_weights, dict):
+        weights = np.zeros(graph.num_nodes, dtype=np.float32)
+        for type_id, values in feature_weights.items():
+            nodes = nodes_of_type(graph, int(type_id))
+            typed = np.asarray(values, dtype=np.float32)
+            if typed.shape != (len(nodes),):
+                raise ValueError(
+                    f"custom feature weights for type {type_id} must have shape {(len(nodes),)}"
+                )
+            weights[nodes] = typed
+    else:
+        weights = np.asarray(feature_weights, dtype=np.float32)
+        if weights.shape != (graph.num_nodes,):
+            raise ValueError("custom feature weights must have shape [num_nodes]")
+    if not np.all(np.isfinite(weights)):
+        raise ValueError("custom feature weights must be finite")
+    if np.any(weights < 0.0):
+        raise ValueError("custom feature weights must be non-negative")
+    return weights.astype(np.float32, copy=False)
+
+
+def _feature_weight_vector(
+    graph: HeteroGraph,
+    method: str,
+    *,
+    feature_weights: np.ndarray | dict[int, np.ndarray] | None = None,
+    pagerank_iterations: int = 20,
+    pagerank_damping: float = 0.85,
+) -> np.ndarray:
+    method = str(method).lower()
+    if method not in _FEATURE_AGGREGATION_METHODS:
+        raise ValueError(f"unsupported coarsening.feature_aggregation: {method}")
+    if method == "mean":
+        return np.ones(graph.num_nodes, dtype=np.float32)
+    if method == "degree_weighted":
+        return _incident_weight_mass(graph)
+    if method == "pagerank_weighted":
+        return _pagerank_weights(
+            graph,
+            iterations=pagerank_iterations,
+            damping=pagerank_damping,
+        )
+    return _custom_feature_weights(graph, feature_weights)
+
+
+def _aggregate_features(
+    graph: HeteroGraph,
+    assignment: Assignment,
+    *,
+    feature_aggregation: str = "mean",
+    feature_weights: np.ndarray | dict[int, np.ndarray] | None = None,
+    pagerank_iterations: int = 20,
+    pagerank_damping: float = 0.85,
+) -> dict[int, np.ndarray] | None:
     if graph.features is None:
         return None
+    node_weights = _feature_weight_vector(
+        graph,
+        feature_aggregation,
+        feature_weights=feature_weights,
+        pagerank_iterations=pagerank_iterations,
+        pagerank_damping=pagerank_damping,
+    )
     result: dict[int, np.ndarray] = {}
     for type_id, feature in graph.features.items():
         old_nodes = nodes_of_type(graph, type_id)
@@ -23,10 +134,21 @@ def _aggregate_features(graph: HeteroGraph, assignment: Assignment) -> dict[int,
             result[type_id] = np.empty((0, feature.shape[1]), dtype=np.float32)
             continue
         rows = np.zeros((len(supernodes), feature.shape[1]), dtype=np.float32)
+        fallback_rows = np.zeros_like(rows)
         positions = np.searchsorted(supernodes, assignment.assignment[old_nodes])
-        np.add.at(rows, positions, feature.astype(np.float32, copy=False))
+        typed_features = feature.astype(np.float32, copy=False)
+        typed_weights = node_weights[old_nodes].astype(np.float32, copy=False)
+        np.add.at(rows, positions, typed_features * typed_weights[:, None])
+        np.add.at(fallback_rows, positions, typed_features)
         counts = np.bincount(positions, minlength=len(supernodes)).astype(np.float32)
-        rows /= np.maximum(counts[:, None], 1.0)
+        weight_sums = np.bincount(
+            positions,
+            weights=typed_weights,
+            minlength=len(supernodes),
+        ).astype(np.float32)
+        weighted = weight_sums > 0.0
+        rows[weighted] /= weight_sums[weighted][:, None]
+        rows[~weighted] = fallback_rows[~weighted] / np.maximum(counts[~weighted][:, None], 1.0)
         result[type_id] = rows
     return result
 
@@ -60,7 +182,15 @@ def _aggregate_labels(graph: HeteroGraph, assignment: Assignment) -> np.ndarray 
     return labels
 
 
-def coarsen_graph(graph: HeteroGraph, assignment: Assignment) -> HeteroGraph:
+def coarsen_graph(
+    graph: HeteroGraph,
+    assignment: Assignment,
+    *,
+    feature_aggregation: str = "mean",
+    feature_weights: np.ndarray | dict[int, np.ndarray] | None = None,
+    pagerank_iterations: int = 20,
+    pagerank_damping: float = 0.85,
+) -> HeteroGraph:
     if assignment.assignment.shape != (graph.num_nodes,):
         raise ValueError("assignment length must equal graph.num_nodes")
     for node, supernode in enumerate(assignment.assignment):
@@ -103,7 +233,14 @@ def coarsen_graph(graph: HeteroGraph, assignment: Assignment) -> HeteroGraph:
         node_type=assignment.supernode_type.copy(),
         relations=relations,
         relation_specs=specs,
-        features=_aggregate_features(graph, assignment),
+        features=_aggregate_features(
+            graph,
+            assignment,
+            feature_aggregation=feature_aggregation,
+            feature_weights=feature_weights,
+            pagerank_iterations=pagerank_iterations,
+            pagerank_damping=pagerank_damping,
+        ),
         labels=_aggregate_labels(graph, assignment),
     )
     validate_schema(coarse)
@@ -116,6 +253,10 @@ def coarsen_graph_chunked(
     chunk_size: int = 1_000_000,
     output_dir: str | Path | None = None,
     reducer: str = "sort",
+    feature_aggregation: str = "mean",
+    feature_weights: np.ndarray | dict[int, np.ndarray] | None = None,
+    pagerank_iterations: int = 20,
+    pagerank_damping: float = 0.85,
 ) -> HeteroGraph:
     """Coarsen relation edges in chunks.
 
@@ -179,7 +320,14 @@ def coarsen_graph_chunked(
         node_type=assignment.supernode_type.copy(),
         relations=relations,
         relation_specs=specs,
-        features=_aggregate_features(graph, assignment),
+        features=_aggregate_features(
+            graph,
+            assignment,
+            feature_aggregation=feature_aggregation,
+            feature_weights=feature_weights,
+            pagerank_iterations=pagerank_iterations,
+            pagerank_damping=pagerank_damping,
+        ),
         labels=_aggregate_labels(graph, assignment),
     )
     validate_schema(coarse)

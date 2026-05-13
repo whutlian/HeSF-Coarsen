@@ -20,6 +20,7 @@ def test_default_config_uses_canonical_sketch_schema():
     assert config["fusion"]["symmetric_relation_scale"] == 0.5
     assert config["fusion"]["estimate_operator_norm"] is True
     assert config["fusion"]["chebyshev_rescale_if_needed"] is True
+    assert config["coarsening"]["feature_aggregation"] == "mean"
     assert "include_metapath_filters" not in config["fusion"]
     assert "include_metapath_filters" not in DEFAULT_CONFIG["fusion"]
 
