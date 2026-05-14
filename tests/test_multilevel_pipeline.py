@@ -89,7 +89,12 @@ def test_multilevel_pipeline_writes_score_term_diagnostics(tmp_path):
     result = run_multilevel_coarsening(graph, config)[0]
 
     score_terms = result.diagnostics["score_terms"]
+    score_contributions = result.diagnostics["score_contributions"]
+    score_share = result.diagnostics["score_contribution_share"]
     assert set(score_terms) == {"spec", "rel", "feat", "conv", "boundary"}
+    assert set(score_contributions) == {"spec", "rel", "feat", "conv", "boundary"}
+    assert set(score_share) == {"spec", "rel", "feat", "conv", "boundary"}
+    assert np.isclose(sum(score_share.values()), 1.0)
     for term_stats in score_terms.values():
         assert term_stats["count"] > 0
         assert term_stats["sample_count"] > 0
@@ -100,6 +105,26 @@ def test_multilevel_pipeline_writes_score_term_diagnostics(tmp_path):
     with (tmp_path / "level_1" / "diagnostics.json").open("r", encoding="utf-8") as handle:
         saved = json.load(handle)
     assert saved["score_terms"]["spec"]["count"] == score_terms["spec"]["count"]
+    assert "score_contribution_share" in saved
+
+
+def test_multilevel_pipeline_writes_label_projection_task_metrics(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=8,
+        num_items=5,
+        num_tags=3,
+        seed=126,
+    )
+    config = small_config(tmp_path)
+    config["diagnostics"] = dict(config["diagnostics"], enable_spectral=False)
+
+    result = run_multilevel_coarsening(graph, config)[0]
+
+    task = result.diagnostics["task"]
+    assert task["model"] == "majority_label_projection"
+    assert task["labeled_nodes"] > 0
+    assert 0.0 <= task["micro_f1"] <= 1.0
+    assert 0.0 <= task["macro_f1"] <= 1.0
 
 
 def test_level_config_caps_matches_by_remaining_target_ratio():

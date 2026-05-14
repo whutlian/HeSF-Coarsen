@@ -66,8 +66,11 @@ def test_invariant_validator_reports_valid_and_invalid_assignment(tmp_path):
 def test_experiment_scripts_support_help():
     scripts = [
         "run_sanity.py",
+        "run_hgb_stage_b.py",
         "run_hgb_sweep.py",
         "run_hgb_stage_b_ablation.py",
+        "summarize_stage_b.py",
+        "compare_stage_b.py",
         "compare_hgb_ablation.py",
         "run_ogbn_mag_subset.py",
         "run_ogbn_mag_envelope.py",
@@ -211,6 +214,27 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
             "relation_energy_relative_error_max": 0.4,
             "chebheat_sketch_inner_product_relative_error": 0.5,
         },
+        "task": {"micro_f1": 0.7, "macro_f1": 0.6},
+        "candidate_count_total": 4,
+        "candidate_source_counts": {"bucket": 3, "onehop": 1},
+        "matched_pairs": 2,
+        "matched_pairs_by_source": {"bucket": 2},
+        "score_terms": {
+            "spec": {"count": 2, "mean": 10.0, "p50": 9.0, "p95": 12.0, "p99": 13.0},
+            "rel": {"count": 2, "mean": 1.0, "p50": 1.0, "p95": 2.0, "p99": 2.0},
+        },
+        "score_contributions": {
+            "spec": {"count": 2, "mean": 0.4, "p50": 0.3, "p95": 0.8, "p99": 0.9},
+            "rel": {"count": 2, "mean": 0.2, "p50": 0.1, "p95": 0.4, "p99": 0.5},
+        },
+        "score_contribution_share": {
+            "spec": 0.4,
+            "rel": 0.2,
+            "feat": 0.1,
+            "conv": 0.2,
+            "boundary": 0.1,
+        },
+        "large_graph_envelope": {"process_rss_bytes": 2 * 1024**3},
     }
     (level_1 / "diagnostics.json").write_text(
         json.dumps({**common, "original_nodes": 100, "coarse_nodes": 70, "compression_ratio": 0.7}),
@@ -236,11 +260,18 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
 
     final_rows = list(csv.DictReader((tmp_path / "summary" / "final_summary.csv").open()))
     quality_rows = list(csv.DictReader((tmp_path / "summary" / "quality_summary.csv").open()))
+    score_rows = list(csv.DictReader((tmp_path / "summary" / "score_term_scale.csv").open()))
+    source_rows = list(csv.DictReader((tmp_path / "summary" / "candidate_source_pareto.csv").open()))
+    task_rows = list(csv.DictReader((tmp_path / "summary" / "task_summary.csv").open()))
+    resource_run_rows = list(csv.DictReader((tmp_path / "summary" / "resource_summary_runlevel.csv").open()))
+    target_rows = list(csv.DictReader((tmp_path / "summary" / "target_check.csv").open()))
     report = (tmp_path / "summary" / "report.md").read_text(encoding="utf-8")
 
     assert len(final_rows) == 1
+    assert (tmp_path / "summary" / "run_final_summary.csv").exists()
     assert final_rows[0]["run_count_unique"] == "1"
     assert final_rows[0]["level_row_count"] == "2"
+    assert final_rows[0]["final_level"] == "2"
     assert final_rows[0]["initial_nodes"] == "100"
     assert final_rows[0]["final_nodes"] == "52"
     assert np.isclose(float(final_rows[0]["final_cumulative_ratio"]), 0.52)
@@ -248,9 +279,30 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert final_rows[0]["target_hit"] == "true"
     assert final_rows[0]["best_level"] == "2"
     assert final_rows[0]["config.sketch.method"] == "chebyshev_heat"
+    assert final_rows[0]["final_DEE"] == "0.1"
+    assert final_rows[0]["final_FWE_weighted"] == "0.2"
+    assert final_rows[0]["final_FSE_unweighted"] == "0.3"
+    assert final_rows[0]["final_REE_max"] == "0.4"
+    assert final_rows[0]["final_SIPE"] == "0.5"
+    assert final_rows[0]["task_macro_f1"] == "0.6"
+    assert final_rows[0]["score_contribution_share_spec"] == "0.4"
+    assert np.isclose(float(final_rows[0]["runtime_total_run"]), 0.0)
+    assert np.isclose(float(final_rows[0]["peak_rss_gb"]), 2.0)
     assert "spectral_fused_sketch_energy_relative_error" in quality_rows[0]
+    assert {row["term"] for row in score_rows} == {"spec", "rel", "feat", "conv", "boundary"}
+    spec_score = next(row for row in score_rows if row["term"] == "spec")
+    assert spec_score["raw_mean"] == "10.0"
+    assert spec_score["weighted_normalized_mean"] == "0.4"
+    bucket_source = next(row for row in source_rows if row["source"] == "bucket")
+    assert bucket_source["candidate_count"] == "3.0"
+    assert bucket_source["selected_count"] == "2.0"
+    assert task_rows[0]["task_macro_f1"] == "0.6"
+    assert resource_run_rows[0]["peak_rss_gb"] == "2.0"
+    assert target_rows[0]["target_hit_rate"] == "1.0"
     assert "Unique runs: 1" in report
     assert "Level rows: 2" in report
+    assert "| variant | final ratio | DEE ↓ | FSE-unweighted ↓ | REE-max ↓ | SIPE ↓ | macro-F1 ↑ | runtime ↓ | peak RAM |" in report
+    assert "final_DEE" in report
 
 
 def test_compare_hgb_ablation_groups_metrics(tmp_path):
@@ -281,6 +333,27 @@ def test_compare_hgb_ablation_groups_metrics(tmp_path):
     assert np.isclose(float(rows[0]["final_cumulative_ratio_mean"]), 0.5)
 
 
+def test_compare_hgb_ablation_has_stage_b_default_metrics(tmp_path):
+    from experiments.scripts.compare_hgb_ablation import compare_hgb_ablation
+
+    input_csv = tmp_path / "run_final_summary.csv"
+    with input_csv.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["dataset", "variant", "row_type", "final_DEE"])
+        writer.writeheader()
+        writer.writerow({"dataset": "ACM", "variant": "base", "row_type": "final", "final_DEE": "0.2"})
+    output_csv = tmp_path / "compare.csv"
+
+    compare_hgb_ablation(
+        summary=input_csv,
+        output=output_csv,
+        group_by=["dataset", "variant"],
+    )
+
+    rows = list(csv.DictReader(output_csv.open()))
+    assert rows[0]["run_count"] == "1"
+    assert rows[0]["final_DEE_mean"] == "0.2"
+
+
 def test_stage_b_ablation_dry_run_writes_variants(tmp_path):
     from experiments.scripts.run_hgb_stage_b_ablation import main
 
@@ -298,8 +371,11 @@ def test_stage_b_ablation_dry_run_writes_variants(tmp_path):
             "onehop_twohop_bucket",
             "--candidate-K",
             "8",
-            "--sketch-dim",
+            "--sketch-dims",
             "16",
+            "32",
+            "--sketch-orders",
+            "3",
             "--seeds",
             "12345",
             "--variants",
@@ -314,12 +390,18 @@ def test_stage_b_ablation_dry_run_writes_variants(tmp_path):
 
     configs = {path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8")) for path in tmp_path.glob("hgb_*/config.yaml")}
     assert exit_code == 0
-    assert len(configs) == 5
+    if not configs:
+        configs = {path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8")) for path in tmp_path.glob("stageB_*/config.yaml")}
+    assert len(configs) == 10
+    assert all(name.startswith("stageB_") for name in configs)
     assert any("base" in name for name in configs)
     assert any(cfg["fusion"]["relation_weighting"]["method"] == "uniform" for cfg in configs.values())
     assert any(cfg["metapath_sketch"]["enabled"] is False for cfg in configs.values())
     assert any(cfg["sketch"]["method"] == "lazy" for cfg in configs.values())
     assert any(cfg["scoring"]["lambda_conv"] == 0.0 for cfg in configs.values())
+    assert any(cfg["sketch"]["dim"] == 32 for cfg in configs.values())
+    assert all(cfg["sketch"]["order"] == 3 for cfg in configs.values())
+    assert all(cfg["scoring"]["normalization"] == "p95" for cfg in configs.values())
 
 
 def test_sanity_runner_outputs_summary_and_report(tmp_path):

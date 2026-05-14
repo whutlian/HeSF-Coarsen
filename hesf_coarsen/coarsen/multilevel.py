@@ -38,6 +38,7 @@ from hesf_coarsen.scoring.conv_response import compute_conv_response_sketch
 from hesf_coarsen.scoring.merge_cost import (
     ScoreTermAccumulator,
     prepare_pair_scoring_context,
+    score_term_contributions,
     score_pair_block_with_terms,
 )
 from hesf_coarsen.scoring.relation_profile import compute_relation_profiles
@@ -293,6 +294,68 @@ def _resolved_config_diagnostics(config: dict) -> dict:
     }
 
 
+def _score_contribution_share(summary: dict[str, dict]) -> dict[str, float]:
+    means = {
+        name: max(float(stats.get("mean", 0.0) or 0.0), 0.0)
+        for name, stats in summary.items()
+    }
+    total = float(sum(means.values()))
+    if total <= 0.0:
+        return {name: 0.0 for name in means}
+    return {name: float(value / total) for name, value in means.items()}
+
+
+def _classification_f1_from_labels(truth: np.ndarray, predicted: np.ndarray) -> dict:
+    truth = np.asarray(truth).reshape(-1)
+    predicted = np.asarray(predicted).reshape(-1)
+    if truth.shape != predicted.shape:
+        raise ValueError("truth and predicted labels must have the same shape")
+    valid = (truth >= 0) & (predicted >= 0)
+    base = {
+        "model": "majority_label_projection",
+        "train_on": "coarse_graph_majority_labels",
+        "eval_on": "original_labels_projected_from_coarse",
+        "labeled_nodes": int(np.sum(valid)),
+    }
+    if not np.any(valid):
+        return {**base, "micro_f1": 0.0, "macro_f1": 0.0}
+    y_true = truth[valid].astype(np.int64, copy=False)
+    y_pred = predicted[valid].astype(np.int64, copy=False)
+    f1_values: list[float] = []
+    for label in np.union1d(y_true, y_pred):
+        true_pos = int(np.sum((y_true == label) & (y_pred == label)))
+        false_pos = int(np.sum((y_true != label) & (y_pred == label)))
+        false_neg = int(np.sum((y_true == label) & (y_pred != label)))
+        denom = 2 * true_pos + false_pos + false_neg
+        f1_values.append(0.0 if denom == 0 else float(2 * true_pos / denom))
+    return {
+        **base,
+        "micro_f1": float(np.mean(y_true == y_pred)),
+        "macro_f1": float(np.mean(f1_values) if f1_values else 0.0),
+    }
+
+
+def _task_diagnostics(
+    original: HeteroGraph,
+    coarse: HeteroGraph,
+    cumulative_assignment: np.ndarray | None,
+) -> dict:
+    if original.labels is None or coarse.labels is None or cumulative_assignment is None:
+        return {
+            "model": "majority_label_projection",
+            "train_on": "coarse_graph_majority_labels",
+            "eval_on": "original_labels_projected_from_coarse",
+            "labeled_nodes": 0,
+            "micro_f1": 0.0,
+            "macro_f1": 0.0,
+            "skipped": True,
+        }
+    projected = np.asarray(coarse.labels).reshape(-1)[cumulative_assignment]
+    result = _classification_f1_from_labels(np.asarray(original.labels).reshape(-1), projected)
+    result["skipped"] = False
+    return result
+
+
 def _config_with_level_feature_store(config: dict, level: int) -> dict:
     feature_cfg = config.get("features", {})
     mmap_dir = feature_cfg.get("projection_mmap_dir")
@@ -393,6 +456,11 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
     else:
         current = graph
         start_level = 1
+    cumulative_assignment: np.ndarray | None = (
+        np.arange(original_nodes, dtype=np.int64)
+        if not completed_levels
+        else None
+    )
     results: list[LevelResult] = []
 
     for level in range(start_level, max_levels + 1):
@@ -508,6 +576,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         level_matching_config = _config_for_level(config, current.num_nodes, target_nodes)
         streaming_mutual_best = matching_method_normalized == "mutual_best"
         score_term_accumulator = ScoreTermAccumulator.from_config(scoring_config)
+        score_contribution_accumulator = ScoreTermAccumulator.from_config(scoring_config)
         scored = None
         scored_pair_count = 0
         streaming_state = None
@@ -542,6 +611,9 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             ):
                 scored_block, term_values = score_pair_block_with_terms(scoring_context, pair_block)
                 score_term_accumulator.update(term_values)
+                score_contribution_accumulator.update(
+                    score_term_contributions(scoring_context, term_values)
+                )
                 scored_pair_count += int(scored_block.shape[0])
                 mutual_best_update_block(
                     current,
@@ -563,8 +635,12 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             )
             scored, term_values = score_pair_block_with_terms(scoring_context, pairs)
             score_term_accumulator.update(term_values)
+            score_contribution_accumulator.update(
+                score_term_contributions(scoring_context, term_values)
+            )
             scored_pair_count = int(scored.shape[0])
         score_term_summary = score_term_accumulator.summary()
+        score_contribution_summary = score_contribution_accumulator.summary()
         progress_message(config, f"level {level}: scoring candidate pairs done")
         runtime["scoring"] = perf_counter() - start
         progress_message(
@@ -591,6 +667,11 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         matched_pairs_by_source = selected_pair_sources(
             assignment,
             getattr(store, "source_for_pair", lambda _i, _j: None),
+        )
+        next_cumulative_assignment = (
+            assignment.assignment[cumulative_assignment]
+            if cumulative_assignment is not None
+            else None
         )
         aggregation_chunk_size = int(config.get("coarsening", {}).get("aggregation_chunk_size", 1_000_000))
         aggregation_reducer = str(config.get("coarsening", {}).get("aggregation_reducer", "sort"))
@@ -672,6 +753,8 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         )
         diagnostics["feature_aggregation"] = feature_aggregation_diag
         diagnostics["score_terms"] = score_term_summary
+        diagnostics["score_contributions"] = score_contribution_summary
+        diagnostics["score_contribution_share"] = _score_contribution_share(score_contribution_summary)
         diagnostics["target_control"] = _target_control_diagnostics(
             config,
             original_nodes=original_nodes,
@@ -684,6 +767,11 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         diagnostics["fallback_selected_fraction"] = float(
             matched_pairs_by_source.get("fallback", 0)
             / max(int(diagnostics.get("matched_pairs", 0)), 1)
+        )
+        diagnostics["task"] = _task_diagnostics(
+            original=graph,
+            coarse=coarse,
+            cumulative_assignment=next_cumulative_assignment,
         )
         diagnostics_cfg = config.get("diagnostics", {})
         if bool(diagnostics_cfg.get("enable_spectral", True)):
@@ -743,5 +831,6 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             )
             break
         current = coarse
+        cumulative_assignment = next_cumulative_assignment
 
     return results

@@ -15,11 +15,30 @@ if __package__ in {None, ""}:
 from experiments.scripts._common import write_csv
 
 
+DEFAULT_METRICS = [
+    "final_cumulative_ratio",
+    "target_abs_error",
+    "final_DEE",
+    "final_FWE_weighted",
+    "final_FSE_unweighted",
+    "final_REE_max",
+    "final_SIPE",
+    "task_macro_f1",
+    "runtime_total_run",
+    "peak_rss_gb",
+    "score_contribution_share_spec",
+    "score_contribution_share_rel",
+    "score_contribution_share_feat",
+    "score_contribution_share_conv",
+    "score_contribution_share_boundary",
+]
+
+
 def _float_values(rows: Iterable[Mapping[str, str]], metric: str) -> list[float]:
     values: list[float] = []
     for row in rows:
         raw = row.get(metric, "")
-        if raw in {"", None}:
+        if raw is None or raw == "":
             continue
         try:
             value = float(raw)
@@ -35,7 +54,7 @@ def compare_hgb_ablation(
     summary: str | Path,
     output: str | Path,
     group_by: list[str],
-    metrics: list[str],
+    metrics: list[str] | None = None,
 ) -> None:
     with Path(summary).open("r", newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
@@ -51,7 +70,7 @@ def compare_hgb_ablation(
     for key, group_rows in sorted(groups.items()):
         out: dict[str, object] = {column: value for column, value in zip(group_by, key)}
         out["run_count"] = int(len(group_rows))
-        for metric in metrics:
+        for metric in metrics or DEFAULT_METRICS:
             values = _float_values(group_rows, metric)
             if not values:
                 out[f"{metric}_mean"] = ""
@@ -73,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--summary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--group-by", nargs="+", default=["dataset", "variant"])
-    parser.add_argument("--metrics", nargs="+", required=True)
+    parser.add_argument("--metrics", nargs="+", default=None)
     return parser
 
 
@@ -83,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
         summary=args.summary,
         output=args.output,
         group_by=list(args.group_by),
-        metrics=list(args.metrics),
+        metrics=None if args.metrics is None else list(args.metrics),
     )
     return 0
 

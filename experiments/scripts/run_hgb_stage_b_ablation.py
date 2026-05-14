@@ -27,6 +27,9 @@ class StageBAblationConfig:
     variant: str
     target_ratio: float
     seed: int
+    candidate_source: str
+    sketch_dim: int
+    sketch_order: int
     config: dict
 
 
@@ -45,13 +48,16 @@ def _variant_config(config: dict, variant: str) -> dict:
         return cfg
     if variant == "uniform_weight":
         cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "uniform"
+        cfg.setdefault("metapath_sketch", {}).setdefault("weighting", {})["method"] = "uniform"
         return cfg
     if variant == "no_metapath":
         cfg.setdefault("metapath_sketch", {})["enabled"] = False
+        cfg.setdefault("metapath_sketch", {})["operator_weight_total"] = 0.0
         return cfg
     if variant == "lazy_no_metapath":
         cfg.setdefault("sketch", {})["method"] = "lazy"
         cfg.setdefault("metapath_sketch", {})["enabled"] = False
+        cfg.setdefault("metapath_sketch", {})["operator_weight_total"] = 0.0
         return cfg
     if variant == "no_conv":
         cfg.setdefault("scoring", {})["lambda_conv"] = 0.0
@@ -64,13 +70,24 @@ def generate_stage_b_configs(
     datasets: Iterable[str],
     target_ratios: Iterable[float],
     max_levels: int,
-    candidate_source: str,
+    candidate_sources: Iterable[str],
     candidate_k: int,
-    sketch_dim: int,
+    sketch_dims: Iterable[int],
+    sketch_orders: Iterable[int],
     seeds: Iterable[int],
     variants: Iterable[str],
+    normalization: str = "p95",
+    normalization_scope: str = "level",
 ) -> Iterable[StageBAblationConfig]:
-    for dataset, target_ratio, seed, variant in product(datasets, target_ratios, seeds, variants):
+    for dataset, target_ratio, source, sketch_dim, sketch_order, seed, variant in product(
+        datasets,
+        target_ratios,
+        candidate_sources,
+        sketch_dims,
+        sketch_orders,
+        seeds,
+        variants,
+    ):
         config = deepcopy(DEFAULT_CONFIG)
         config["seed"] = int(seed)
         config["coarsening"] = dict(
@@ -79,30 +96,38 @@ def generate_stage_b_configs(
             max_levels=int(max_levels),
             matching_method="mutual_best",
         )
-        config["sketch"] = dict(config["sketch"], dim=int(sketch_dim), method="chebyshev_heat")
+        config["sketch"] = dict(
+            config["sketch"],
+            dim=int(sketch_dim),
+            order=int(sketch_order),
+            method="chebyshev_heat",
+        )
         config["candidates"] = dict(
             config["candidates"],
             total_budget_K=int(candidate_k),
             twohop_budget_K2=max(1, int(candidate_k) // 2),
             ann_budget_K=int(candidate_k),
             enable_fallback=True,
-            **_candidate_flags(candidate_source),
+            fallback_penalty=1.0e6,
+            fallback_max_fraction=0.05,
+            **_candidate_flags(source),
         )
         config["scoring"] = dict(
             config["scoring"],
-            normalization="p95",
-            normalization_scope="level",
+            normalization=str(normalization),
+            normalization_scope=str(normalization_scope),
             lambda_spec=1.0,
             lambda_rel=0.5,
             lambda_feat=0.2,
             lambda_conv=0.5,
             lambda_boundary=0.2,
         )
+        config["diagnostics"] = dict(config["diagnostics"], enable_large_graph_envelope=True)
         config = _variant_config(config, variant)
         ratio_token = str(float(target_ratio)).replace(".", "p")
         run_name = (
-            f"hgb_{dataset}_r{ratio_token}_L{int(max_levels)}_"
-            f"d{int(sketch_dim)}_K{int(candidate_k)}_seed{int(seed)}_{variant}"
+            f"stageB_{dataset}_{variant}_r{ratio_token}_L{int(max_levels)}_"
+            f"d{int(sketch_dim)}_K{int(candidate_k)}_{source}_seed{int(seed)}"
         )
         yield StageBAblationConfig(
             run_name=run_name,
@@ -110,6 +135,9 @@ def generate_stage_b_configs(
             variant=variant,
             target_ratio=float(target_ratio),
             seed=int(seed),
+            candidate_source=source,
+            sketch_dim=int(sketch_dim),
+            sketch_order=int(sketch_order),
             config=config,
         )
 
@@ -125,8 +153,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-ratios", type=float, nargs="+", default=None)
     parser.add_argument("--max-levels", type=int, default=4)
     parser.add_argument("--candidate-source", default="onehop_twohop_bucket")
-    parser.add_argument("--candidate-K", type=int, default=8)
+    parser.add_argument("--candidate-sources", nargs="+", default=None)
+    parser.add_argument("--candidate-K", "--candidate-k", type=int, default=8, dest="candidate_K")
     parser.add_argument("--sketch-dim", type=int, default=16)
+    parser.add_argument("--sketch-dims", type=int, nargs="+", default=None)
+    parser.add_argument("--sketch-order", type=int, default=5)
+    parser.add_argument("--sketch-orders", type=int, nargs="+", default=None)
+    parser.add_argument("--normalization", default="p95")
+    parser.add_argument("--normalization-scope", default="level")
     parser.add_argument("--seeds", type=int, nargs="+", default=[12345])
     parser.add_argument(
         "--variants",
@@ -150,6 +184,18 @@ def _target_ratios(args: argparse.Namespace) -> list[float]:
     return values or [0.5]
 
 
+def _candidate_sources(args: argparse.Namespace) -> list[str]:
+    return list(args.candidate_sources or [args.candidate_source])
+
+
+def _sketch_dims(args: argparse.Namespace) -> list[int]:
+    return [int(value) for value in (args.sketch_dims or [args.sketch_dim])]
+
+
+def _sketch_orders(args: argparse.Namespace) -> list[int]:
+    return [int(value) for value in (args.sketch_orders or [args.sketch_order])]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = repo_root()
@@ -158,11 +204,14 @@ def main(argv: list[str] | None = None) -> int:
         datasets=args.datasets,
         target_ratios=_target_ratios(args),
         max_levels=args.max_levels,
-        candidate_source=args.candidate_source,
+        candidate_sources=_candidate_sources(args),
         candidate_k=args.candidate_K,
-        sketch_dim=args.sketch_dim,
+        sketch_dims=_sketch_dims(args),
+        sketch_orders=_sketch_orders(args),
         seeds=args.seeds,
         variants=args.variants,
+        normalization=args.normalization,
+        normalization_scope=args.normalization_scope,
     ):
         graph_dir = (
             (args.graph_root / item.dataset.lower())
@@ -203,7 +252,9 @@ def main(argv: list[str] | None = None) -> int:
             variant=item.variant,
             target_ratio=item.target_ratio,
             seed=item.seed,
-            candidate_source=args.candidate_source,
+            candidate_source=item.candidate_source,
+            sketch_dim=item.sketch_dim,
+            sketch_order=item.sketch_order,
             status="created",
         )
         if args.dry_run:
@@ -231,6 +282,9 @@ def main(argv: list[str] | None = None) -> int:
             variant=item.variant,
             target_ratio=item.target_ratio,
             seed=item.seed,
+            candidate_source=item.candidate_source,
+            sketch_dim=item.sketch_dim,
+            sketch_order=item.sketch_order,
             command=command,
             status="running",
         )
@@ -248,6 +302,9 @@ def main(argv: list[str] | None = None) -> int:
             variant=item.variant,
             target_ratio=item.target_ratio,
             seed=item.seed,
+            candidate_source=item.candidate_source,
+            sketch_dim=item.sketch_dim,
+            sketch_order=item.sketch_order,
             command=command,
             status=status,
             returncode=completed.returncode,

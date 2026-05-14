@@ -789,12 +789,16 @@ def _normalized_terms(
             continue
         if method == "p95":
             scale = float(np.percentile(finite, 95))
-            normalized[name] = values / np.float32(max(scale, epsilon))
+            normalized[name] = values / np.float32(
+                _normalization_scale(finite, scale, epsilon)
+            )
         elif method == "median_mad":
             median = float(np.median(finite))
             mad = float(np.median(np.abs(finite - median)))
             scale = median + 1.4826 * mad
-            normalized[name] = values / np.float32(max(scale, epsilon))
+            normalized[name] = values / np.float32(
+                _normalization_scale(finite, scale, epsilon)
+            )
         elif method == "rank":
             order = np.argsort(values, kind="mergesort")
             ranks = np.empty(values.shape[0], dtype=np.float32)
@@ -806,6 +810,33 @@ def _normalized_terms(
         else:
             raise ValueError(f"unsupported scoring.normalization: {method}")
     return normalized
+
+
+def _normalization_scale(finite: np.ndarray, candidate_scale: float, epsilon: float) -> float:
+    if abs(candidate_scale) > epsilon:
+        return abs(candidate_scale)
+    positive = np.abs(finite[np.abs(finite) > epsilon])
+    if positive.size:
+        return max(float(np.percentile(positive, 95)), epsilon)
+    return epsilon
+
+
+def score_term_contributions(
+    context: PairScoringContext,
+    terms: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    weighted_terms = _normalized_terms(context, terms)
+    lambdas = {
+        "spec": context.lambda_spec,
+        "rel": context.lambda_rel,
+        "feat": context.lambda_feat,
+        "conv": context.lambda_conv,
+        "boundary": context.lambda_boundary,
+    }
+    return {
+        name: (float(lambdas[name]) * weighted_terms[name]).astype(np.float32, copy=False)
+        for name in SCORE_TERM_NAMES
+    }
 
 
 def score_pair_block_with_terms(

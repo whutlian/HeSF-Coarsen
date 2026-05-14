@@ -208,6 +208,7 @@ def compute_diagnostics(
         "candidate_count_total": int(len(candidate_counts) and candidate_counts.sum()),
         "candidate_count_max": int(candidate_counts.max(initial=0)),
         "candidate_count_mean": float(candidate_counts.mean() if len(candidate_counts) else 0.0),
+        "candidate_coverage": float(np.mean(candidate_counts > 0) if len(candidate_counts) else 0.0),
         "candidate_count_quantiles": {
             "p50": float(np.percentile(candidate_counts, 50)) if len(candidate_counts) else 0.0,
             "p95": float(np.percentile(candidate_counts, 95)) if len(candidate_counts) else 0.0,

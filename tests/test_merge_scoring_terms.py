@@ -172,6 +172,38 @@ def test_score_pair_block_can_normalize_terms_before_weighting():
     assert scored[0, 2] < 0.02
 
 
+def test_p95_normalization_uses_positive_scale_for_sparse_terms():
+    graph = HeteroGraph(
+        num_nodes=200,
+        node_type=np.zeros(200, dtype=np.int32),
+        relations={},
+    )
+    pairs = np.asarray([[2 * idx, 2 * idx + 1, 0.0] for idx in range(100)], dtype=np.float64)
+    z = np.zeros((200, 1), dtype=np.float32)
+    profiles = np.zeros((200, 2), dtype=np.float32)
+    profiles[198] = np.array([1.0, 0.0], dtype=np.float32)
+    profiles[199] = np.array([0.0, 1.0], dtype=np.float32)
+    conv = np.zeros((200, 1), dtype=np.float32)
+    config = {
+        "scoring": {
+            "lambda_spec": 0.0,
+            "lambda_rel": 1.0,
+            "lambda_feat": 0.0,
+            "lambda_conv": 0.0,
+            "lambda_boundary": 0.0,
+            "relation_profile_distance": "jsd",
+            "normalization": "p95",
+        },
+        "acceleration": {"dense_backend": "numpy"},
+    }
+    context = prepare_pair_scoring_context(graph, z, profiles, conv, None, config)
+
+    scored, terms = score_pair_block_with_terms(context, pairs)
+
+    assert terms["rel"][-1] > 0.0
+    assert scored[-1, 2] <= 1.01
+
+
 def test_spec_term_uses_local_variation_volume_factor():
     graph = _same_type_graph_with_degrees()
     pairs = np.array([[0, 3, 0.0]], dtype=np.float64)

@@ -55,6 +55,51 @@ def _target_ratio_from_name(run_name: str) -> float | None:
         return None
 
 
+def _fmt_metric(value: Any, digits: int = 4) -> str:
+    number = _as_float(value, None)
+    if number is None:
+        return ""
+    return f"{number:.{digits}g}"
+
+
+def _runtime_total(level_rows: list[dict[str, Any]]) -> float:
+    total = 0.0
+    for row in level_rows:
+        for key in (
+            "sketch",
+            "candidates",
+            "scoring",
+            "matching_and_aggregation",
+            "spectral_diagnostics",
+        ):
+            total += float(row.get(f"runtime_by_stage.{key}", 0) or 0)
+    return float(total)
+
+
+def _peak_rss_gb(level_rows: list[dict[str, Any]], metadata: Mapping[str, Any]) -> float | str:
+    metadata_peak = _as_float(metadata.get("peak_rss_gb"), None)
+    peaks = []
+    if metadata_peak is not None:
+        peaks.append(metadata_peak)
+    for row in level_rows:
+        rss_bytes = _as_float(row.get("large_graph_envelope.process_rss_bytes"), None)
+        if rss_bytes is not None:
+            peaks.append(float(rss_bytes) / (1024.0**3))
+    return "" if not peaks else float(max(peaks))
+
+
+def _score_share_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
+    aliases: dict[str, Any] = {}
+    parts: list[str] = []
+    for term in ("spec", "rel", "feat", "conv", "boundary"):
+        value = row.get(f"score_contribution_share.{term}", "")
+        aliases[f"score_contribution_share_{term}"] = value
+        if value is not None and value != "":
+            parts.append(f"{term}={_fmt_metric(value, 3)}")
+    aliases["score_contribution_share"] = ", ".join(parts)
+    return aliases
+
+
 def _quality_row(base: Mapping[str, Any], row: Mapping[str, Any], *, row_type: str) -> dict[str, Any]:
     return {
         "run_name": base["run_name"],
@@ -89,10 +134,28 @@ def _quality_row(base: Mapping[str, Any], row: Mapping[str, Any], *, row_type: s
         "final_cumulative_ratio": row.get("final_cumulative_ratio", ""),
         "target_abs_error": row.get("target_abs_error", ""),
         "target_hit": row.get("target_hit", ""),
+        "final_DEE": row.get("final_DEE", ""),
+        "final_FWE_weighted": row.get("final_FWE_weighted", ""),
+        "final_FSE_unweighted": row.get("final_FSE_unweighted", ""),
+        "final_REE_max": row.get("final_REE_max", ""),
+        "final_SIPE": row.get("final_SIPE", ""),
+        "task_micro_f1": row.get("task_micro_f1", row.get("task.micro_f1", "")),
+        "task_macro_f1": row.get("task_macro_f1", row.get("task.macro_f1", "")),
+        "runtime_total_run": row.get("runtime_total_run", ""),
+        "peak_rss_gb": row.get("peak_rss_gb", ""),
+        "score_contribution_share_spec": row.get("score_contribution_share_spec", ""),
+        "score_contribution_share_rel": row.get("score_contribution_share_rel", ""),
+        "score_contribution_share_feat": row.get("score_contribution_share_feat", ""),
+        "score_contribution_share_conv": row.get("score_contribution_share_conv", ""),
+        "score_contribution_share_boundary": row.get("score_contribution_share_boundary", ""),
     }
 
 
-def _final_cumulative_row(base: Mapping[str, Any], level_rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _final_cumulative_row(
+    base: Mapping[str, Any],
+    level_rows: list[dict[str, Any]],
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
     ordered = sorted(level_rows, key=lambda row: _as_int(row.get("level"), 0) or 0)
     first = ordered[0]
     last = ordered[-1]
@@ -143,14 +206,20 @@ def _final_cumulative_row(base: Mapping[str, Any], level_rows: list[dict[str, An
     stopped_by = "target_hit" if target_hit else "max_levels"
     if len(ordered) < max_levels and not target_hit:
         input_nodes = _as_int(last.get("original_nodes"), final_nodes) or final_nodes
-        stopped_by = "no_decrease" if final_nodes >= input_nodes else "no_more_levels"
+        stopped_by = "no_decrease" if final_nodes >= input_nodes else "no_match"
 
+    final_dee = last.get("spectral.sketch_dirichlet_energy_relative_error", "")
+    final_fwe_weighted = last.get("spectral.relation_weighted_fused_energy_relative_error", "")
+    final_fse_unweighted = last.get("spectral.fused_sketch_energy_relative_error", "")
+    final_ree_max = last.get("spectral.relation_energy_relative_error_max", "")
+    final_sipe = last.get("spectral.chebheat_sketch_inner_product_relative_error", "")
     final = {**base, **last}
     final.update(
         {
             "row_type": "final",
             "level": "final",
             "level_row_count": int(len(ordered)),
+            "final_level": str(last.get("level", "")),
             "initial_nodes": int(initial_nodes),
             "final_nodes": int(final_nodes),
             "final_cumulative_ratio": final_ratio,
@@ -159,20 +228,176 @@ def _final_cumulative_row(base: Mapping[str, Any], level_rows: list[dict[str, An
             "target_hit": "true" if target_hit else "false",
             "best_level": str(best.get("level", "")),
             "stopped_by": stopped_by,
-            "cumulative_dee": last.get("spectral.sketch_dirichlet_energy_relative_error", ""),
-            "cumulative_fwe_weighted": last.get(
-                "spectral.relation_weighted_fused_energy_relative_error",
-                "",
-            ),
-            "cumulative_fse_unweighted": last.get("spectral.fused_sketch_energy_relative_error", ""),
-            "cumulative_ree_max": last.get("spectral.relation_energy_relative_error_max", ""),
-            "cumulative_sipe": last.get(
-                "spectral.chebheat_sketch_inner_product_relative_error",
-                "",
-            ),
+            "final_DEE": final_dee,
+            "final_FWE_weighted": final_fwe_weighted,
+            "final_FSE_unweighted": final_fse_unweighted,
+            "final_REE_max": final_ree_max,
+            "final_SIPE": final_sipe,
+            "cumulative_dee": final_dee,
+            "cumulative_fwe_weighted": final_fwe_weighted,
+            "cumulative_fse_unweighted": final_fse_unweighted,
+            "cumulative_ree_max": final_ree_max,
+            "cumulative_sipe": final_sipe,
+            "task_micro_f1": last.get("task.micro_f1", ""),
+            "task_macro_f1": last.get("task.macro_f1", ""),
+            "runtime_total_run": _runtime_total(ordered),
+            "peak_rss_gb": _peak_rss_gb(ordered, metadata),
         }
     )
+    final.update(_score_share_aliases(last))
     return final
+
+
+def _mean_numeric(rows: list[Mapping[str, Any]], key: str) -> float | str:
+    values = [
+        value
+        for value in (_as_float(row.get(key), None) for row in rows)
+        if value is not None
+    ]
+    return "" if not values else float(sum(values) / len(values))
+
+
+def _core_report_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in final_rows:
+        variant = str(row.get("variant") or row.get("run_name") or "")
+        groups.setdefault(variant, []).append(row)
+    report_rows: list[dict[str, Any]] = []
+    for variant, rows in sorted(groups.items()):
+        report_rows.append(
+            {
+                "variant": variant,
+                "final ratio": _fmt_metric(_mean_numeric(rows, "final_cumulative_ratio")),
+                "DEE ↓": _fmt_metric(_mean_numeric(rows, "final_DEE")),
+                "FSE-unweighted ↓": _fmt_metric(_mean_numeric(rows, "final_FSE_unweighted")),
+                "REE-max ↓": _fmt_metric(_mean_numeric(rows, "final_REE_max")),
+                "SIPE ↓": _fmt_metric(_mean_numeric(rows, "final_SIPE")),
+                "macro-F1 ↑": _fmt_metric(_mean_numeric(rows, "task_macro_f1")),
+                "runtime ↓": _fmt_metric(_mean_numeric(rows, "runtime_total_run")),
+                "peak RAM": _fmt_metric(_mean_numeric(rows, "peak_rss_gb")),
+            }
+        )
+    return report_rows
+
+
+def _run_identity(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "run_name": row.get("run_name", ""),
+        "dataset": row.get("dataset", ""),
+        "variant": row.get("variant", ""),
+        "target_ratio": row.get("target_ratio", ""),
+        "final_cumulative_ratio": row.get("final_cumulative_ratio", ""),
+    }
+
+
+def _score_term_scale_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in final_rows:
+        for term in ("spec", "rel", "feat", "conv", "boundary"):
+            item = {
+                **_run_identity(row),
+                "term": term,
+                "share": row.get(f"score_contribution_share_{term}", ""),
+            }
+            for prefix, label in (
+                ("score_terms", "raw"),
+                ("score_contributions", "weighted_normalized"),
+            ):
+                for stat in ("count", "mean", "p50", "p95", "p99"):
+                    item[f"{label}_{stat}"] = row.get(f"{prefix}.{term}.{stat}", "")
+            rows.append(item)
+    return rows
+
+
+def _candidate_source_pareto_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in final_rows:
+        sources: set[str] = set()
+        for key in row:
+            if key.startswith("candidate_source_counts."):
+                sources.add(key.removeprefix("candidate_source_counts."))
+            if key.startswith("matched_pairs_by_source."):
+                sources.add(key.removeprefix("matched_pairs_by_source."))
+        candidate_total = _as_float(row.get("candidate_count_total"), None)
+        matched_total = _as_float(row.get("matched_pairs"), None)
+        for source in sorted(sources):
+            candidate_count = _as_float(row.get(f"candidate_source_counts.{source}"), 0.0) or 0.0
+            selected_count = _as_float(row.get(f"matched_pairs_by_source.{source}"), 0.0) or 0.0
+            if candidate_count == 0.0 and selected_count == 0.0:
+                continue
+            rows.append(
+                {
+                    **_run_identity(row),
+                    "source": source,
+                    "candidate_count": candidate_count,
+                    "candidate_fraction": ""
+                    if not candidate_total
+                    else float(candidate_count / candidate_total),
+                    "selected_count": selected_count,
+                    "selected_fraction": ""
+                    if not matched_total
+                    else float(selected_count / matched_total),
+                }
+            )
+    return rows
+
+
+def _task_summary_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            **_run_identity(row),
+            "task_model": row.get("task.model", ""),
+            "task_micro_f1": row.get("task_micro_f1", row.get("task.micro_f1", "")),
+            "task_macro_f1": row.get("task_macro_f1", row.get("task.macro_f1", "")),
+            "task_labeled_nodes": row.get("task.labeled_nodes", ""),
+            "task_skipped": row.get("task.skipped", ""),
+        }
+        for row in final_rows
+    ]
+
+
+def _run_resource_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            **_run_identity(row),
+            "runtime_total_run": row.get("runtime_total_run", ""),
+            "peak_rss_gb": row.get("peak_rss_gb", ""),
+            "peak_vram_gb": row.get("peak_vram_gb", ""),
+            "process_rss_bytes": row.get("large_graph_envelope.process_rss_bytes", ""),
+            "artifact_bytes_total": row.get("large_graph_envelope.artifact_bytes_total", ""),
+            "aggregation_shard_bytes": row.get(
+                "large_graph_envelope.artifact_bytes_by_name.aggregation_shards",
+                "",
+            ),
+            "candidate_store_estimated_bytes": row.get(
+                "large_graph_envelope.candidate_store_estimated_bytes",
+                "",
+            ),
+            "graph_array_bytes": row.get("large_graph_envelope.graph_array_bytes", ""),
+        }
+        for row in final_rows
+    ]
+
+
+def _target_check_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in final_rows:
+        key = (str(row.get("dataset", "")), str(row.get("target_ratio", "")))
+        groups.setdefault(key, []).append(row)
+    rows: list[dict[str, Any]] = []
+    for (dataset, target_ratio), group in sorted(groups.items()):
+        hit_values = [1.0 if str(row.get("target_hit", "")).lower() == "true" else 0.0 for row in group]
+        rows.append(
+            {
+                "dataset": dataset,
+                "target_ratio": target_ratio,
+                "run_count": len(group),
+                "final_cumulative_ratio_mean": _mean_numeric(group, "final_cumulative_ratio"),
+                "target_abs_error_mean": _mean_numeric(group, "target_abs_error"),
+                "target_hit_rate": "" if not hit_values else float(sum(hit_values) / len(hit_values)),
+            }
+        )
+    return rows
 
 
 def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> None:
@@ -222,7 +447,7 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
                     }
                 )
                 quality_rows.append(_quality_row(base, row, row_type="level"))
-            final_row = _final_cumulative_row(base, level_rows)
+            final_row = _final_cumulative_row(base, level_rows, metadata)
             final_rows.append(final_row)
             all_rows.append(final_row)
             quality_rows.append(_quality_row(base, final_row, row_type="final"))
@@ -236,10 +461,17 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
 
     write_csv(output / "all_runs.csv", all_rows)
     write_csv(output / "final_summary.csv", final_rows)
+    write_csv(output / "run_final_summary.csv", final_rows)
     write_csv(output / "resource_summary.csv", resource_rows)
+    write_csv(output / "resource_summary_runlevel.csv", _run_resource_rows(final_rows))
     write_csv(output / "quality_summary.csv", quality_rows)
+    write_csv(output / "score_term_scale.csv", _score_term_scale_rows(final_rows))
+    write_csv(output / "candidate_source_pareto.csv", _candidate_source_pareto_rows(final_rows))
+    write_csv(output / "task_summary.csv", _task_summary_rows(final_rows))
+    write_csv(output / "target_check.csv", _target_check_rows(final_rows))
     write_csv(output / "failures.csv", failure_rows)
-    report_rows = all_rows[:20]
+    core_rows = _core_report_rows(final_rows)
+    report_rows = final_rows[:20]
     report = [
         "# Experiment Summary",
         "",
@@ -248,9 +480,35 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
         f"Rows: {len(all_rows)}",
         f"Failures: {len(failure_rows)}",
         "",
+        "## Core Results",
+        "",
+        markdown_table(core_rows, ["variant", "final ratio", "DEE ↓", "FSE-unweighted ↓", "REE-max ↓", "SIPE ↓", "macro-F1 ↑", "runtime ↓", "peak RAM"]),
+        "",
         "## Completed Runs",
         "",
-        markdown_table(report_rows, ["run_name", "status", "dataset", "level", "compression_ratio", "failure_reason"]),
+        markdown_table(
+            report_rows,
+            [
+                "run_name",
+                "status",
+                "dataset",
+                "variant",
+                "target_ratio",
+                "final_cumulative_ratio",
+                "target_abs_error",
+                "target_hit",
+                "final_DEE",
+                "final_FWE_weighted",
+                "final_FSE_unweighted",
+                "final_REE_max",
+                "final_SIPE",
+                "task_macro_f1",
+                "runtime_total_run",
+                "peak_rss_gb",
+                "score_contribution_share",
+                "failure_reason",
+            ],
+        ),
         "",
         "## Failed Runs",
         "",
