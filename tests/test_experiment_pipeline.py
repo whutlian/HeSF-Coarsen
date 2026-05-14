@@ -1,4 +1,5 @@
 import csv
+import importlib.util
 import json
 import subprocess
 import sys
@@ -299,6 +300,9 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert task_rows[0]["task_macro_f1"] == "0.6"
     assert resource_run_rows[0]["peak_rss_gb"] == "2.0"
     assert target_rows[0]["target_hit_rate"] == "1.0"
+    if importlib.util.find_spec("matplotlib") is not None:
+        assert (tmp_path / "summary" / "figures" / "target_ratio_hit_rate.png").exists()
+        assert (tmp_path / "summary" / "figures" / "score_contribution_share.png").exists()
     assert "Unique runs: 1" in report
     assert "Level rows: 2" in report
     assert "| variant | final ratio | DEE ↓ | FSE-unweighted ↓ | REE-max ↓ | SIPE ↓ | macro-F1 ↑ | runtime ↓ | peak RAM |" in report

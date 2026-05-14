@@ -400,6 +400,152 @@ def _target_check_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
     return rows
 
 
+def _numeric(values: Iterable[Any]) -> list[float]:
+    return [value for value in (_as_float(item, None) for item in values) if value is not None]
+
+
+def _group_mean(rows: list[Mapping[str, Any]], group_key: str, metric: str) -> dict[str, float]:
+    groups: dict[str, list[float]] = {}
+    for row in rows:
+        value = _as_float(row.get(metric), None)
+        if value is None:
+            continue
+        groups.setdefault(str(row.get(group_key, "")), []).append(value)
+    return {key: float(sum(values) / len(values)) for key, values in groups.items() if values}
+
+
+def _maybe_write_figures(
+    output: Path,
+    final_rows: list[dict[str, Any]],
+    target_rows: list[dict[str, Any]],
+) -> None:
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return
+
+    figures = output / "figures"
+    figures.mkdir(parents=True, exist_ok=True)
+
+    def savefig(name: str) -> None:
+        plt.tight_layout()
+        plt.savefig(figures / name, dpi=160)
+        plt.close()
+
+    if target_rows:
+        labels = [f"{row.get('dataset')} r={_fmt_metric(row.get('target_ratio'))}" for row in target_rows]
+        values = [_as_float(row.get("target_hit_rate"), 0.0) or 0.0 for row in target_rows]
+        plt.figure(figsize=(max(6, len(labels) * 0.7), 3.5))
+        plt.bar(labels, values, color="#4C78A8")
+        plt.ylim(0.0, 1.05)
+        plt.ylabel("hit rate")
+        plt.xticks(rotation=35, ha="right")
+        plt.title("Target Ratio Hit Rate")
+        savefig("target_ratio_hit_rate.png")
+
+    variant_dee = _group_mean(final_rows, "variant", "final_DEE")
+    if "base" in variant_dee and len(variant_dee) > 1:
+        labels = sorted(variant_dee)
+        deltas = [variant_dee[label] - variant_dee["base"] for label in labels]
+        plt.figure(figsize=(max(6, len(labels) * 0.75), 3.5))
+        plt.bar(labels, deltas, color="#F58518")
+        plt.axhline(0.0, color="black", linewidth=0.8)
+        plt.ylabel("DEE minus base")
+        plt.xticks(rotation=35, ha="right")
+        plt.title("Ablation Delta DEE")
+        savefig("ablation_delta_DEE.png")
+
+    variant_f1 = _group_mean(final_rows, "variant", "task_macro_f1")
+    if "base" in variant_f1 and len(variant_f1) > 1:
+        labels = sorted(variant_f1)
+        deltas = [variant_f1[label] - variant_f1["base"] for label in labels]
+        plt.figure(figsize=(max(6, len(labels) * 0.75), 3.5))
+        plt.bar(labels, deltas, color="#54A24B")
+        plt.axhline(0.0, color="black", linewidth=0.8)
+        plt.ylabel("macro-F1 minus base")
+        plt.xticks(rotation=35, ha="right")
+        plt.title("Ablation Delta Task F1")
+        savefig("ablation_delta_task_f1.png")
+
+    source_groups: dict[str, list[dict[str, Any]]] = {}
+    for row in final_rows:
+        source = str(row.get("candidate_source", ""))
+        if source:
+            source_groups.setdefault(source, []).append(row)
+    if len(source_groups) > 1:
+        labels: list[str] = []
+        runtimes: list[float] = []
+        dees: list[float] = []
+        for source, rows in sorted(source_groups.items()):
+            runtime_values = _numeric(row.get("runtime_total_run") for row in rows)
+            dee_values = _numeric(row.get("final_DEE") for row in rows)
+            if not runtime_values or not dee_values:
+                continue
+            labels.append(source)
+            runtimes.append(float(sum(runtime_values) / len(runtime_values)))
+            dees.append(float(sum(dee_values) / len(dee_values)))
+        if labels:
+            plt.figure(figsize=(6, 4))
+            plt.scatter(runtimes, dees, color="#B279A2")
+            for label, x, y in zip(labels, runtimes, dees):
+                plt.annotate(label, (x, y), textcoords="offset points", xytext=(5, 4), fontsize=8)
+            plt.xlabel("runtime_total_run")
+            plt.ylabel("DEE")
+            plt.title("Source Pareto: DEE vs Runtime")
+            savefig("source_pareto_DEE_runtime.png")
+
+    share_terms = ("spec", "rel", "feat", "conv", "boundary")
+    share_groups: dict[str, dict[str, float]] = {}
+    for variant in sorted({str(row.get("variant", "")) for row in final_rows if row.get("variant")}):
+        rows = [row for row in final_rows if str(row.get("variant", "")) == variant]
+        share_groups[variant] = {
+            term: float(_mean_numeric(rows, f"score_contribution_share_{term}") or 0.0)
+            for term in share_terms
+        }
+    if share_groups:
+        labels = list(share_groups)
+        bottoms = [0.0] * len(labels)
+        colors = ["#4C78A8", "#F58518", "#54A24B", "#B279A2", "#E45756"]
+        plt.figure(figsize=(max(6, len(labels) * 0.8), 4))
+        for term, color in zip(share_terms, colors):
+            values = [share_groups[label][term] for label in labels]
+            plt.bar(labels, values, bottom=bottoms, label=term, color=color)
+            bottoms = [left + value for left, value in zip(bottoms, values)]
+        plt.ylabel("share")
+        plt.xticks(rotation=35, ha="right")
+        plt.legend(ncols=min(5, len(share_terms)), fontsize=8)
+        plt.title("Score Contribution Share")
+        savefig("score_contribution_share.png")
+
+    dim_groups: dict[str, list[dict[str, Any]]] = {}
+    for row in final_rows:
+        dim = str(row.get("sketch_dim") or row.get("config.sketch.dim") or "")
+        if dim:
+            dim_groups.setdefault(dim, []).append(row)
+    if len(dim_groups) > 1:
+        labels = sorted(dim_groups, key=lambda item: int(float(item)))
+        coverage = [
+            float(_mean_numeric(dim_groups[label], "candidate_coverage") or 0.0)
+            for label in labels
+        ]
+        dee = [float(_mean_numeric(dim_groups[label], "final_DEE") or 0.0) for label in labels]
+        x = list(range(len(labels)))
+        fig, ax1 = plt.subplots(figsize=(6, 4))
+        ax1.plot(x, coverage, marker="o", color="#4C78A8", label="candidate coverage")
+        ax1.set_ylabel("candidate coverage")
+        ax1.set_xticks(x, labels)
+        ax2 = ax1.twinx()
+        ax2.plot(x, dee, marker="s", color="#F58518", label="DEE")
+        ax2.set_ylabel("DEE")
+        ax1.set_xlabel("sketch dim")
+        fig.legend(loc="upper center", ncols=2, fontsize=8)
+        plt.title("Sketch Dim Candidate Coverage")
+        savefig("dim_candidate_coverage.png")
+
+
 def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> None:
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -458,6 +604,7 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
 
     for final_row in final_rows:
         final_row["run_count_unique"] = int(len(final_rows))
+    target_rows = _target_check_rows(final_rows)
 
     write_csv(output / "all_runs.csv", all_rows)
     write_csv(output / "final_summary.csv", final_rows)
@@ -468,8 +615,9 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
     write_csv(output / "score_term_scale.csv", _score_term_scale_rows(final_rows))
     write_csv(output / "candidate_source_pareto.csv", _candidate_source_pareto_rows(final_rows))
     write_csv(output / "task_summary.csv", _task_summary_rows(final_rows))
-    write_csv(output / "target_check.csv", _target_check_rows(final_rows))
+    write_csv(output / "target_check.csv", target_rows)
     write_csv(output / "failures.csv", failure_rows)
+    _maybe_write_figures(output, final_rows, target_rows)
     core_rows = _core_report_rows(final_rows)
     report_rows = final_rows[:20]
     report = [
@@ -533,6 +681,10 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
         "## Memory And Disk Footprint",
         "",
         "See `resource_summary.csv` for artifact disk usage and runtime totals.",
+        "",
+        "## Figures",
+        "",
+        "Generated figures are written under `figures/` when matplotlib is available.",
         "",
         "## Spectral Diagnostics",
         "",
