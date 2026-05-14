@@ -7,7 +7,7 @@ import numpy as np
 from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph
 from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.eval.spectral import dirichlet_energy
-from hesf_coarsen.io.schema import HeteroGraph
+from hesf_coarsen.io.schema import HeteroGraph, RelationAdj
 from hesf_coarsen.ops.fused_operator import apply_fused_smoothing
 
 
@@ -108,6 +108,53 @@ def _dense_smoothing_operator(
     return apply_fused_smoothing(graph, eye, relation_weights=relation_weights).astype(np.float64)
 
 
+def _sample_graph_by_nodes(graph: HeteroGraph, max_nodes: int) -> HeteroGraph:
+    if graph.num_nodes <= max_nodes:
+        return graph
+    selected_parts: list[np.ndarray] = []
+    type_ids = sorted(int(type_id) for type_id in np.unique(graph.node_type))
+    per_type = max(1, int(max_nodes) // max(len(type_ids), 1))
+    remainder = max(0, int(max_nodes) - per_type * len(type_ids))
+    for idx, type_id in enumerate(type_ids):
+        nodes = np.flatnonzero(graph.node_type == type_id).astype(np.int64)
+        take = min(len(nodes), per_type + (1 if idx < remainder else 0))
+        if take <= 0:
+            continue
+        if len(nodes) <= take:
+            selected_parts.append(nodes)
+        else:
+            selected_parts.append(np.unique(np.linspace(0, len(nodes) - 1, take, dtype=np.int64)))
+            selected_parts[-1] = nodes[selected_parts[-1]]
+    if not selected_parts:
+        selected = np.arange(min(graph.num_nodes, int(max_nodes)), dtype=np.int64)
+    else:
+        selected = np.sort(np.concatenate(selected_parts).astype(np.int64, copy=False))
+    selected = selected[: int(max_nodes)]
+    remap = np.full(graph.num_nodes, -1, dtype=np.int64)
+    remap[selected] = np.arange(len(selected), dtype=np.int64)
+    relations: dict[int, RelationAdj] = {}
+    for relation_id, rel in graph.relations.items():
+        keep = (remap[rel.src] >= 0) & (remap[rel.dst] >= 0)
+        relations[int(relation_id)] = RelationAdj(
+            src=remap[rel.src[keep]].astype(np.int64, copy=False),
+            dst=remap[rel.dst[keep]].astype(np.int64, copy=False),
+            weight=rel.weight[keep].astype(np.float32, copy=False),
+            src_type=rel.src_type,
+            dst_type=rel.dst_type,
+            relation_id=int(relation_id),
+        )
+    labels = None if graph.labels is None else np.asarray(graph.labels)[selected]
+    partitions = None if graph.partitions is None else np.asarray(graph.partitions)[selected]
+    return HeteroGraph(
+        num_nodes=len(selected),
+        node_type=graph.node_type[selected].astype(np.int32, copy=False),
+        relations=relations,
+        relation_specs=graph.relation_specs,
+        labels=labels,
+        partitions=partitions,
+    )
+
+
 def _exact_eigenvalue_sanity(
     original: HeteroGraph,
     coarse: HeteroGraph,
@@ -117,14 +164,13 @@ def _exact_eigenvalue_sanity(
 ) -> dict[str, Any] | None:
     if max_nodes is None or max_nodes <= 0:
         return None
+    sampled = False
+    original_nodes_before = int(original.num_nodes)
+    coarse_nodes_before = int(coarse.num_nodes)
     if original.num_nodes > max_nodes or coarse.num_nodes > max_nodes:
-        return {
-            "status": "skipped",
-            "reason": "node_count_exceeds_limit",
-            "max_nodes": int(max_nodes),
-            "original_nodes": int(original.num_nodes),
-            "coarse_nodes": int(coarse.num_nodes),
-        }
+        original = _sample_graph_by_nodes(original, int(max_nodes))
+        coarse = _sample_graph_by_nodes(coarse, int(max_nodes))
+        sampled = True
     original_operator = _dense_smoothing_operator(original, relation_weights)
     coarse_operator = _dense_smoothing_operator(coarse, relation_weights)
     original_laplacian = np.eye(original.num_nodes) - original_operator
@@ -138,8 +184,14 @@ def _exact_eigenvalue_sanity(
     after = coarse_values[:q]
     denom = max(float(np.linalg.norm(before)), 1e-12)
     return {
-        "status": "computed",
+        "status": "sampled_subgraph" if sampled else "computed",
+        "mode": "sampled_dense_eigvalsh" if sampled else "dense_eigvalsh",
         "num_eigenvalues": int(q),
+        "max_nodes": int(max_nodes),
+        "original_nodes": original_nodes_before,
+        "coarse_nodes": coarse_nodes_before,
+        "sampled_original_nodes": int(original.num_nodes),
+        "sampled_coarse_nodes": int(coarse.num_nodes),
         "original_smallest_eigenvalues": [float(value) for value in before],
         "coarse_smallest_eigenvalues": [float(value) for value in after],
         "relative_error": float(np.linalg.norm(before - after) / denom),

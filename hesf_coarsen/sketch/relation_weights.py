@@ -45,6 +45,36 @@ def _normalize(raw: dict[int, float]) -> dict[int, float]:
     return {relation_id: value / total for relation_id, value in cleaned.items()}
 
 
+def _entropy(values: list[float]) -> float:
+    arr = np.asarray(values, dtype=np.float64)
+    arr = arr[arr > 0.0]
+    if len(arr) == 0:
+        return 0.0
+    arr = arr / max(float(arr.sum()), 1e-12)
+    return float(-np.sum(arr * np.log(arr)))
+
+
+def _clip_and_normalize(
+    weights: dict[int, float],
+    *,
+    min_weight: float | None,
+    max_weight: float | None,
+) -> dict[int, float]:
+    if min_weight is None and max_weight is None:
+        return _normalize(weights)
+    clipped = {
+        relation_id: float(
+            np.clip(
+                value,
+                -np.inf if min_weight is None else float(min_weight),
+                np.inf if max_weight is None else float(max_weight),
+            )
+        )
+        for relation_id, value in weights.items()
+    }
+    return _normalize(clipped)
+
+
 def _relation_volume(graph: HeteroGraph, relation_id: int) -> float:
     rel = graph.relations[int(relation_id)]
     if rel.num_edges == 0:
@@ -196,6 +226,7 @@ def compute_relation_weights(
         "inverse_energy",
         "clipped_inverse_energy",
         "inverse_sqrt_energy",
+        "smoothed_inverse_energy",
         "feature_smoothness",
     }
     if method not in supported:
@@ -217,6 +248,7 @@ def compute_relation_weights(
         "inverse_energy",
         "clipped_inverse_energy",
         "inverse_sqrt_energy",
+        "smoothed_inverse_energy",
         "feature_smoothness",
     }:
         B, basis_source = _basis_for_energy(graph, config, weight_cfg, basis, method)
@@ -241,13 +273,50 @@ def compute_relation_weights(
         raw = {relation_id: 1.0 for relation_id in relation_ids}
     elif method == "volume":
         raw = {relation_id: (volumes[relation_id] + epsilon) ** eta for relation_id in relation_ids}
+    elif method == "smoothed_inverse_energy":
+        temperature = max(float(weight_cfg.get("temperature", 1.0)), 1.0e-6)
+        entropy_regularization = float(weight_cfg.get("entropy_regularization", 0.0))
+        energy_smoothing = float(
+            weight_cfg.get("energy_smoothing", weight_cfg.get("smoothing", epsilon))
+        )
+        log_scores = np.asarray(
+            [
+                eta * np.log(volumes[relation_id] + epsilon)
+                - gamma * np.log(energies[relation_id] + energy_smoothing + epsilon)
+                for relation_id in relation_ids
+            ],
+            dtype=np.float64,
+        )
+        log_scores = log_scores / temperature
+        log_scores -= float(np.max(log_scores)) if len(log_scores) else 0.0
+        exp_scores = np.exp(log_scores)
+        total = max(float(exp_scores.sum()), 1.0e-12)
+        soft = exp_scores / total
+        if entropy_regularization > 0.0 and len(soft):
+            mix = min(max(entropy_regularization, 0.0), 1.0)
+            soft = (1.0 - mix) * soft + mix * (1.0 / len(soft))
+        weights = {relation_id: float(value) for relation_id, value in zip(relation_ids, soft)}
+        weights = _clip_and_normalize(
+            weights,
+            min_weight=(
+                None
+                if weight_cfg.get("min_weight", None) in (None, "")
+                else float(weight_cfg.get("min_weight"))
+            ),
+            max_weight=(
+                None
+                if weight_cfg.get("max_weight", None) in (None, "")
+                else float(weight_cfg.get("max_weight"))
+            ),
+        )
+        raw = dict(weights)
     else:
         raw = {
             relation_id: (volumes[relation_id] + epsilon) ** eta
             / ((energies[relation_id] + epsilon) ** gamma)
             for relation_id in relation_ids
         }
-    weights = _normalize(raw)
+    weights = weights if method == "smoothed_inverse_energy" else _normalize(raw)
     clip_min = None
     clip_max = None
     if method == "clipped_inverse_energy":
@@ -259,18 +328,39 @@ def compute_relation_weights(
         }
         weights = _normalize(clipped)
     stats_values = list(weights.values())
+    min_weight_value = float(min(stats_values, default=0.0))
+    max_weight_value = float(max(stats_values, default=0.0))
     diagnostics: dict[str, Any] = {
         "relation_weighting_method": method,
         "relation_weights": {str(k): float(v) for k, v in weights.items()},
         "relation_weight_stats": {
             "sum": float(sum(stats_values)),
-            "min": float(min(stats_values, default=0.0)),
-            "max": float(max(stats_values, default=0.0)),
+            "min": min_weight_value,
+            "max": max_weight_value,
             "num_relations": int(len(stats_values)),
         },
+        "relation_weight_entropy": _entropy(stats_values),
+        "relation_weight_max_min_ratio": (
+            float(max_weight_value / max(min_weight_value, 1.0e-12))
+            if stats_values
+            else 0.0
+        ),
         "relation_energy_estimates": {str(k): float(v) for k, v in energies.items()},
         "relation_volume_estimates": {str(k): float(v) for k, v in volumes.items()},
     }
+    if method == "smoothed_inverse_energy":
+        diagnostics.update(
+            {
+                "relation_weighting_base_method": "inverse_energy",
+                "temperature": float(weight_cfg.get("temperature", 1.0)),
+                "min_weight": weight_cfg.get("min_weight", None),
+                "max_weight": weight_cfg.get("max_weight", None),
+                "entropy_regularization": float(weight_cfg.get("entropy_regularization", 0.0)),
+                "energy_smoothing": float(
+                    weight_cfg.get("energy_smoothing", weight_cfg.get("smoothing", epsilon))
+                ),
+            }
+        )
     if basis_source is not None:
         diagnostics["energy_basis_source"] = basis_source
         diagnostics["energy_basis_object"] = "Z_X"

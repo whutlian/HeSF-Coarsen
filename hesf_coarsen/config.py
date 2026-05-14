@@ -42,6 +42,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "feature_aggregation_pagerank_damping": 0.85,
         "aggregation_chunk_size": 1_000_000,
         "aggregation_reducer": "sort",
+        "cumulative_guard": {
+            "enabled": False,
+            "probe_count": 32,
+            "max_cumulative_dee": 0.35,
+            "max_cumulative_sipe": 0.70,
+            "repair_bad_clusters": False,
+        },
     },
     "sketch": {
         "dim": 32,
@@ -78,7 +85,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "metapath_sketch": {
         "enabled": True,
         "dim": 8,
-        "operator_weight_total": 0.25,
+        "preset": "canonical",
+        "operator_weight_total": 0.1,
         "weighting": {
             "method": "inverse_energy",
             "eta": 0.5,
@@ -89,7 +97,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
         "max_paths": 3,
         "max_path_length": 3,
-        "auto_paths": True,
+        "auto_paths": False,
         "seed": 123,
         "row_normalize": True,
         "paths": [],
@@ -119,6 +127,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "ann_window_size": 8,
         "ann_budget_K": 8,
         "simhash_bits": 16,
+        "hash_tables": None,
+        "multi_probe": False,
+        "hamming_radius": 0,
+        "adaptive_hamming_radius": False,
+        "quotas": {
+            "bucket_min_fraction": 0.0,
+            "twohop_max_fraction": 1.0,
+        },
     },
     "scoring": {
         "lambda_spec": 1.0,

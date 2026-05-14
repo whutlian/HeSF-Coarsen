@@ -70,3 +70,68 @@ def test_bucket_candidates_respect_type_and_partition():
         j = int(j)
         assert node_type[i] == node_type[j]
         assert partition_id[i] == partition_id[j]
+
+
+def test_bucket_multi_probe_emits_adjacent_hash_bucket_pairs():
+    node_type = np.array([0, 0], dtype=np.int32)
+    partition_id = np.array([0, 0], dtype=np.int32)
+    buckets = np.array([0b00, 0b01], dtype=np.int64)
+    base_config = dict(DEFAULT_CONFIG)
+    base_config["candidates"] = dict(
+        DEFAULT_CONFIG["candidates"],
+        total_budget_K=4,
+        bucket_pair_cap=4,
+        active_hash_bits=2,
+        multi_probe=False,
+    )
+    exact_store = BoundedCandidateStore(node_type, K=4)
+    generate_bucket_candidates(buckets, node_type, partition_id, base_config, exact_store)
+
+    probe_config = dict(base_config)
+    probe_config["candidates"] = dict(
+        base_config["candidates"],
+        multi_probe=True,
+        hamming_radius=1,
+        quotas={"bucket_min_fraction": 0.25},
+    )
+    probe_store = BoundedCandidateStore(node_type, K=4)
+    generate_bucket_candidates(buckets, node_type, partition_id, probe_config, probe_store)
+
+    assert exact_store.pair_count() == 0
+    assert probe_store.pair_count() == 1
+    assert probe_store.source_counts()["bucket"] == 1
+
+
+def test_multitable_bucket_config_can_increase_candidate_coverage(tmp_path):
+    from hesf_coarsen.coarsen.multilevel import run_multilevel_coarsening
+    from hesf_coarsen.io.edge_list import generate_synthetic_graph
+
+    graph = generate_synthetic_graph(num_users=10, num_items=6, num_tags=4, seed=61)
+    config = dict(DEFAULT_CONFIG)
+    config["output"] = {"dir": str(tmp_path)}
+    config["diagnostics"] = dict(config["diagnostics"], enable_spectral=False)
+    config["coarsening"] = dict(
+        config["coarsening"],
+        target_ratio=0.8,
+        max_levels=1,
+        per_level_ratio=0.8,
+    )
+    config["sketch"] = dict(config["sketch"], dim=32, order=2, method="lazy", dtype="float32")
+    config["candidates"] = dict(
+        config["candidates"],
+        enable_onehop=False,
+        enable_capped_twohop=False,
+        enable_bucket=True,
+        enable_fallback=False,
+        total_budget_K=8,
+        bucket_pair_cap=32,
+        hash_tables=[4, 8],
+        multi_probe=True,
+        adaptive_hamming_radius=True,
+    )
+
+    result = run_multilevel_coarsening(graph, config)[0]
+
+    assert result.diagnostics["config"]["candidates"]["hash_tables"] == [4, 8]
+    assert result.diagnostics["config"]["candidates"]["multi_probe"] is True
+    assert result.diagnostics["candidate_source_counts"].get("bucket", 0) > 0

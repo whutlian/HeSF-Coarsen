@@ -46,6 +46,28 @@ def _graph_array_bytes(graph: HeteroGraph) -> int:
     return int(total)
 
 
+def _cluster_size_histogram(sizes: np.ndarray) -> dict[str, int]:
+    values, counts = np.unique(np.asarray(sizes, dtype=np.int64), return_counts=True)
+    return {str(int(value)): int(count) for value, count in zip(values, counts)}
+
+
+def _cluster_label_entropy(labels: np.ndarray | None, assignment: Assignment) -> float:
+    if labels is None:
+        return 0.0
+    labels = np.asarray(labels).reshape(-1)
+    entropies: list[float] = []
+    for supernode in range(assignment.num_supernodes):
+        members = np.flatnonzero(assignment.assignment == supernode)
+        cluster_labels = labels[members]
+        cluster_labels = cluster_labels[cluster_labels >= 0]
+        if len(cluster_labels) == 0:
+            continue
+        _values, counts = np.unique(cluster_labels, return_counts=True)
+        probs = counts.astype(np.float64) / max(float(counts.sum()), 1.0)
+        entropies.append(float(-np.sum(probs * np.log(np.maximum(probs, 1.0e-12)))))
+    return float(np.mean(entropies)) if entropies else 0.0
+
+
 def _current_rss_bytes() -> int | None:
     try:
         import psutil  # type: ignore
@@ -240,6 +262,18 @@ def compute_diagnostics(
         "candidate_source_counts": dict(source_counts),
         "matched_pairs": int(np.sum(sizes == 2)),
         "matched_merges": int(np.sum(np.maximum(sizes - 1, 0))),
+        "matched_units": int(np.sum(np.maximum(sizes - 1, 0))),
+        "cluster_count": int(assignment.num_supernodes),
+        "node_reduction": int(original.num_nodes - coarse.num_nodes),
+        "node_reduction_ratio": float(
+            (original.num_nodes - coarse.num_nodes) / max(original.num_nodes, 1)
+        ),
+        "cluster_size_histogram": _cluster_size_histogram(sizes),
+        "cluster_size_mean": float(sizes.mean() if len(sizes) else 0.0),
+        "cluster_size_p95": float(np.percentile(sizes, 95)) if len(sizes) else 0.0,
+        "cluster_size_p99": float(np.percentile(sizes, 99)) if len(sizes) else 0.0,
+        "non_singleton_cluster_count": int(np.sum(sizes > 1)),
+        "cluster_label_entropy": _cluster_label_entropy(original.labels, assignment),
         "singleton_ratio": float(np.sum(sizes == 1) / max(len(sizes), 1)),
         "max_cluster_size": int(sizes.max(initial=0)),
         "relation_weight_before": original_weights,

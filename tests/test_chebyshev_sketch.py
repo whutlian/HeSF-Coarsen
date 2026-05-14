@@ -309,6 +309,11 @@ def test_default_lowpass_sketch_uses_relation_weighted_chebyshev_heat():
     assert diagnostics["metapath_sketch"]["energy_basis_object"] == "Z_X"
     assert diagnostics["metapath_sketch"]["energy_estimates"]
     assert diagnostics["metapath_sketch"]["operator_weight_total"] > 0.0
+    assert diagnostics["metapath_sketch"]["path_weight_entropy"] >= 0.0
+    first_path = diagnostics["metapath_sketch"]["paths"][0]
+    assert "operator_weight" in first_path
+    assert "energy_estimate" in first_path
+    assert "volume_estimate" in first_path
     total_weight = diagnostics["fusion"]["relation_weight_stats"]["sum"]
     total_weight += diagnostics["metapath_sketch"]["operator_weight_total"]
     assert np.isclose(total_weight, 1.0)

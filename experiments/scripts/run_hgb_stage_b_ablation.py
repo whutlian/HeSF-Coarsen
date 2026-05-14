@@ -69,6 +69,57 @@ def _variant_config(config: dict, variant: str) -> dict:
         "M4",
     }:
         return cfg
+    if variant in {"A0", "A2", "A4", "A5", "V0", "V1", "V2", "V3", "V4", "V5"}:
+        cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "uniform"
+    if variant in {"A1", "A3"}:
+        cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "inverse_sqrt_energy"
+        cfg["fusion"]["relation_weighting"]["gamma"] = 0.5
+    if variant in {"A0", "A1", "A4", "V0", "V1", "V4", "V5"}:
+        cfg.setdefault("metapath_sketch", {})["preset"] = "off"
+        cfg.setdefault("metapath_sketch", {})["operator_weight_total"] = 0.0
+    if variant in {"A2", "A3", "A5", "V2", "V3"}:
+        cfg.setdefault("metapath_sketch", {})["preset"] = "canonical"
+        cfg.setdefault("metapath_sketch", {})["operator_weight_total"] = 0.1
+    if variant in {"A4", "A5", "V4", "V5"}:
+        cfg.setdefault("sketch", {})["method"] = "lazy"
+        cfg.setdefault("sketch", {})["dim"] = 32
+    if variant in {"A0", "A1", "A2", "A3", "V0", "V1", "V2", "V3"}:
+        cfg.setdefault("sketch", {})["method"] = "chebyshev_heat"
+        cfg.setdefault("sketch", {})["dim"] = 16
+    if variant in {"V0", "V2", "V4"}:
+        cfg.setdefault("scoring", {})["lambda_conv"] = 0.0
+    if variant in {"V1", "V3", "V5"}:
+        cfg.setdefault("scoring", {})["lambda_conv"] = 0.5
+    if variant in {"A0", "A1", "A2", "A3", "A4", "A5", "V0", "V1", "V2", "V3", "V4", "V5"}:
+        return cfg
+    if variant == "C1-stop":
+        cfg.setdefault("coarsening", {})["matching_method"] = "mutual_best"
+        cfg.setdefault("coarsening", {})["max_cluster_size"] = 2
+        cfg["coarsening"]["max_levels"] = 6
+        return cfg
+    if variant == "C2-repeat":
+        cfg.setdefault("coarsening", {})["matching_method"] = "greedy_cluster"
+        cfg.setdefault("coarsening", {})["max_cluster_size"] = 4
+        return cfg
+    if variant == "C2-size3":
+        cfg.setdefault("coarsening", {})["matching_method"] = "greedy_cluster"
+        cfg.setdefault("coarsening", {})["max_cluster_size"] = 3
+        cfg["coarsening"]["max_levels"] = 5
+        return cfg
+    if variant == "C2-repair":
+        cfg.setdefault("coarsening", {})["matching_method"] = "greedy_cluster"
+        cfg.setdefault("coarsening", {})["max_cluster_size"] = 4
+        cfg.setdefault("coarsening", {}).setdefault("cumulative_guard", {})
+        cfg["coarsening"]["cumulative_guard"].update(
+            {
+                "enabled": True,
+                "probe_count": 32,
+                "max_cumulative_dee": 0.35,
+                "max_cumulative_sipe": 0.70,
+                "repair_bad_clusters": True,
+            }
+        )
+        return cfg
     if variant == "uniform_weight":
         cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "uniform"
         cfg.setdefault("metapath_sketch", {}).setdefault("weighting", {})["method"] = "uniform"
@@ -255,6 +306,10 @@ def generate_stage_b_configs(
     relation_weighting_methods: Iterable[str] | None = None,
     metapath_presets: Iterable[str] | None = None,
     metapath_operator_weight_totals: Iterable[float] | None = None,
+    lambda_conv: float | None = None,
+    spectral_baseline_max_nodes: int | None = None,
+    spectral_exact_eigenvalue_max_nodes: int | None = None,
+    cumulative_spectral_exact_eigenvalue_max_nodes: int | None = None,
 ) -> Iterable[StageBAblationConfig]:
     sketch_methods = tuple(sketch_methods or ["chebyshev_heat"])
     relation_weighting_methods = tuple(relation_weighting_methods or [""])
@@ -321,10 +376,20 @@ def generate_stage_b_configs(
             lambda_spec=1.0,
             lambda_rel=0.5,
             lambda_feat=0.2,
-            lambda_conv=0.5,
+            lambda_conv=0.5 if lambda_conv is None else float(lambda_conv),
             lambda_boundary=0.2,
         )
         config["diagnostics"] = dict(config["diagnostics"], enable_large_graph_envelope=True)
+        if spectral_baseline_max_nodes is not None:
+            config["diagnostics"]["spectral_baseline_max_nodes"] = int(spectral_baseline_max_nodes)
+        if spectral_exact_eigenvalue_max_nodes is not None:
+            config["diagnostics"]["spectral_exact_eigenvalue_max_nodes"] = int(
+                spectral_exact_eigenvalue_max_nodes
+            )
+        if cumulative_spectral_exact_eigenvalue_max_nodes is not None:
+            config["diagnostics"]["cumulative_spectral_exact_eigenvalue_max_nodes"] = int(
+                cumulative_spectral_exact_eigenvalue_max_nodes
+            )
         config = _variant_config(config, variant)
         if relation_weighting_method:
             config.setdefault("fusion", {}).setdefault("relation_weighting", {})[
@@ -338,26 +403,40 @@ def generate_stage_b_configs(
         effective_relation_weighting = str(
             config.get("fusion", {}).get("relation_weighting", {}).get("method", "")
         )
-        if metapath_preset:
+        effective_sketch_dim = int(config.get("sketch", {}).get("dim", sketch_dim))
+        effective_sketch_method = str(config.get("sketch", {}).get("method", sketch_method))
+        inferred_metapath_preset = str(
+            metapath_preset
+            or config.get("metapath_sketch", {}).get("preset", "")
+        )
+        if inferred_metapath_preset:
             total = (
                 float(metapath_operator_weight_total)
                 if float(metapath_operator_weight_total) >= 0.0
                 else float(config.get("metapath_sketch", {}).get("operator_weight_total", 0.0))
             )
-            config = _apply_metapath_preset(config, dataset, metapath_preset, total)
+            config = _apply_metapath_preset(config, dataset, inferred_metapath_preset, total)
         effective_metapath_total = float(
             config.get("metapath_sketch", {}).get("operator_weight_total", 0.0)
         )
-        effective_metapath_preset = str(metapath_preset or "default")
+        effective_metapath_preset = str(inferred_metapath_preset or "default")
+        effective_coarsening = config.get("coarsening", {})
+        effective_max_levels = int(effective_coarsening.get("max_levels", max_levels))
+        effective_matching_method = str(
+            effective_coarsening.get("matching_method", matching_method)
+        )
+        effective_max_cluster_size = int(
+            effective_coarsening.get("max_cluster_size", max_cluster_size)
+        )
         ratio_token = str(float(target_ratio)).replace(".", "p")
-        method_token = str(config["sketch"]["method"]).replace("chebyshev_heat", "cheb")
-        match_token = str(matching_method)
+        method_token = effective_sketch_method.replace("chebyshev_heat", "cheb")
+        match_token = effective_matching_method
         rw_token = effective_relation_weighting.replace("inverse_energy", "inv")
         mp_token = effective_metapath_preset
         run_name = (
-            f"stageB_{dataset}_{variant}_r{ratio_token}_L{int(max_levels)}_"
-            f"d{int(sketch_dim)}_K{int(candidate_k)}_{source}_{method_token}_"
-            f"{match_token}_c{int(max_cluster_size)}_{rw_token}_mp{mp_token}"
+            f"stageB_{dataset}_{variant}_r{ratio_token}_L{effective_max_levels}_"
+            f"d{int(effective_sketch_dim)}_K{int(candidate_k)}_{source}_{method_token}_"
+            f"{match_token}_c{effective_max_cluster_size}_{rw_token}_mp{mp_token}"
             f"{str(effective_metapath_total).replace('.', 'p')}_seed{int(seed)}"
         )
         unique_key = _unique_run_key(
@@ -367,13 +446,13 @@ def generate_stage_b_configs(
             target_ratio=float(target_ratio),
             seed=int(seed),
             candidate_source=source,
-            sketch_dim=int(sketch_dim),
+            sketch_dim=int(effective_sketch_dim),
             sketch_order=int(sketch_order),
-            sketch_method=str(config["sketch"]["method"]),
-            max_levels=int(max_levels),
+            sketch_method=effective_sketch_method,
+            max_levels=effective_max_levels,
             candidate_k=int(candidate_k),
-            matching_method=str(matching_method),
-            max_cluster_size=int(max_cluster_size),
+            matching_method=effective_matching_method,
+            max_cluster_size=effective_max_cluster_size,
             relation_weighting_method=effective_relation_weighting,
             metapath_preset=effective_metapath_preset,
             metapath_operator_weight_total=effective_metapath_total,
@@ -385,11 +464,11 @@ def generate_stage_b_configs(
             target_ratio=float(target_ratio),
             seed=int(seed),
             candidate_source=source,
-            sketch_dim=int(sketch_dim),
+            sketch_dim=effective_sketch_dim,
             sketch_order=int(sketch_order),
-            sketch_method=str(config["sketch"]["method"]),
-            matching_method=str(matching_method),
-            max_cluster_size=int(max_cluster_size),
+            sketch_method=effective_sketch_method,
+            matching_method=effective_matching_method,
+            max_cluster_size=effective_max_cluster_size,
             relation_weighting_method=effective_relation_weighting,
             metapath_preset=effective_metapath_preset,
             metapath_operator_weight_total=effective_metapath_total,
@@ -430,6 +509,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--metapath-presets", nargs="+", default=None)
     parser.add_argument("--metapath-operator-weight-total", type=float, default=None)
     parser.add_argument("--metapath-operator-weight-totals", type=float, nargs="+", default=None)
+    parser.add_argument("--lambda-conv", type=float, default=None)
+    parser.add_argument("--spectral-baseline-max-nodes", type=int, default=None)
+    parser.add_argument("--spectral-exact-eigenvalue-max-nodes", type=int, default=None)
+    parser.add_argument("--cumulative-spectral-exact-eigenvalue-max-nodes", type=int, default=None)
     parser.add_argument("--experiment-block", default="stage_b_ablation")
     parser.add_argument("--seeds", type=int, nargs="+", default=[12345])
     parser.add_argument(
@@ -525,6 +608,10 @@ def main(argv: list[str] | None = None) -> int:
         relation_weighting_methods=_relation_weighting_methods(args),
         metapath_presets=_metapath_presets(args),
         metapath_operator_weight_totals=_metapath_operator_weight_totals(args),
+        lambda_conv=args.lambda_conv,
+        spectral_baseline_max_nodes=args.spectral_baseline_max_nodes,
+        spectral_exact_eigenvalue_max_nodes=args.spectral_exact_eigenvalue_max_nodes,
+        cumulative_spectral_exact_eigenvalue_max_nodes=args.cumulative_spectral_exact_eigenvalue_max_nodes,
     ):
         graph_dir = (
             (args.graph_root / item.dataset.lower())

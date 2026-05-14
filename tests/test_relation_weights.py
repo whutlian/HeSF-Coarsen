@@ -32,7 +32,14 @@ def test_relation_weight_methods_are_normalized_and_non_negative():
     graph = _smooth_noisy_graph()
     basis = np.array([[0.0], [0.0], [10.0], [-10.0]], dtype=np.float32)
 
-    for method in ["uniform", "volume", "inverse_energy", "clipped_inverse_energy", "inverse_sqrt_energy"]:
+    for method in [
+        "uniform",
+        "volume",
+        "inverse_energy",
+        "clipped_inverse_energy",
+        "inverse_sqrt_energy",
+        "smoothed_inverse_energy",
+    ]:
         result = compute_relation_weights(
             graph,
             {
@@ -117,6 +124,37 @@ def test_inverse_energy_relation_weight_prefers_smooth_relation():
     assert result.diagnostics["relation_weighting_method"] == "inverse_energy"
     assert result.diagnostics["energy_basis_object"] == "Z_X"
     assert result.diagnostics["energy_estimator"] == "sampled_normalized_edge_energy"
+
+
+def test_smoothed_inverse_energy_records_smoothing_diagnostics():
+    graph = _smooth_noisy_graph()
+    basis = np.array([[0.0], [0.0], [10.0], [-10.0]], dtype=np.float32)
+
+    result = compute_relation_weights(
+        graph,
+        {
+            "fusion": {
+                "relation_weighting": {
+                    "method": "smoothed_inverse_energy",
+                    "eta": 0.0,
+                    "gamma": 1.0,
+                    "epsilon": 1e-6,
+                    "temperature": 0.5,
+                    "min_weight": 0.05,
+                    "max_weight": 0.95,
+                    "entropy_regularization": 0.1,
+                }
+            }
+        },
+        basis=basis,
+    )
+
+    assert np.isclose(sum(result.weights.values()), 1.0)
+    assert result.weights[0] > result.weights[1]
+    assert result.diagnostics["relation_weighting_method"] == "smoothed_inverse_energy"
+    assert result.diagnostics["relation_weighting_base_method"] == "inverse_energy"
+    assert result.diagnostics["relation_weight_entropy"] > 0.0
+    assert result.diagnostics["relation_weight_max_min_ratio"] >= 1.0
 
 
 def test_inverse_energy_metapath_weight_prefers_smooth_path():

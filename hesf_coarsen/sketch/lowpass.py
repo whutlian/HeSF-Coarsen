@@ -192,6 +192,10 @@ def _compute_lazy_sketch(
             type_names,
             auto_generated=auto_generated,
             path_weights=path_weights,
+            normalized_weights=metapath_weight_diag.get("metapath_weights", {}),
+            energy_estimates=metapath_weight_diag.get("metapath_energy_estimates", {}),
+            volume_estimates=metapath_weight_diag.get("metapath_volume_estimates", {}),
+            weighting_method=metapath_weight_diag.get("metapath_weighting_method"),
             enabled=True,
             operator_mode="fused_laplacian",
         )
@@ -343,6 +347,10 @@ def _compute_chebyshev_heat_sketch(
             type_names,
             auto_generated=auto_generated,
             path_weights=path_weights,
+            normalized_weights=metapath_weight_diag.get("metapath_weights", {}),
+            energy_estimates=metapath_weight_diag.get("metapath_energy_estimates", {}),
+            volume_estimates=metapath_weight_diag.get("metapath_volume_estimates", {}),
+            weighting_method=metapath_weight_diag.get("metapath_weighting_method"),
             enabled=True,
             operator_mode="fused_laplacian",
         )

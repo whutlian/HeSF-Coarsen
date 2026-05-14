@@ -127,6 +127,32 @@ def test_multilevel_pipeline_writes_label_projection_task_metrics(tmp_path):
     assert 0.0 <= task["macro_f1"] <= 1.0
 
 
+def test_multilevel_pipeline_records_cluster_reduction_diagnostics(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=10,
+        num_items=6,
+        num_tags=4,
+        seed=127,
+    )
+    config = small_config(tmp_path)
+    config["diagnostics"] = dict(config["diagnostics"], enable_spectral=False)
+    config["coarsening"] = dict(
+        config["coarsening"],
+        matching_method="greedy_cluster",
+        max_cluster_size=4,
+    )
+
+    result = run_multilevel_coarsening(graph, config)[0]
+    diagnostics = result.diagnostics
+
+    assert diagnostics["cluster_count"] == result.assignment.num_supernodes
+    assert diagnostics["node_reduction"] == graph.num_nodes - result.graph.num_nodes
+    assert diagnostics["matched_units"] == diagnostics["node_reduction"]
+    assert diagnostics["cluster_size_histogram"]
+    assert diagnostics["cluster_size_mean"] >= 1.0
+    assert "cluster_label_entropy" in diagnostics
+
+
 def test_level_config_caps_matches_by_remaining_target_ratio():
     config = dict(DEFAULT_CONFIG)
     config["coarsening"] = dict(
@@ -215,6 +241,31 @@ def test_multilevel_pipeline_writes_spectral_diagnostics_closed_loop(tmp_path):
     assert "relation_weighted_fused_energy_relative_error" in saved["cumulative_spectral"]
     cumulative_payload = np.load(tmp_path / "level_1" / "cumulative_assignment.npz")
     assert cumulative_payload["assignment"].shape == (graph.num_nodes,)
+
+
+def test_spectral_diagnostics_samples_exact_sanity_when_graph_exceeds_limit(tmp_path):
+    from hesf_coarsen.eval.spectral_diagnostics import compute_spectral_diagnostics
+
+    graph = generate_synthetic_graph(
+        num_users=10,
+        num_items=6,
+        num_tags=4,
+        seed=1410,
+    )
+    result = run_multilevel_coarsening(graph, small_config(tmp_path / "run"))[0]
+
+    diagnostics = compute_spectral_diagnostics(
+        original=graph,
+        coarse=result.graph,
+        assignment=result.assignment,
+        seed=11,
+        num_signals=3,
+        exact_eigenvalue_max_nodes=8,
+    )
+
+    assert diagnostics["exact_eigenvalue_sanity"]["status"] == "sampled_subgraph"
+    assert diagnostics["exact_eigenvalue_sanity"]["mode"] == "sampled_dense_eigvalsh"
+    assert diagnostics["exact_eigenvalue_sanity"]["relative_error"] >= 0.0
 
 
 def test_multilevel_pipeline_runs_lazy_and_chebyshev_sketches(tmp_path):

@@ -430,6 +430,9 @@ def generate_capped_twohop_candidates(
     candidate_cfg = config.get("candidates", {})
     coarsen_cfg = config.get("coarsening", {})
     per_middle_pair_cap = int(candidate_cfg.get("per_middle_pair_cap", 64))
+    quotas = candidate_cfg.get("quotas", {}) or {}
+    twohop_max_fraction = float(quotas.get("twohop_max_fraction", 1.0) or 1.0) if isinstance(quotas, dict) else 1.0
+    twohop_score_scale = 1.0 + max(0.0, 1.0 - twohop_max_fraction)
     same_partition = bool(coarsen_cfg.get("same_partition_only", True))
     seed = int(config.get("seed", 12345))
 
@@ -471,7 +474,7 @@ def generate_capped_twohop_candidates(
                 pair_seed = seed + middle * 9176 + endpoint_type * 131
                 for i, j in _sample_pairs(group, per_middle_pair_cap, pair_seed):
                     diff = Z[i].astype(np.float32) - Z[j].astype(np.float32)
-                    store.add(i, j, float(np.dot(diff, diff)), "capped_twohop")
+                    store.add(i, j, float(np.dot(diff, diff)) * twohop_score_scale, "capped_twohop")
 
 
 def _collect_incident_for_middle_range(
@@ -511,6 +514,9 @@ def generate_capped_twohop_candidates_chunked(
     candidate_cfg = config.get("candidates", {})
     coarsen_cfg = config.get("coarsening", {})
     per_middle_pair_cap = int(candidate_cfg.get("per_middle_pair_cap", 64))
+    quotas = candidate_cfg.get("quotas", {}) or {}
+    twohop_max_fraction = float(quotas.get("twohop_max_fraction", 1.0) or 1.0) if isinstance(quotas, dict) else 1.0
+    twohop_score_scale = 1.0 + max(0.0, 1.0 - twohop_max_fraction)
     same_partition = bool(coarsen_cfg.get("same_partition_only", True))
     seed = int(config.get("seed", 12345))
     global_cap = candidate_cfg.get("middle_degree_cap_policy", "p99")
@@ -574,7 +580,7 @@ def generate_capped_twohop_candidates_chunked(
                     pairs = _sample_pairs(group, remaining, pair_seed)
                     for i, j in pairs:
                         diff = Z[i].astype(np.float32) - Z[j].astype(np.float32)
-                        store.add(i, j, float(np.dot(diff, diff)), "capped_twohop")
+                        store.add(i, j, float(np.dot(diff, diff)) * twohop_score_scale, "capped_twohop")
                     middle_emitted += len(pairs)
                     total_emitted += len(pairs)
                 if middle_emitted >= per_middle_pair_cap:

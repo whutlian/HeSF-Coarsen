@@ -31,6 +31,15 @@ def _normalize_rows(Z: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
     return Z / np.maximum(norms, epsilon)
 
 
+def _entropy(values: list[float]) -> float:
+    arr = np.asarray(values, dtype=np.float64)
+    arr = arr[arr > 0.0]
+    if len(arr) == 0:
+        return 0.0
+    arr = arr / max(float(arr.sum()), 1e-12)
+    return float(-np.sum(arr * np.log(arr)))
+
+
 def _type_name_map(graph: HeteroGraph, config: dict[str, Any]) -> dict[str, int]:
     mapping: dict[str, int] = {}
     configured = config.get("type_names", {}) or config.get("metapath_sketch", {}).get("type_names", {})
@@ -154,6 +163,9 @@ def resolve_metapath_paths(
     type_names = _type_name_map(graph, config)
     raw_paths = list(cfg.get("paths", []))
     auto_generated = False
+    preset = str(cfg.get("preset", "")).lower()
+    if not raw_paths and preset in {"canonical", "dataset_canonical"}:
+        raw_paths = _auto_metapath_paths(graph, max_paths, type_names)
     if not raw_paths and bool(cfg.get("auto_paths", False)):
         raw_paths = _auto_metapath_paths(graph, max_paths, type_names)
         auto_generated = True
@@ -187,16 +199,31 @@ def metapath_path_diagnostics(
     *,
     auto_generated: bool,
     path_weights: dict[str, float] | None = None,
+    normalized_weights: dict[str, float] | None = None,
+    energy_estimates: dict[str, float] | None = None,
+    volume_estimates: dict[str, float] | None = None,
+    weighting_method: str | None = None,
     enabled: bool = True,
     operator_mode: str = "chained_sketch_channels",
 ) -> dict[str, Any]:
     weights = path_weights or {}
+    normalized = normalized_weights or {}
+    energies = energy_estimates or {}
+    volumes = volume_estimates or {}
     return {
         "enabled": bool(enabled),
         "operator_mode": operator_mode,
         "num_paths": int(len(paths)),
         "auto_generated_paths": bool(auto_generated),
+        "canonical_path_coverage": 0.0 if auto_generated else (1.0 if paths else 0.0),
         "operator_weight_total": float(sum(weights.values())),
+        "path_weight_entropy": _entropy(list(normalized.values()) or list(weights.values())),
+        "path_energy_before_after": {
+            str(name): {"before": float(value), "after": float(value)}
+            for name, value in energies.items()
+        },
+        "metapath_pair_score_delta": None,
+        "matched_pairs_changed_by_metapath": None,
         "path_weights": {str(name): float(weight) for name, weight in weights.items()},
         "paths": [
             {
@@ -206,6 +233,19 @@ def metapath_path_diagnostics(
                 "end_type": int(path["end_type"]),
                 "start_type_name": _type_display_name(int(path["start_type"]), type_names),
                 "end_type_name": _type_display_name(int(path["end_type"]), type_names),
+                "operator_weight": float(
+                    weights.get(str(path.get("name", f"metapath_{idx}")), 0.0)
+                ),
+                "normalized_weight": float(
+                    normalized.get(str(path.get("name", f"metapath_{idx}")), 0.0)
+                ),
+                "energy_estimate": float(
+                    energies.get(str(path.get("name", f"metapath_{idx}")), 0.0)
+                ),
+                "volume_estimate": float(
+                    volumes.get(str(path.get("name", f"metapath_{idx}")), 0.0)
+                ),
+                "weighting_method": weighting_method,
                 "relation_names": [
                     graph.relation_specs[int(step["relation_id"])].name
                     for step in path.get("steps", [])
@@ -299,7 +339,14 @@ def compute_metapath_weights(
     method = str(weight_cfg.get("method", "inverse_energy")).lower()
     if method in {"reliability", "reliability_weighted"}:
         method = "inverse_energy"
-    if method not in {"manual", "uniform", "volume", "inverse_energy", "feature_smoothness"}:
+    if method not in {
+        "manual",
+        "uniform",
+        "volume",
+        "inverse_energy",
+        "smoothed_inverse_energy",
+        "feature_smoothness",
+    }:
         raise ValueError(f"unsupported metapath_sketch.weighting.method: {method}")
 
     named_paths = [
@@ -314,7 +361,7 @@ def compute_metapath_weights(
     energies = {name: 0.0 for name in path_names}
     basis_source = None
 
-    if method in {"inverse_energy", "feature_smoothness"}:
+    if method in {"inverse_energy", "smoothed_inverse_energy", "feature_smoothness"}:
         B, basis_source = _basis_for_energy(graph, config, weight_cfg, basis, method)
         for name, path in zip(path_names, named_paths):
             energies[name] = _metapath_energy(graph, path, B, epsilon=epsilon)

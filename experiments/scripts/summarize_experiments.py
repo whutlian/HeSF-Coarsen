@@ -111,6 +111,51 @@ def _peak_vram_gb(
     return "" if not peaks else float(max(peaks))
 
 
+def _count_computed_baselines(row: Mapping[str, Any], prefix: str = "spectral") -> int:
+    needle = f"{prefix}.baseline_comparison."
+    count = 0
+    for key, value in row.items():
+        if key.startswith(needle) and key.endswith(".status") and str(value) == "computed":
+            count += 1
+    return count
+
+
+def _task_value(row: Mapping[str, Any], name: str) -> Any:
+    return _first(row, (f"task.{name}", name), "")
+
+
+def _with_task_aliases(row: dict[str, Any]) -> None:
+    projected_micro = _task_value(row, "projected_original_micro_f1")
+    projected_macro = _task_value(row, "projected_original_macro_f1")
+    refined_micro = _task_value(row, "refined_original_micro_f1")
+    refined_macro = _task_value(row, "refined_original_macro_f1")
+    coarse_micro = _task_value(row, "coarse_train_micro_f1")
+    coarse_macro = _task_value(row, "coarse_train_macro_f1")
+    primary_name = _task_value(row, "primary_task_metric_name") or (
+        "refined_original_macro_f1" if refined_macro != "" else "projected_original_macro_f1"
+    )
+    primary_metric = _task_value(row, "primary_task_metric")
+    if primary_metric == "":
+        primary_metric = refined_macro if primary_name == "refined_original_macro_f1" else projected_macro
+    primary_macro = refined_macro if primary_name == "refined_original_macro_f1" else primary_metric
+    row.update(
+        {
+            "task_projected_micro_f1": projected_micro,
+            "task_projected_macro_f1": projected_macro,
+            "task_refined_micro_f1": refined_micro,
+            "task_refined_macro_f1": refined_macro,
+            "task_coarse_train_micro_f1": coarse_micro,
+            "task_coarse_train_macro_f1": coarse_macro,
+            "task_primary_metric_name": primary_name,
+            "task_primary_metric": primary_metric,
+            "task_primary_macro_f1": primary_macro,
+            "task_micro_f1": refined_micro or projected_micro or row.get("task_micro_f1", ""),
+            "task_macro_f1": primary_macro or projected_macro or row.get("task_macro_f1", ""),
+            "compute_device": _task_value(row, "device") or row.get("compute_device", "cpu"),
+        }
+    )
+
+
 def _score_share_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
     aliases: dict[str, Any] = {}
     parts: list[str] = []
@@ -162,6 +207,9 @@ def _quality_row(base: Mapping[str, Any], row: Mapping[str, Any], *, row_type: s
         "final_FSE_unweighted": row.get("final_FSE_unweighted", ""),
         "final_REE_max": row.get("final_REE_max", ""),
         "final_SIPE": row.get("final_SIPE", ""),
+        "task_projected_macro_f1": row.get("task_projected_macro_f1", row.get("task.projected_original_macro_f1", "")),
+        "task_refined_macro_f1": row.get("task_refined_macro_f1", row.get("task.refined_original_macro_f1", "")),
+        "task_primary_macro_f1": row.get("task_primary_macro_f1", ""),
         "task_micro_f1": row.get("task_micro_f1", row.get("task.micro_f1", "")),
         "task_macro_f1": row.get("task_macro_f1", row.get("task.macro_f1", "")),
         "runtime_total_run": row.get("runtime_total_run", ""),
@@ -312,6 +360,44 @@ def _final_cumulative_row(
         }
     )
     final["peak_vram_gb"] = final["peak_vram_allocated_gb"]
+    final["peak_cpu_memory_gb"] = final["peak_rss_gb"]
+    final["peak_gpu_memory_allocated_gb"] = final["peak_vram_allocated_gb"]
+    final["peak_gpu_memory_reserved_gb"] = final["peak_vram_reserved_gb"]
+    final["spectral_baseline_computed_count"] = _count_computed_baselines(last, "spectral")
+    final["cumulative_spectral_baseline_computed_count"] = _count_computed_baselines(
+        last,
+        "cumulative_spectral",
+    )
+    final["spectral_exact_eigenvalue_sanity_status"] = last.get(
+        "spectral.exact_eigenvalue_sanity.status",
+        "",
+    )
+    final["spectral_exact_eigenvalue_sanity_mode"] = last.get(
+        "spectral.exact_eigenvalue_sanity.mode",
+        "",
+    )
+    final["spectral_exact_eigenvalue_sanity_relative_error"] = last.get(
+        "spectral.exact_eigenvalue_sanity.relative_error",
+        "",
+    )
+    peak_allocated = _as_float(final.get("peak_vram_allocated_gb"), 0.0) or 0.0
+    peak_reserved = _as_float(final.get("peak_vram_reserved_gb"), 0.0) or 0.0
+    cuda_available = any(
+        str(row.get("large_graph_envelope.cuda_memory.available", "")).lower() == "true"
+        for row in ordered
+    ) or max(peak_allocated, peak_reserved) > 0.0
+    task_device = _task_value(last, "device")
+    if task_device:
+        final["compute_device"] = str(task_device)
+    elif max(peak_allocated, peak_reserved) > 0.0:
+        final["compute_device"] = "cuda"
+    else:
+        final["compute_device"] = "cpu"
+    final["cuda_available"] = "true" if cuda_available else "false"
+    final["cpu_only"] = (
+        "true" if final["compute_device"] == "cpu" and max(peak_allocated, peak_reserved) <= 0.0 else "false"
+    )
+    _with_task_aliases(final)
     final.update(_score_share_aliases(last))
     return final
 
@@ -336,13 +422,18 @@ def _core_report_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "variant": variant,
                 "final ratio": _fmt_metric(_mean_numeric(rows, "final_cumulative_ratio")),
-                "DEE ↓": _fmt_metric(_mean_numeric(rows, "cumulative_dee")),
-                "FSE-unweighted ↓": _fmt_metric(_mean_numeric(rows, "cumulative_fse_unweighted")),
-                "REE-max ↓": _fmt_metric(_mean_numeric(rows, "cumulative_ree_max")),
-                "SIPE ↓": _fmt_metric(_mean_numeric(rows, "cumulative_sipe")),
-                "macro-F1 ↑": _fmt_metric(_mean_numeric(rows, "task_macro_f1")),
+                "cumulative DEE ↓": _fmt_metric(_mean_numeric(rows, "cumulative_dee")),
+                "cumulative FWE-weighted ↓": _fmt_metric(_mean_numeric(rows, "cumulative_fwe_weighted")),
+                "cumulative FSE-unweighted ↓": _fmt_metric(_mean_numeric(rows, "cumulative_fse_unweighted")),
+                "cumulative REE-max ↓": _fmt_metric(_mean_numeric(rows, "cumulative_ree_max")),
+                "cumulative SIPE ↓": _fmt_metric(_mean_numeric(rows, "cumulative_sipe")),
+                "coarse train macro-F1 ↑": _fmt_metric(_mean_numeric(rows, "task_coarse_train_macro_f1")),
+                "projected macro-F1 ↑": _fmt_metric(_mean_numeric(rows, "task_projected_macro_f1")),
+                "refined macro-F1 ↑": _fmt_metric(_mean_numeric(rows, "task_refined_macro_f1")),
+                "primary macro-F1 ↑": _fmt_metric(_mean_numeric(rows, "task_primary_macro_f1")),
                 "runtime ↓": _fmt_metric(_mean_numeric(rows, "runtime_total_run")),
                 "peak RAM": _fmt_metric(_mean_numeric(rows, "peak_rss_gb")),
+                "peak VRAM": _fmt_metric(_mean_numeric(rows, "peak_vram_allocated_gb")),
             }
         )
     return report_rows
@@ -417,16 +508,25 @@ def _task_summary_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
         {
             **_run_identity(row),
             "task_model": row.get("task.model", ""),
+            "task_primary_metric_name": row.get("task_primary_metric_name", ""),
+            "task_primary_metric": row.get("task_primary_metric", ""),
+            "task_primary_macro_f1": row.get("task_primary_macro_f1", ""),
+            "task_projected_micro_f1": row.get("task_projected_micro_f1", ""),
+            "task_projected_macro_f1": row.get("task_projected_macro_f1", ""),
+            "task_refined_micro_f1": row.get("task_refined_micro_f1", ""),
+            "task_refined_macro_f1": row.get("task_refined_macro_f1", ""),
+            "task_coarse_train_micro_f1": row.get("task_coarse_train_micro_f1", ""),
+            "task_coarse_train_macro_f1": row.get("task_coarse_train_macro_f1", ""),
             "task_micro_f1": row.get("task_micro_f1", row.get("task.micro_f1", "")),
             "task_macro_f1": row.get("task_macro_f1", row.get("task.macro_f1", "")),
             "task_labeled_nodes": row.get("task.labeled_nodes", ""),
             "task_skipped": row.get("task.skipped", ""),
-            "coarse_train_micro_f1": row.get("task.coarse_train_micro_f1", ""),
-            "coarse_train_macro_f1": row.get("task.coarse_train_macro_f1", ""),
-            "projected_original_micro_f1": row.get("task.projected_original_micro_f1", ""),
-            "projected_original_macro_f1": row.get("task.projected_original_macro_f1", ""),
-            "refined_original_micro_f1": row.get("task.refined_original_micro_f1", ""),
-            "refined_original_macro_f1": row.get("task.refined_original_macro_f1", ""),
+            "coarse_train_micro_f1": row.get("task_coarse_train_micro_f1", row.get("task.coarse_train_micro_f1", "")),
+            "coarse_train_macro_f1": row.get("task_coarse_train_macro_f1", row.get("task.coarse_train_macro_f1", "")),
+            "projected_original_micro_f1": row.get("task_projected_micro_f1", row.get("task.projected_original_micro_f1", "")),
+            "projected_original_macro_f1": row.get("task_projected_macro_f1", row.get("task.projected_original_macro_f1", "")),
+            "refined_original_micro_f1": row.get("task_refined_micro_f1", row.get("task.refined_original_micro_f1", "")),
+            "refined_original_macro_f1": row.get("task_refined_macro_f1", row.get("task.refined_original_macro_f1", "")),
             "train_time": row.get("task.train_time", ""),
             "refine_time": row.get("task.refine_time", ""),
             "total_time": row.get("task.total_time", ""),
@@ -441,9 +541,15 @@ def _run_resource_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             **_run_identity(row),
             "runtime_total_run": row.get("runtime_total_run", ""),
             "peak_rss_gb": row.get("peak_rss_gb", ""),
+            "peak_cpu_memory_gb": row.get("peak_cpu_memory_gb", row.get("peak_rss_gb", "")),
             "peak_vram_gb": row.get("peak_vram_gb", ""),
             "peak_vram_allocated_gb": row.get("peak_vram_allocated_gb", ""),
             "peak_vram_reserved_gb": row.get("peak_vram_reserved_gb", ""),
+            "peak_gpu_memory_allocated_gb": row.get("peak_gpu_memory_allocated_gb", row.get("peak_vram_allocated_gb", "")),
+            "peak_gpu_memory_reserved_gb": row.get("peak_gpu_memory_reserved_gb", row.get("peak_vram_reserved_gb", "")),
+            "compute_device": row.get("compute_device", ""),
+            "cuda_available": row.get("cuda_available", ""),
+            "cpu_only": row.get("cpu_only", ""),
             "process_rss_bytes": row.get("large_graph_envelope.process_rss_bytes", ""),
             "peak_vram_allocated_bytes": row.get(
                 "large_graph_envelope.cuda_memory.peak_allocated_bytes",
@@ -502,7 +608,9 @@ def _compare_rows(
         "cumulative_fse_unweighted",
         "cumulative_ree_max",
         "cumulative_sipe",
-        "task_macro_f1",
+        "task_projected_macro_f1",
+        "task_refined_macro_f1",
+        "task_primary_macro_f1",
         "runtime_total_run",
         "peak_rss_gb",
         "peak_vram_allocated_gb",
@@ -587,7 +695,7 @@ def _maybe_write_figures(
         plt.title("Ablation Delta DEE")
         savefig("ablation_delta_DEE.png")
 
-    variant_f1 = _group_mean(final_rows, "variant", "task_macro_f1")
+    variant_f1 = _group_mean(final_rows, "variant", "task_primary_macro_f1")
     if "base" in variant_f1 and len(variant_f1) > 1:
         labels = sorted(variant_f1)
         deltas = [variant_f1[label] - variant_f1["base"] for label in labels]
@@ -739,14 +847,7 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
             if task_eval_path.exists():
                 task_payload = read_json(task_eval_path)
                 final_row.update(flatten_mapping({"task": task_payload}))
-                final_row["task_micro_f1"] = task_payload.get(
-                    "projected_original_micro_f1",
-                    task_payload.get("micro_f1", final_row.get("task_micro_f1", "")),
-                )
-                final_row["task_macro_f1"] = task_payload.get(
-                    "projected_original_macro_f1",
-                    task_payload.get("macro_f1", final_row.get("task_macro_f1", "")),
-                )
+                _with_task_aliases(final_row)
             final_rows.append(final_row)
             all_rows.append(final_row)
             quality_rows.append(_quality_row(base, final_row, row_type="final"))
@@ -790,7 +891,25 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
         "",
         "## Core Results",
         "",
-        markdown_table(core_rows, ["variant", "final ratio", "DEE ↓", "FSE-unweighted ↓", "REE-max ↓", "SIPE ↓", "macro-F1 ↑", "runtime ↓", "peak RAM"]),
+        markdown_table(
+            core_rows,
+            [
+                "variant",
+                "final ratio",
+                "cumulative DEE ↓",
+                "cumulative FWE-weighted ↓",
+                "cumulative FSE-unweighted ↓",
+                "cumulative REE-max ↓",
+                "cumulative SIPE ↓",
+                "coarse train macro-F1 ↑",
+                "projected macro-F1 ↑",
+                "refined macro-F1 ↑",
+                "primary macro-F1 ↑",
+                "runtime ↓",
+                "peak RAM",
+                "peak VRAM",
+            ],
+        ),
         "",
         "## Completed Runs",
         "",
@@ -805,14 +924,35 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
                 "final_cumulative_ratio",
                 "target_abs_error",
                 "target_hit",
-                "final_DEE",
-                "final_FWE_weighted",
-                "final_FSE_unweighted",
-                "final_REE_max",
-                "final_SIPE",
-                "task_macro_f1",
+                "cumulative_dee",
+                "cumulative_fwe_weighted",
+                "cumulative_fse_unweighted",
+                "cumulative_ree_max",
+                "cumulative_sipe",
+                "task_projected_macro_f1",
+                "task_refined_macro_f1",
+                "task_coarse_train_macro_f1",
+                "task_primary_macro_f1",
+                "task_primary_metric",
+                "task_primary_metric_name",
+                "spectral_baseline_computed_count",
+                "cumulative_spectral_baseline_computed_count",
+                "spectral_exact_eigenvalue_sanity_status",
+                "spectral_exact_eigenvalue_sanity_mode",
                 "runtime_total_run",
                 "peak_rss_gb",
+                "peak_cpu_memory_gb",
+                "peak_vram_allocated_gb",
+                "peak_vram_reserved_gb",
+                "peak_gpu_memory_allocated_gb",
+                "peak_gpu_memory_reserved_gb",
+                "compute_device",
+                "cuda_available",
+                "cpu_only",
+                "matched_units",
+                "node_reduction",
+                "cluster_count",
+                "cluster_size_histogram",
                 "score_contribution_share",
                 "failure_reason",
             ],

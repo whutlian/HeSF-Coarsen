@@ -215,11 +215,29 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
             "fused_sketch_energy_relative_error": 0.3,
             "relation_energy_relative_error_max": 0.4,
             "chebheat_sketch_inner_product_relative_error": 0.5,
+            "exact_eigenvalue_sanity": {
+                "status": "computed",
+                "mode": "dense_eigvalsh",
+                "relative_error": 0.01,
+            },
+            "baseline_comparison": {
+                "random": {"status": "computed"},
+                "heavy_edge": {"status": "computed"},
+                "graphzoom_style": {"status": "computed"},
+                "convmatch_style": {"status": "skipped"},
+            },
         },
         "task": {"micro_f1": 0.7, "macro_f1": 0.6},
         "candidate_count_total": 4,
         "candidate_source_counts": {"bucket": 3, "onehop": 1},
         "matched_pairs": 2,
+        "matched_units": 3,
+        "node_reduction": 3,
+        "node_reduction_ratio": 0.03,
+        "cluster_count": 97,
+        "cluster_size_histogram": {"1": 94, "2": 2, "3": 1},
+        "cluster_size_mean": 1.03,
+        "cluster_label_entropy": 0.25,
         "matched_pairs_by_source": {"bucket": 2},
         "score_terms": {
             "spec": {"count": 2, "mean": 10.0, "p50": 9.0, "p95": 12.0, "p99": 13.0},
@@ -272,6 +290,26 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
         ),
         encoding="utf-8",
     )
+    (run_dir / "task_eval.json").write_text(
+        json.dumps(
+            {
+                "model": "rgcn_lite",
+                "device": "cpu",
+                "coarse_train_micro_f1": 0.8,
+                "coarse_train_macro_f1": 0.75,
+                "projected_original_micro_f1": 0.7,
+                "projected_original_macro_f1": 0.65,
+                "refined_original_micro_f1": 0.77,
+                "refined_original_macro_f1": 0.72,
+                "primary_task_metric_name": "refined_original_macro_f1",
+                "primary_task_metric": 0.72,
+                "eval_on": "original_test_refined",
+                "projection_eval_on": "original_test_projected",
+                "refine_eval_on": "original_test_refined",
+            }
+        ),
+        encoding="utf-8",
+    )
 
     summarize_experiments([tmp_path / "runs"], tmp_path / "summary")
 
@@ -312,12 +350,27 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert final_rows[0]["cumulative_fse_unweighted"] == "0.33"
     assert final_rows[0]["cumulative_ree_max"] == "0.44"
     assert final_rows[0]["cumulative_sipe"] == "0.55"
-    assert final_rows[0]["task_macro_f1"] == "0.6"
+    assert final_rows[0]["task_projected_macro_f1"] == "0.65"
+    assert final_rows[0]["task_refined_macro_f1"] == "0.72"
+    assert final_rows[0]["task_coarse_train_macro_f1"] == "0.75"
+    assert final_rows[0]["task_primary_metric_name"] == "refined_original_macro_f1"
+    assert final_rows[0]["task_primary_macro_f1"] == "0.72"
+    assert final_rows[0]["task_macro_f1"] == "0.72"
+    assert final_rows[0]["compute_device"] == "cpu"
+    assert final_rows[0]["cuda_available"] == "true"
+    assert final_rows[0]["cpu_only"] == "false"
+    assert final_rows[0]["spectral_baseline_computed_count"] == "3"
+    assert final_rows[0]["spectral_exact_eigenvalue_sanity_status"] == "computed"
+    assert final_rows[0]["spectral_exact_eigenvalue_sanity_mode"] == "dense_eigvalsh"
+    assert final_rows[0]["node_reduction"] == "3"
+    assert final_rows[0]["cluster_size_mean"] == "1.03"
     assert final_rows[0]["score_contribution_share_spec"] == "0.4"
     assert np.isclose(float(final_rows[0]["runtime_total_run"]), 0.0)
     assert np.isclose(float(final_rows[0]["peak_rss_gb"]), 2.0)
+    assert np.isclose(float(final_rows[0]["peak_cpu_memory_gb"]), 2.0)
     assert np.isclose(float(final_rows[0]["peak_vram_allocated_gb"]), 3.0)
     assert np.isclose(float(final_rows[0]["peak_vram_reserved_gb"]), 4.0)
+    assert np.isclose(float(final_rows[0]["peak_gpu_memory_allocated_gb"]), 3.0)
     assert "spectral_fused_sketch_energy_relative_error" in quality_rows[0]
     assert {row["term"] for row in score_rows} == {"spec", "rel", "feat", "conv", "boundary"}
     spec_score = next(row for row in score_rows if row["term"] == "spec")
@@ -326,10 +379,16 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     bucket_source = next(row for row in source_rows if row["source"] == "bucket")
     assert bucket_source["candidate_count"] == "3.0"
     assert bucket_source["selected_count"] == "2.0"
-    assert task_rows[0]["task_macro_f1"] == "0.6"
+    assert task_rows[0]["task_projected_macro_f1"] == "0.65"
+    assert task_rows[0]["task_refined_macro_f1"] == "0.72"
+    assert task_rows[0]["task_primary_macro_f1"] == "0.72"
     assert resource_run_rows[0]["peak_rss_gb"] == "2.0"
+    assert resource_run_rows[0]["peak_cpu_memory_gb"] == "2.0"
     assert resource_run_rows[0]["peak_vram_allocated_gb"] == "3.0"
     assert resource_run_rows[0]["peak_vram_reserved_gb"] == "4.0"
+    assert resource_run_rows[0]["peak_gpu_memory_reserved_gb"] == "4.0"
+    assert resource_run_rows[0]["cuda_available"] == "true"
+    assert resource_run_rows[0]["cpu_only"] == "false"
     assert target_rows[0]["target_hit_rate"] == "1.0"
     all_level_rows = list(csv.DictReader((tmp_path / "summary" / "all_levels.csv").open()))
     variant_rows = list(csv.DictReader((tmp_path / "summary" / "compare_by_variant.csv").open()))
@@ -340,8 +399,15 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
         assert (tmp_path / "summary" / "figures" / "score_contribution_share.png").exists()
     assert "Unique runs: 1" in report
     assert "Level rows: 2" in report
-    assert "| variant | final ratio | DEE ↓ | FSE-unweighted ↓ | REE-max ↓ | SIPE ↓ | macro-F1 ↑ | runtime ↓ | peak RAM |" in report
-    assert "final_DEE" in report
+    assert "cumulative DEE" in report
+    assert "cumulative FWE-weighted" in report
+    assert "cumulative FSE-unweighted" in report
+    assert "coarse train macro-F1" in report
+    assert "projected macro-F1" in report
+    assert "refined macro-F1" in report
+    assert "task_primary_metric" in report
+    assert "peak_vram_reserved_gb" in report
+    assert "spectral_baseline_computed_count" in report
 
 
 def test_compare_hgb_ablation_groups_metrics(tmp_path):
@@ -441,6 +507,91 @@ def test_stage_b_ablation_dry_run_writes_variants(tmp_path):
     assert any(cfg["sketch"]["dim"] == 32 for cfg in configs.values())
     assert all(cfg["sketch"]["order"] == 3 for cfg in configs.values())
     assert all(cfg["scoring"]["normalization"] == "p95" for cfg in configs.values())
+
+
+def test_stage_b_ablation_supports_next_measurement_variants_and_cli(tmp_path):
+    from experiments.scripts.run_hgb_stage_b_ablation import main
+
+    exit_code = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(tmp_path),
+            "--target-ratios",
+            "0.5",
+            "--max-levels",
+            "4",
+            "--candidate-source",
+            "onehop_twohop_bucket",
+            "--candidate-K",
+            "8",
+            "--sketch-order",
+            "3",
+            "--seeds",
+            "12345",
+            "--variants",
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "A5",
+            "V0",
+            "V1",
+            "V4",
+            "C1-stop",
+            "C2-repair",
+            "C2-size3",
+            "--lambda-conv",
+            "0.5",
+            "--spectral-baseline-max-nodes",
+            "50000",
+            "--spectral-exact-eigenvalue-max-nodes",
+            "64",
+            "--cumulative-spectral-exact-eigenvalue-max-nodes",
+            "64",
+            "--dry-run",
+        ]
+    )
+
+    configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in tmp_path.glob("stageB_*/config.yaml")
+    }
+    assert exit_code == 0
+    assert len(configs) == 12
+    a0 = next(cfg for name, cfg in configs.items() if "_A0_" in name)
+    a1 = next(cfg for name, cfg in configs.items() if "_A1_" in name)
+    a2 = next(cfg for name, cfg in configs.items() if "_A2_" in name)
+    a4 = next(cfg for name, cfg in configs.items() if "_A4_" in name)
+    v0 = next(cfg for name, cfg in configs.items() if "_V0_" in name)
+    v1 = next(cfg for name, cfg in configs.items() if "_V1_" in name)
+    v4 = next(cfg for name, cfg in configs.items() if "_V4_" in name)
+    c1_stop_name, c1_stop = next((name, cfg) for name, cfg in configs.items() if "_C1-stop_" in name)
+    c2_size3_name, c2_size3 = next((name, cfg) for name, cfg in configs.items() if "_C2-size3_" in name)
+    c2_repair_name, c2_repair = next(
+        (name, cfg) for name, cfg in configs.items() if "_C2-repair_" in name
+    )
+
+    assert a0["fusion"]["relation_weighting"]["method"] == "uniform"
+    assert a1["fusion"]["relation_weighting"]["method"] == "inverse_sqrt_energy"
+    assert a2["metapath_sketch"]["enabled"] is True
+    assert a2["metapath_sketch"]["operator_weight_total"] == 0.1
+    assert a4["sketch"]["method"] == "lazy"
+    assert a4["sketch"]["dim"] == 32
+    assert a4["fusion"]["relation_weighting"]["method"] == "uniform"
+    assert v0["scoring"]["lambda_conv"] == 0.0
+    assert v1["scoring"]["lambda_conv"] == 0.5
+    assert v4["fusion"]["relation_weighting"]["method"] == "uniform"
+    assert c1_stop["coarsening"]["max_levels"] == 6
+    assert "_L6_" in c1_stop_name
+    assert c2_size3["coarsening"]["max_cluster_size"] == 3
+    assert "_c3_" in c2_size3_name
+    assert c2_repair["coarsening"]["matching_method"] == "greedy_cluster"
+    assert "_greedy_cluster_c4_" in c2_repair_name
+    assert c2_repair["coarsening"]["cumulative_guard"]["repair_bad_clusters"] is True
+    assert c2_repair["diagnostics"]["spectral_baseline_max_nodes"] == 50000
 
 
 def test_sanity_runner_outputs_summary_and_report(tmp_path):

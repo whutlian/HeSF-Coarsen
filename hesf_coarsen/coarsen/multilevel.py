@@ -263,6 +263,8 @@ def _resolved_config_diagnostics(config: dict) -> dict:
             "per_level_ratio": coarsening.get("per_level_ratio"),
             "max_levels": coarsening.get("max_levels"),
             "matching_method": coarsening.get("matching_method"),
+            "max_cluster_size": coarsening.get("max_cluster_size"),
+            "cumulative_guard": coarsening.get("cumulative_guard"),
         },
         "sketch": {
             "method": sketch.get("method"),
@@ -301,9 +303,28 @@ def _resolved_config_diagnostics(config: dict) -> dict:
                 "enable_bucket",
                 "enable_partition_ann",
                 "enable_fallback",
+                "simhash_bits",
+                "bucket_pair_cap",
+                "hash_tables",
+                "multi_probe",
+                "hamming_radius",
+                "adaptive_hamming_radius",
+                "quotas",
             )
         },
     }
+
+
+def _bucket_hash_bits(candidate_cfg: dict) -> list[int]:
+    raw = candidate_cfg.get("hash_tables", None)
+    default_bits = int(candidate_cfg.get("simhash_bits", 16))
+    if raw in (None, "", False):
+        return [default_bits]
+    if isinstance(raw, int):
+        return [default_bits for _ in range(max(raw, 1))]
+    if isinstance(raw, (list, tuple)):
+        return [int(value) for value in raw] or [default_bits]
+    return [int(raw)]
 
 
 def _score_contribution_share(summary: dict[str, dict]) -> dict[str, float]:
@@ -315,6 +336,76 @@ def _score_contribution_share(summary: dict[str, dict]) -> dict[str, float]:
     if total <= 0.0:
         return {name: 0.0 for name in means}
     return {name: float(value / total) for name, value in means.items()}
+
+
+def _repair_bad_clusters(
+    graph: HeteroGraph,
+    assignment: Assignment,
+    Z: np.ndarray,
+    config: dict,
+) -> tuple[Assignment, dict]:
+    guard = config.get("coarsening", {}).get("cumulative_guard", {})
+    if not bool(guard.get("enabled", False)) or not bool(guard.get("repair_bad_clusters", False)):
+        return assignment, {"enabled": bool(guard.get("enabled", False)), "repair_bad_clusters": False}
+    labels = graph.labels
+    sizes = assignment.cluster_sizes()
+    spreads = np.zeros(assignment.num_supernodes, dtype=np.float64)
+    label_entropy = np.zeros(assignment.num_supernodes, dtype=np.float64)
+    for supernode in range(assignment.num_supernodes):
+        members = np.flatnonzero(assignment.assignment == supernode)
+        if len(members) <= 1:
+            continue
+        block = Z[members].astype(np.float64, copy=False)
+        center = block.mean(axis=0, keepdims=True)
+        spreads[supernode] = float(np.mean(np.sum((block - center) ** 2, axis=1)))
+        if labels is not None:
+            cluster_labels = np.asarray(labels)[members]
+            cluster_labels = cluster_labels[cluster_labels >= 0]
+            if len(cluster_labels):
+                _values, counts = np.unique(cluster_labels, return_counts=True)
+                probs = counts.astype(np.float64) / max(float(counts.sum()), 1.0)
+                label_entropy[supernode] = float(-np.sum(probs * np.log(np.maximum(probs, 1.0e-12))))
+    large = sizes > 2
+    spread_cutoff = float(np.percentile(spreads[large], 75)) if np.any(large) else np.inf
+    bad = large & ((spreads >= spread_cutoff) | (label_entropy > 0.0))
+    if not np.any(bad):
+        return assignment, {
+            "enabled": True,
+            "repair_bad_clusters": True,
+            "repaired_cluster_count": 0,
+            "node_reduction_before": int(np.sum(np.maximum(sizes - 1, 0))),
+            "node_reduction_after": int(np.sum(np.maximum(sizes - 1, 0))),
+        }
+
+    new_assignment = np.full(graph.num_nodes, -1, dtype=np.int64)
+    new_types: list[int] = []
+
+    def emit(nodes: np.ndarray) -> None:
+        super_id = len(new_types)
+        new_assignment[nodes] = super_id
+        new_types.append(int(graph.node_type[int(nodes[0])]))
+
+    for supernode in range(assignment.num_supernodes):
+        members = np.flatnonzero(assignment.assignment == supernode).astype(np.int64)
+        if len(members) == 0:
+            continue
+        if not bad[supernode]:
+            emit(members)
+            continue
+        order = np.lexsort((members, Z[members, 0].astype(np.float64)))
+        ordered = members[order]
+        for start in range(0, len(ordered), 2):
+            emit(ordered[start : start + 2])
+    repaired = Assignment(new_assignment, np.asarray(new_types, dtype=np.int32))
+    repaired_sizes = repaired.cluster_sizes()
+    return repaired, {
+        "enabled": True,
+        "repair_bad_clusters": True,
+        "repaired_cluster_count": int(np.sum(bad)),
+        "spread_cutoff": float(spread_cutoff),
+        "node_reduction_before": int(np.sum(np.maximum(sizes - 1, 0))),
+        "node_reduction_after": int(np.sum(np.maximum(repaired_sizes - 1, 0))),
+    }
 
 
 def _classification_f1_from_labels(truth: np.ndarray, predicted: np.ndarray) -> dict:
@@ -534,24 +625,34 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             else:
                 generate_capped_twohop_candidates(current, Z, partition_id, config, store)
         if config["candidates"].get("enable_bucket", True):
-            buckets = compute_simhash_buckets(
-                Z,
-                current.node_type,
-                partition_id,
-                bits=int(config["candidates"].get("simhash_bits", 16)),
-                seed=int(config.get("seed", 12345)) + level,
-            )
-            if use_chunked:
-                generate_bucket_candidates_chunked(
-                    buckets,
+            for table_id, bits in enumerate(_bucket_hash_bits(candidate_cfg)):
+                buckets = compute_simhash_buckets(
+                    Z,
                     current.node_type,
                     partition_id,
-                    config,
-                    store,
-                    node_chunk_size=int(candidate_cfg.get("node_chunk_size", 1_000_000)),
+                    bits=int(bits),
+                    seed=int(config.get("seed", 12345)) + level + 1009 * table_id,
                 )
-            else:
-                generate_bucket_candidates(buckets, current.node_type, partition_id, config, store)
+                bucket_config = deepcopy(config)
+                bucket_config.setdefault("candidates", {})["active_hash_bits"] = int(bits)
+                bucket_config["candidates"]["active_hash_table"] = int(table_id)
+                if use_chunked:
+                    generate_bucket_candidates_chunked(
+                        buckets,
+                        current.node_type,
+                        partition_id,
+                        bucket_config,
+                        store,
+                        node_chunk_size=int(candidate_cfg.get("node_chunk_size", 1_000_000)),
+                    )
+                else:
+                    generate_bucket_candidates(
+                        buckets,
+                        current.node_type,
+                        partition_id,
+                        bucket_config,
+                        store,
+                    )
         if config["candidates"].get("enable_partition_ann", False):
             generate_partition_ann_candidates(current, Z, partition_id, config, store)
         if bool(candidate_cfg.get("enable_fallback", True)):
@@ -679,6 +780,12 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 partition_id=partition_id,
             )
         progress_message(config, f"level {level}: matching done")
+        assignment, cumulative_guard_diag = _repair_bad_clusters(
+            current,
+            assignment,
+            Z.astype(np.float32, copy=False),
+            level_matching_config,
+        )
         matched_pairs_by_source = selected_pair_sources(
             assignment,
             getattr(store, "source_for_pair", lambda _i, _j: None),
@@ -770,6 +877,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         diagnostics["score_terms"] = score_term_summary
         diagnostics["score_contributions"] = score_contribution_summary
         diagnostics["score_contribution_share"] = _score_contribution_share(score_contribution_summary)
+        diagnostics["cumulative_guard"] = cumulative_guard_diag
         diagnostics["target_control"] = _target_control_diagnostics(
             config,
             original_nodes=original_nodes,

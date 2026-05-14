@@ -58,6 +58,44 @@ def labeled_split(labels: np.ndarray, seed: int, train_fraction: float = 0.6) ->
     return perm[:train_count], perm[train_count:]
 
 
+def train_only_coarse_labels(
+    labels: np.ndarray,
+    original_to_coarse: np.ndarray,
+    train_nodes: np.ndarray,
+    *,
+    num_coarse_nodes: int,
+    test_nodes: np.ndarray | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    labels = np.asarray(labels).reshape(-1)
+    original_to_coarse = np.asarray(original_to_coarse, dtype=np.int64).reshape(-1)
+    train_nodes = np.asarray(train_nodes, dtype=np.int64).reshape(-1)
+    coarse_labels = np.full(int(num_coarse_nodes), -1, dtype=np.int64)
+    entropies: list[float] = []
+    for coarse_node in range(int(num_coarse_nodes)):
+        members = train_nodes[original_to_coarse[train_nodes] == coarse_node]
+        member_labels = labels[members]
+        member_labels = member_labels[member_labels >= 0].astype(np.int64, copy=False)
+        if len(member_labels) == 0:
+            continue
+        values, counts = np.unique(member_labels, return_counts=True)
+        order = np.lexsort((values, -counts))
+        coarse_labels[coarse_node] = int(values[order[0]])
+        probs = counts.astype(np.float64) / max(float(counts.sum()), 1.0)
+        entropies.append(float(-np.sum(probs * np.log(np.maximum(probs, 1.0e-12)))))
+    test_leakage_check = "not_applicable"
+    if test_nodes is not None:
+        test_nodes = np.asarray(test_nodes, dtype=np.int64).reshape(-1)
+        train_set = set(int(node) for node in train_nodes.tolist())
+        test_set = set(int(node) for node in test_nodes.tolist())
+        test_leakage_check = "passed" if train_set.isdisjoint(test_set) else "failed"
+    diagnostics = {
+        "train_only_label_coverage": float(np.mean(coarse_labels >= 0)) if num_coarse_nodes else 0.0,
+        "cluster_train_label_entropy": float(np.mean(entropies)) if entropies else 0.0,
+        "test_label_leakage_check": test_leakage_check,
+    }
+    return coarse_labels, diagnostics
+
+
 def evaluate_rgcn_task(
     original: HeteroGraph,
     coarse: HeteroGraph,
@@ -91,7 +129,6 @@ def evaluate_rgcn_task(
     dev = torch.device(device_name)
 
     labels = np.asarray(original.labels if original.labels is not None else np.full(original.num_nodes, -1))
-    coarse_labels = np.asarray(coarse.labels if coarse.labels is not None else np.full(coarse.num_nodes, -1))
     train_nodes, test_nodes = labeled_split(labels, seed=seed)
     if len(train_nodes) == 0 or len(test_nodes) == 0:
         return TaskEvalResult(
@@ -102,6 +139,13 @@ def evaluate_rgcn_task(
             }
         )
     num_classes = int(labels[labels >= 0].max(initial=0)) + 1
+    coarse_labels, label_protocol = train_only_coarse_labels(
+        labels,
+        original_to_coarse,
+        train_nodes,
+        num_coarse_nodes=coarse.num_nodes,
+        test_nodes=test_nodes,
+    )
     coarse_train_nodes = np.unique(original_to_coarse[train_nodes]).astype(np.int64, copy=False)
     coarse_train_nodes = coarse_train_nodes[coarse_labels[coarse_train_nodes] >= 0]
     if len(coarse_train_nodes) == 0:
@@ -234,24 +278,33 @@ def evaluate_rgcn_task(
         original_logits = refine_model(original_data)
         original_pred = original_logits.argmax(dim=1).detach().cpu().numpy()
     refined_f1 = f1_scores(labels[test_nodes], original_pred[test_nodes])
+    primary_metric_name = "refined_original_macro_f1"
+    primary_metric = refined_f1["macro_f1"]
 
     return TaskEvalResult(
         {
             "model": "rgcn_lite",
             "skipped": False,
             "device": device_name,
+            "train_on": "coarse_train_labels_only",
+            "eval_on": "original_test_refined",
+            "projection_eval_on": "original_test_projected",
+            "refine_eval_on": "original_test_refined",
             "num_classes": int(num_classes),
             "train_labeled_nodes": int(len(train_nodes)),
             "test_labeled_nodes": int(len(test_nodes)),
             "coarse_train_nodes": int(len(coarse_train_nodes)),
+            **label_protocol,
             "coarse_train_micro_f1": coarse_train_f1["micro_f1"],
             "coarse_train_macro_f1": coarse_train_f1["macro_f1"],
             "projected_original_micro_f1": projected_f1["micro_f1"],
             "projected_original_macro_f1": projected_f1["macro_f1"],
             "refined_original_micro_f1": refined_f1["micro_f1"],
             "refined_original_macro_f1": refined_f1["macro_f1"],
-            "micro_f1": projected_f1["micro_f1"],
-            "macro_f1": projected_f1["macro_f1"],
+            "primary_task_metric_name": primary_metric_name,
+            "primary_task_metric": primary_metric,
+            "micro_f1": refined_f1["micro_f1"],
+            "macro_f1": refined_f1["macro_f1"],
             "train_time": float(train_time),
             "refine_time": float(refine_time),
             "total_time": float(train_time + refine_time),
