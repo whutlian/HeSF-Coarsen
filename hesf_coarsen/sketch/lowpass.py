@@ -7,7 +7,6 @@ from typing import Any
 import numpy as np
 
 from hesf_coarsen.io.schema import HeteroGraph
-from hesf_coarsen.ops.fused_operator import apply_fused_smoothing
 from hesf_coarsen.progress import progress_iter
 from hesf_coarsen.sketch.chebyshev import chebyshev_heat_filter
 from hesf_coarsen.sketch.metapath import (
@@ -15,7 +14,7 @@ from hesf_coarsen.sketch.metapath import (
     metapath_path_diagnostics,
     resolve_metapath_paths,
 )
-from hesf_coarsen.sketch.operators import estimate_fused_operator_norm
+from hesf_coarsen.sketch.operators import apply_fused_operator, estimate_fused_operator_norm
 from hesf_coarsen.sketch.relation_weights import compute_relation_weights
 from hesf_coarsen.sketch.random_probe import generate_probe
 
@@ -141,11 +140,73 @@ def _compute_lazy_sketch(
     dtype_name = str(sketch_cfg.get("dtype", "float16"))
     seed = int(config.get("seed", 12345))
     probe = str(sketch_cfg.get("probe", "rademacher"))
+    fusion_cfg = config.get("fusion", {})
+    symmetric = bool(fusion_cfg.get("symmetric_relation_operator", True))
+    symmetric_relation_scale = float(fusion_cfg.get("symmetric_relation_scale", 0.5))
+    reverse_policy = str(fusion_cfg.get("reverse_relation_policy", "include_all"))
+    metapath_cfg = config.get("metapath_sketch", {})
+    metapath_enabled = bool(metapath_cfg.get("enabled", False))
 
     start = perf_counter()
     current = generate_probe(graph.num_nodes, dim, seed, probe=probe)
     scales: list[np.ndarray] = []
     relation_result = compute_relation_weights(graph, config, basis=current)
+    metapath_weights: list[tuple[dict[str, Any], float]] = []
+    meta_diag = {"enabled": False, "num_paths": 0, "paths": []}
+    if metapath_enabled:
+        paths, auto_generated, type_names = resolve_metapath_paths(graph, config)
+        metapath_weights, path_weights, beta_total, metapath_weight_diag = _metapath_operator_weights(
+            graph,
+            config,
+            paths,
+            current,
+            metapath_cfg,
+        )
+        alpha_total = 1.0 - beta_total
+        scaled_relation_weights = {
+            relation_id: float(weight) * alpha_total
+            for relation_id, weight in relation_result.weights.items()
+        }
+        relation_diagnostics = dict(relation_result.diagnostics)
+        relation_diagnostics["relation_weights"] = {
+            str(k): float(v) for k, v in scaled_relation_weights.items()
+        }
+        stats_values = list(scaled_relation_weights.values())
+        relation_diagnostics["relation_weight_stats"] = {
+            **dict(relation_diagnostics.get("relation_weight_stats", {})),
+            "sum": float(sum(stats_values)),
+            "min": float(min(stats_values, default=0.0)),
+            "max": float(max(stats_values, default=0.0)),
+            "num_relations": int(len(stats_values)),
+        }
+        relation_diagnostics["relation_operator_weight_total"] = float(alpha_total)
+        relation_result = type(relation_result)(
+            weights=scaled_relation_weights,
+            energy_estimates=relation_result.energy_estimates,
+            volume_estimates=relation_result.volume_estimates,
+            diagnostics=relation_diagnostics,
+        )
+        meta_diag = metapath_path_diagnostics(
+            graph,
+            paths,
+            type_names,
+            auto_generated=auto_generated,
+            path_weights=path_weights,
+            enabled=True,
+            operator_mode="fused_laplacian",
+        )
+        meta_diag.update(
+            {
+                "weighting_method": metapath_weight_diag.get("metapath_weighting_method"),
+                "energy_estimates": metapath_weight_diag.get("metapath_energy_estimates", {}),
+                "volume_estimates": metapath_weight_diag.get("metapath_volume_estimates", {}),
+                "weight_stats": metapath_weight_diag.get("metapath_weight_stats", {}),
+            }
+        )
+        for key in ("energy_basis_source", "energy_basis_object", "energy_estimator"):
+            if key in metapath_weight_diag:
+                meta_diag[key] = metapath_weight_diag[key]
+
     smoothing_steps = max(order, 0)
     for step in progress_iter(
         range(smoothing_steps),
@@ -154,7 +215,16 @@ def _compute_lazy_sketch(
         config=config,
         unit="step",
     ):
-        current = apply_fused_smoothing(graph, current, relation_result.weights)
+        smoothed = apply_fused_operator(
+            graph,
+            current,
+            relation_result.weights,
+            metapath_weights=metapath_weights,
+            symmetric_relation_operator=symmetric,
+            symmetric_relation_scale=symmetric_relation_scale,
+            reverse_relation_policy=reverse_policy,
+        )
+        current = (0.5 * current + 0.5 * smoothed).astype(np.float32, copy=False)
         if step >= max(order - num_scales, 0):
             scales.append(current.copy())
     if not scales:
@@ -191,8 +261,12 @@ def _compute_lazy_sketch(
         "nan_count": int(np.isnan(Z_out).sum()),
         "inf_count": int(np.isinf(Z_out).sum()),
         "row_norm_stats": _row_norm_stats(Z_out),
-        "fusion": relation_result.diagnostics,
-        "metapath_sketch": {"enabled": False, "num_paths": 0, "paths": []},
+        "fusion": {
+            **relation_result.diagnostics,
+            "symmetric_relation_operator": bool(symmetric),
+            "symmetric_relation_scale": float(symmetric_relation_scale),
+        },
+        "metapath_sketch": meta_diag,
     }
     _store_diagnostics(config, diagnostics, diag)
     return Z_out

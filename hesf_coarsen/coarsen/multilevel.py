@@ -29,6 +29,7 @@ from hesf_coarsen.matching.greedy import (
     initialize_mutual_best_state,
     mutual_best_update_block,
     run_matching,
+    selected_pair_sources,
 )
 from hesf_coarsen.ops.fusion_weights import compute_relation_fusion_weights
 from hesf_coarsen.partition.type_partition import default_partition
@@ -172,7 +173,14 @@ def _add_fallback_candidates(
     store: BoundedCandidateStore | ArrayCandidateStore,
     config: dict,
 ) -> None:
+    candidate_cfg = config.get("candidates", {})
     same_partition = bool(config.get("coarsening", {}).get("same_partition_only", True))
+    penalty = float(candidate_cfg.get("fallback_penalty", 1.0e6))
+    max_fraction = float(candidate_cfg.get("fallback_max_fraction", 1.0))
+    max_pairs = max(0, int(ceil(graph.num_nodes * max_fraction)))
+    added = 0
+    if max_pairs == 0:
+        return
     for type_id in sorted(np.unique(graph.node_type)):
         nodes = nodes_of_type(graph, int(type_id))
         if same_partition:
@@ -182,16 +190,107 @@ def _add_fallback_candidates(
             groups = [nodes]
         for group in groups:
             for left, right in zip(group[::2], group[1::2]):
-                store.add(int(left), int(right), 1e6, "fallback")
+                store.add(int(left), int(right), penalty, "fallback")
+                added += 1
+                if added >= max_pairs:
+                    return
 
 
-def _config_for_level(config: dict, num_nodes: int) -> dict:
+def _config_for_level(config: dict, num_nodes: int, target_nodes: int) -> dict:
     level_config = deepcopy(config)
     per_level_ratio = float(config.get("coarsening", {}).get("per_level_ratio", 0.55))
-    if per_level_ratio > 0.0:
-        max_pairs = max(1, int(num_nodes * max(0.0, 1.0 - per_level_ratio)))
-        level_config.setdefault("coarsening", {})["max_matched_pairs"] = max_pairs
+    remaining_ratio = float(target_nodes / max(num_nodes, 1))
+    level_ratio = max(per_level_ratio, remaining_ratio)
+    level_ratio = min(max(level_ratio, 0.0), 1.0)
+    desired_coarse_nodes = int(ceil(num_nodes * level_ratio - 1.0e-12))
+    desired_coarse_nodes = max(int(target_nodes), min(int(num_nodes), desired_coarse_nodes))
+    max_pairs = max(0, int(num_nodes) - desired_coarse_nodes)
+    level_config.setdefault("coarsening", {})["remaining_ratio"] = remaining_ratio
+    level_config.setdefault("coarsening", {})["level_ratio"] = level_ratio
+    level_config.setdefault("coarsening", {})["desired_coarse_nodes"] = desired_coarse_nodes
+    level_config.setdefault("coarsening", {})["max_matched_pairs"] = max_pairs
     return level_config
+
+
+def _target_control_diagnostics(
+    config: dict,
+    *,
+    original_nodes: int,
+    input_nodes: int,
+    target_nodes: int,
+    level_config: dict,
+) -> dict:
+    coarsening = level_config.get("coarsening", {})
+    return {
+        "target_ratio": float(config.get("coarsening", {}).get("target_ratio", 0.0)),
+        "per_level_ratio": float(config.get("coarsening", {}).get("per_level_ratio", 0.0)),
+        "original_nodes": int(original_nodes),
+        "input_nodes": int(input_nodes),
+        "target_nodes": int(target_nodes),
+        "remaining_ratio": float(coarsening.get("remaining_ratio", 0.0)),
+        "level_ratio": float(coarsening.get("level_ratio", 0.0)),
+        "desired_coarse_nodes": int(coarsening.get("desired_coarse_nodes", input_nodes)),
+        "max_matched_pairs": int(coarsening.get("max_matched_pairs", 0)),
+    }
+
+
+def _resolved_config_diagnostics(config: dict) -> dict:
+    coarsening = config.get("coarsening", {})
+    sketch = config.get("sketch", {})
+    fusion = config.get("fusion", {})
+    metapath = config.get("metapath_sketch", {})
+    scoring = config.get("scoring", {})
+    candidates = config.get("candidates", {})
+    relation_weighting = fusion.get("relation_weighting", {})
+    if not isinstance(relation_weighting, dict):
+        relation_weighting = {"method": relation_weighting}
+    return {
+        "coarsening": {
+            "target_ratio": coarsening.get("target_ratio"),
+            "per_level_ratio": coarsening.get("per_level_ratio"),
+            "max_levels": coarsening.get("max_levels"),
+            "matching_method": coarsening.get("matching_method"),
+        },
+        "sketch": {
+            "method": sketch.get("method"),
+            "dim": sketch.get("dim"),
+            "order": sketch.get("order"),
+        },
+        "fusion": {
+            "relation_weighting": {
+                "method": relation_weighting.get("method"),
+            },
+        },
+        "metapath_sketch": {
+            "enabled": metapath.get("enabled"),
+            "operator_weight_total": metapath.get("operator_weight_total"),
+        },
+        "scoring": {
+            key: scoring.get(key)
+            for key in (
+                "lambda_spec",
+                "lambda_rel",
+                "lambda_feat",
+                "lambda_conv",
+                "lambda_boundary",
+                "normalization",
+                "normalization_scope",
+            )
+        },
+        "candidates": {
+            key: candidates.get(key)
+            for key in (
+                "total_budget_K",
+                "twohop_budget_K2",
+                "ann_budget_K",
+                "enable_onehop",
+                "enable_capped_twohop",
+                "enable_bucket",
+                "enable_partition_ann",
+                "enable_fallback",
+            )
+        },
+    }
 
 
 def _config_with_level_feature_store(config: dict, level: int) -> dict:
@@ -372,7 +471,8 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 generate_bucket_candidates(buckets, current.node_type, partition_id, config, store)
         if config["candidates"].get("enable_partition_ann", False):
             generate_partition_ann_candidates(current, Z, partition_id, config, store)
-        _add_fallback_candidates(current, partition_id, store, config)
+        if bool(candidate_cfg.get("enable_fallback", True)):
+            _add_fallback_candidates(current, partition_id, store, config)
         _flush_candidate_store(store)
         pair_count_fn = getattr(store, "pair_count", None)
         pair_count = int(pair_count_fn()) if callable(pair_count_fn) else int(store.to_pairs().shape[0])
@@ -405,7 +505,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         scoring_config = _config_with_level_feature_store(config, level)
         matching_method = str(config.get("coarsening", {}).get("matching_method", "mutual_best"))
         matching_method_normalized = matching_method.lower().replace("-", "_")
-        level_matching_config = _config_for_level(config, current.num_nodes)
+        level_matching_config = _config_for_level(config, current.num_nodes, target_nodes)
         streaming_mutual_best = matching_method_normalized == "mutual_best"
         score_term_accumulator = ScoreTermAccumulator.from_config(scoring_config)
         scored = None
@@ -488,6 +588,10 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 partition_id=partition_id,
             )
         progress_message(config, f"level {level}: matching done")
+        matched_pairs_by_source = selected_pair_sources(
+            assignment,
+            getattr(store, "source_for_pair", lambda _i, _j: None),
+        )
         aggregation_chunk_size = int(config.get("coarsening", {}).get("aggregation_chunk_size", 1_000_000))
         aggregation_reducer = str(config.get("coarsening", {}).get("aggregation_reducer", "sort"))
         feature_aggregation, feature_weights, feature_aggregation_diag = _feature_aggregation_options(config)
@@ -568,6 +672,19 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         )
         diagnostics["feature_aggregation"] = feature_aggregation_diag
         diagnostics["score_terms"] = score_term_summary
+        diagnostics["target_control"] = _target_control_diagnostics(
+            config,
+            original_nodes=original_nodes,
+            input_nodes=current.num_nodes,
+            target_nodes=target_nodes,
+            level_config=level_matching_config,
+        )
+        diagnostics["config"] = _resolved_config_diagnostics(scoring_config)
+        diagnostics["matched_pairs_by_source"] = matched_pairs_by_source
+        diagnostics["fallback_selected_fraction"] = float(
+            matched_pairs_by_source.get("fallback", 0)
+            / max(int(diagnostics.get("matched_pairs", 0)), 1)
+        )
         diagnostics_cfg = config.get("diagnostics", {})
         if bool(diagnostics_cfg.get("enable_spectral", True)):
             progress_message(config, f"level {level}: spectral diagnostics start")

@@ -40,6 +40,9 @@ class PairScoringContext:
     boundary_mode: str
     boundary_risk: np.ndarray | None
     node_volume: np.ndarray
+    normalization: str
+    normalization_scope: str
+    normalization_epsilon: float
     batch_size: int
     use_torch: bool
     acceleration: dict
@@ -701,6 +704,14 @@ def prepare_pair_scoring_context(
     spec_volume_weighting = bool(scoring.get("spec_volume_weighting", True))
     spec_volume_epsilon = float(scoring.get("spec_volume_epsilon", 1.0e-12))
     boundary_mode = str(scoring.get("boundary_mode", "node_risk")).lower()
+    normalization = str(scoring.get("normalization", "none")).lower().replace("-", "_")
+    normalization_scope = str(scoring.get("normalization_scope", "level")).lower().replace("-", "_")
+    if normalization not in {"none", "p95", "median_mad", "rank"}:
+        raise ValueError("scoring.normalization must be one of: none, p95, median_mad, rank")
+    if normalization_scope not in {"level", "global", "batch", "type", "node_type", "partition", "type_partition", "type_source"}:
+        raise ValueError(
+            "scoring.normalization_scope must be one of: level, global, batch, type, node_type, partition, type_partition, type_source"
+        )
     feature_view = (
         _prepare_typewise_feature_view(graph, features, config)
         if features is not None and lambda_feat != 0.0
@@ -733,6 +744,9 @@ def prepare_pair_scoring_context(
         boundary_mode=boundary_mode,
         boundary_risk=boundary_risk,
         node_volume=node_volume,
+        normalization=normalization,
+        normalization_scope=normalization_scope,
+        normalization_epsilon=float(scoring.get("normalization_epsilon", 1.0e-12)),
         batch_size=int(acceleration.get("scoring_batch_size", 65_536)),
         use_torch=acceleration.get("dense_backend") == "torch",
         acceleration=acceleration,
@@ -748,13 +762,50 @@ def _weighted_cost_from_terms(
     context: PairScoringContext,
     terms: dict[str, np.ndarray],
 ) -> np.ndarray:
+    weighted_terms = _normalized_terms(context, terms)
     return (
-        context.lambda_spec * terms["spec"]
-        + context.lambda_rel * terms["rel"]
-        + context.lambda_feat * terms["feat"]
-        + context.lambda_conv * terms["conv"]
-        + context.lambda_boundary * terms["boundary"]
+        context.lambda_spec * weighted_terms["spec"]
+        + context.lambda_rel * weighted_terms["rel"]
+        + context.lambda_feat * weighted_terms["feat"]
+        + context.lambda_conv * weighted_terms["conv"]
+        + context.lambda_boundary * weighted_terms["boundary"]
     ).astype(np.float32, copy=False)
+
+
+def _normalized_terms(
+    context: PairScoringContext,
+    terms: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    method = context.normalization
+    if method in {"", "none"}:
+        return terms
+    normalized: dict[str, np.ndarray] = {}
+    epsilon = float(context.normalization_epsilon)
+    for name in SCORE_TERM_NAMES:
+        values = np.asarray(terms[name], dtype=np.float32)
+        finite = values[np.isfinite(values)]
+        if finite.size == 0:
+            normalized[name] = np.zeros_like(values, dtype=np.float32)
+            continue
+        if method == "p95":
+            scale = float(np.percentile(finite, 95))
+            normalized[name] = values / np.float32(max(scale, epsilon))
+        elif method == "median_mad":
+            median = float(np.median(finite))
+            mad = float(np.median(np.abs(finite - median)))
+            scale = median + 1.4826 * mad
+            normalized[name] = values / np.float32(max(scale, epsilon))
+        elif method == "rank":
+            order = np.argsort(values, kind="mergesort")
+            ranks = np.empty(values.shape[0], dtype=np.float32)
+            if values.shape[0] <= 1:
+                ranks[:] = 0.0
+            else:
+                ranks[order] = np.linspace(0.0, 1.0, num=values.shape[0], dtype=np.float32)
+            normalized[name] = ranks
+        else:
+            raise ValueError(f"unsupported scoring.normalization: {method}")
+    return normalized
 
 
 def score_pair_block_with_terms(

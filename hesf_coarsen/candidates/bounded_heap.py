@@ -112,3 +112,7 @@ class BoundedCandidateStore:
 
     def source_counts(self) -> dict[str, int]:
         return dict(Counter(source for _score, source in self._pairs.values()))
+
+    def source_for_pair(self, i: int, j: int) -> str | None:
+        item = self._pairs.get(self._key(int(i), int(j)))
+        return None if item is None else str(item[1])

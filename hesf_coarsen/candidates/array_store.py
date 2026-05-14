@@ -243,6 +243,21 @@ class ArrayCandidateStore:
                 counts[name] = counts.get(name, 0) + 1
         return counts
 
+    def source_for_pair(self, i: int, j: int) -> str | None:
+        i = int(i)
+        j = int(j)
+        if i < 0 or j < 0 or i >= len(self.node_type) or j >= len(self.node_type):
+            return None
+        slot = self._existing_slot(i, j)
+        if slot is None:
+            slot = self._existing_slot(j, i)
+            node = j
+        else:
+            node = i
+        if slot is None:
+            return None
+        return self._source_name(int(self.candidate_sources[node, slot]))
+
     def flush(self) -> None:
         for array in [self.candidate_ids, self.candidate_scores, self.candidate_sources, self._counts]:
             if isinstance(array, np.memmap):

@@ -102,6 +102,54 @@ def test_multilevel_pipeline_writes_score_term_diagnostics(tmp_path):
     assert saved["score_terms"]["spec"]["count"] == score_terms["spec"]["count"]
 
 
+def test_level_config_caps_matches_by_remaining_target_ratio():
+    config = dict(DEFAULT_CONFIG)
+    config["coarsening"] = dict(
+        DEFAULT_CONFIG["coarsening"],
+        target_ratio=0.5,
+        per_level_ratio=0.55,
+    )
+
+    far = multilevel_module._config_for_level(config, num_nodes=100, target_nodes=50)
+    near = multilevel_module._config_for_level(config, num_nodes=60, target_nodes=50)
+
+    assert far["coarsening"]["level_ratio"] == 0.55
+    assert far["coarsening"]["desired_coarse_nodes"] == 55
+    assert far["coarsening"]["max_matched_pairs"] == 45
+    assert np.isclose(near["coarsening"]["remaining_ratio"], 50 / 60)
+    assert near["coarsening"]["level_ratio"] == 50 / 60
+    assert near["coarsening"]["desired_coarse_nodes"] == 50
+    assert near["coarsening"]["max_matched_pairs"] == 10
+
+
+def test_multilevel_pipeline_records_target_control_and_resolved_config(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=10,
+        num_items=6,
+        num_tags=4,
+        seed=125,
+    )
+    config = small_config(tmp_path)
+    config["coarsening"] = dict(
+        config["coarsening"],
+        target_ratio=0.8,
+        max_levels=2,
+        per_level_ratio=0.55,
+    )
+    config["diagnostics"] = dict(config["diagnostics"], enable_spectral=False)
+
+    result = run_multilevel_coarsening(graph, config)[0]
+
+    control = result.diagnostics["target_control"]
+    assert control["target_ratio"] == 0.8
+    assert control["target_nodes"] == int(np.ceil(graph.num_nodes * 0.8))
+    assert control["desired_coarse_nodes"] >= control["target_nodes"]
+    assert control["max_matched_pairs"] == control["input_nodes"] - control["desired_coarse_nodes"]
+    assert result.diagnostics["config"]["coarsening"]["target_ratio"] == 0.8
+    assert result.diagnostics["config"]["sketch"]["method"] == config["sketch"]["method"]
+    assert "total_budget_K" in result.diagnostics["config"]["candidates"]
+
+
 def test_multilevel_pipeline_writes_spectral_diagnostics_closed_loop(tmp_path):
     graph = generate_synthetic_graph(
         num_users=10,
@@ -185,6 +233,31 @@ def test_multilevel_pipeline_runs_lazy_and_chebyshev_sketches(tmp_path):
     assert lazy_results[0].diagnostics["sketch"]["sketch_method"] == "lazy"
     assert cheb_results[0].diagnostics["sketch"]["sketch_method"] == "chebyshev_heat"
     assert cheb_results[0].diagnostics["metapath_sketch"]["enabled"] is True
+
+
+def test_lazy_sketch_can_use_fused_relation_metapath_operator(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=8,
+        num_items=5,
+        num_tags=3,
+        seed=30,
+    )
+    config = small_config(tmp_path / "lazy_meta")
+    config["sketch"] = dict(config["sketch"], method="lazy", dim=8, order=2, dtype="float32")
+    config["metapath_sketch"] = dict(
+        config["metapath_sketch"],
+        enabled=True,
+        max_paths=1,
+        operator_weight_total=0.25,
+        auto_paths=True,
+    )
+
+    results = run_multilevel_coarsening(graph, config)
+
+    assert results[0].diagnostics["sketch"]["sketch_method"] == "lazy"
+    assert results[0].diagnostics["metapath_sketch"]["enabled"] is True
+    assert results[0].diagnostics["metapath_sketch"]["operator_mode"] == "fused_laplacian"
+    assert results[0].diagnostics["fusion"]["relation_operator_weight_total"] < 1.0
 
 
 def test_multilevel_pipeline_is_deterministic(tmp_path):
@@ -361,6 +434,47 @@ def test_multilevel_pipeline_accepts_partition_ann_candidate_source(tmp_path):
     assert results
     source_counts = results[0].diagnostics["candidate_source_counts"]
     assert source_counts.get("partition_ann", 0) > 0
+
+
+def test_multilevel_pipeline_records_selected_match_sources_and_fallback_fraction(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=8,
+        num_items=5,
+        num_tags=3,
+        seed=46,
+    )
+    config = small_config(tmp_path)
+    config["diagnostics"] = dict(config["diagnostics"], enable_spectral=False)
+
+    results = run_multilevel_coarsening(graph, config)
+
+    selected = results[0].diagnostics["matched_pairs_by_source"]
+    assert sum(selected.values()) == results[0].diagnostics["matched_pairs"]
+    assert "fallback_selected_fraction" in results[0].diagnostics
+
+
+def test_multilevel_pipeline_can_disable_fallback_candidates(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=8,
+        num_items=5,
+        num_tags=3,
+        seed=48,
+    )
+    config = small_config(tmp_path)
+    config["diagnostics"] = dict(config["diagnostics"], enable_spectral=False)
+    config["candidates"] = dict(
+        config["candidates"],
+        enable_onehop=False,
+        enable_capped_twohop=False,
+        enable_bucket=False,
+        enable_partition_ann=False,
+        enable_fallback=False,
+    )
+
+    results = run_multilevel_coarsening(graph, config)
+
+    assert results[0].diagnostics["candidate_source_counts"].get("fallback", 0) == 0
+    assert results[0].diagnostics["fallback_selected_fraction"] == 0.0
 
 
 def test_multilevel_pipeline_emits_stage_progress_when_enabled(tmp_path, capsys):

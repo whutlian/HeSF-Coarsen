@@ -67,6 +67,8 @@ def test_experiment_scripts_support_help():
     scripts = [
         "run_sanity.py",
         "run_hgb_sweep.py",
+        "run_hgb_stage_b_ablation.py",
+        "compare_hgb_ablation.py",
         "run_ogbn_mag_subset.py",
         "run_ogbn_mag_envelope.py",
         "collect_diagnostics.py",
@@ -176,6 +178,148 @@ def test_summarizer_writes_csv_and_failures(tmp_path):
     assert quality_rows[0]["spectral_chebheat_sketch_inner_product_relative_error"] == "0.4"
     assert failed_rows[0]["failure_reason"] == "boom"
     assert (tmp_path / "summary" / "report.md").exists()
+
+
+def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
+    from experiments.scripts.summarize_experiments import summarize_experiments
+
+    run_dir = tmp_path / "runs" / "hgb_ACM_r0p5_L2_d16_K8_base"
+    level_1 = run_dir / "level_1"
+    level_2 = run_dir / "level_2"
+    level_1.mkdir(parents=True)
+    level_2.mkdir()
+    common = {
+        "config": {
+            "coarsening": {"target_ratio": 0.5, "per_level_ratio": 0.55, "max_levels": 2},
+            "sketch": {"method": "chebyshev_heat", "dim": 16, "order": 5},
+            "fusion": {"relation_weighting": {"method": "inverse_energy"}},
+            "metapath_sketch": {"enabled": True, "operator_weight_total": 0.25},
+            "scoring": {
+                "lambda_spec": 1.0,
+                "lambda_rel": 0.5,
+                "lambda_feat": 0.2,
+                "lambda_conv": 0.5,
+                "lambda_boundary": 0.2,
+                "normalization": "p95",
+            },
+            "candidates": {"total_budget_K": 8, "enable_onehop": True},
+        },
+        "spectral": {
+            "sketch_dirichlet_energy_relative_error": 0.1,
+            "relation_weighted_fused_energy_relative_error": 0.2,
+            "fused_sketch_energy_relative_error": 0.3,
+            "relation_energy_relative_error_max": 0.4,
+            "chebheat_sketch_inner_product_relative_error": 0.5,
+        },
+    }
+    (level_1 / "diagnostics.json").write_text(
+        json.dumps({**common, "original_nodes": 100, "coarse_nodes": 70, "compression_ratio": 0.7}),
+        encoding="utf-8",
+    )
+    (level_2 / "diagnostics.json").write_text(
+        json.dumps({**common, "original_nodes": 70, "coarse_nodes": 52, "compression_ratio": 52 / 70}),
+        encoding="utf-8",
+    )
+    (run_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "status": "success",
+                "dataset": "ACM",
+                "run_name": "hgb_ACM_r0p5_L2_d16_K8_base",
+                "variant": "base",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summarize_experiments([tmp_path / "runs"], tmp_path / "summary")
+
+    final_rows = list(csv.DictReader((tmp_path / "summary" / "final_summary.csv").open()))
+    quality_rows = list(csv.DictReader((tmp_path / "summary" / "quality_summary.csv").open()))
+    report = (tmp_path / "summary" / "report.md").read_text(encoding="utf-8")
+
+    assert len(final_rows) == 1
+    assert final_rows[0]["run_count_unique"] == "1"
+    assert final_rows[0]["level_row_count"] == "2"
+    assert final_rows[0]["initial_nodes"] == "100"
+    assert final_rows[0]["final_nodes"] == "52"
+    assert np.isclose(float(final_rows[0]["final_cumulative_ratio"]), 0.52)
+    assert np.isclose(float(final_rows[0]["target_abs_error"]), 0.02)
+    assert final_rows[0]["target_hit"] == "true"
+    assert final_rows[0]["best_level"] == "2"
+    assert final_rows[0]["config.sketch.method"] == "chebyshev_heat"
+    assert "spectral_fused_sketch_energy_relative_error" in quality_rows[0]
+    assert "Unique runs: 1" in report
+    assert "Level rows: 2" in report
+
+
+def test_compare_hgb_ablation_groups_metrics(tmp_path):
+    from experiments.scripts.compare_hgb_ablation import compare_hgb_ablation
+
+    input_csv = tmp_path / "all_runs.csv"
+    with input_csv.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["dataset", "variant", "final_cumulative_ratio", "cumulative_dee"],
+        )
+        writer.writeheader()
+        writer.writerow({"dataset": "ACM", "variant": "base", "final_cumulative_ratio": "0.51", "cumulative_dee": "0.1"})
+        writer.writerow({"dataset": "ACM", "variant": "base", "final_cumulative_ratio": "0.49", "cumulative_dee": "0.2"})
+    output_csv = tmp_path / "compare.csv"
+
+    compare_hgb_ablation(
+        summary=input_csv,
+        output=output_csv,
+        group_by=["dataset", "variant"],
+        metrics=["final_cumulative_ratio", "cumulative_dee"],
+    )
+
+    rows = list(csv.DictReader(output_csv.open()))
+    assert rows[0]["dataset"] == "ACM"
+    assert rows[0]["variant"] == "base"
+    assert rows[0]["run_count"] == "2"
+    assert np.isclose(float(rows[0]["final_cumulative_ratio_mean"]), 0.5)
+
+
+def test_stage_b_ablation_dry_run_writes_variants(tmp_path):
+    from experiments.scripts.run_hgb_stage_b_ablation import main
+
+    exit_code = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(tmp_path),
+            "--target-ratios",
+            "0.5",
+            "--max-levels",
+            "4",
+            "--candidate-source",
+            "onehop_twohop_bucket",
+            "--candidate-K",
+            "8",
+            "--sketch-dim",
+            "16",
+            "--seeds",
+            "12345",
+            "--variants",
+            "base",
+            "uniform_weight",
+            "no_metapath",
+            "lazy_no_metapath",
+            "no_conv",
+            "--dry-run",
+        ]
+    )
+
+    configs = {path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8")) for path in tmp_path.glob("hgb_*/config.yaml")}
+    assert exit_code == 0
+    assert len(configs) == 5
+    assert any("base" in name for name in configs)
+    assert any(cfg["fusion"]["relation_weighting"]["method"] == "uniform" for cfg in configs.values())
+    assert any(cfg["metapath_sketch"]["enabled"] is False for cfg in configs.values())
+    assert any(cfg["sketch"]["method"] == "lazy" for cfg in configs.values())
+    assert any(cfg["scoring"]["lambda_conv"] == 0.0 for cfg in configs.values())
 
 
 def test_sanity_runner_outputs_summary_and_report(tmp_path):

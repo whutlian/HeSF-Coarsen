@@ -111,6 +111,7 @@ def _assignment_from_pair_arrays(
 class MutualBestState:
     best_cost: np.ndarray
     best_neighbor: np.ndarray
+    best_source: np.ndarray | None = None
 
 
 def initialize_mutual_best_state(graph: HeteroGraph) -> MutualBestState:
@@ -118,6 +119,7 @@ def initialize_mutual_best_state(graph: HeteroGraph) -> MutualBestState:
     return MutualBestState(
         best_cost=np.full(graph.num_nodes, np.inf, dtype=np.float64),
         best_neighbor=np.full(graph.num_nodes, missing_neighbor, dtype=np.int64),
+        best_source=None,
     )
 
 
@@ -179,6 +181,21 @@ def mutual_best_update_block(
     costs = costs[valid]
     _update_directed_best(state, left, right, costs)
     _update_directed_best(state, right, left, costs)
+
+
+def selected_pair_sources(
+    assignment: Assignment,
+    source_lookup,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for supernode in range(assignment.num_supernodes):
+        nodes = np.flatnonzero(assignment.assignment == supernode)
+        if len(nodes) != 2:
+            continue
+        source = source_lookup(int(nodes[0]), int(nodes[1]))
+        name = "unknown" if source is None else str(source)
+        counts[name] = counts.get(name, 0) + 1
+    return counts
 
 
 def finalize_mutual_best(

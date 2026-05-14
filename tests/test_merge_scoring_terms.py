@@ -133,6 +133,45 @@ def test_score_pair_block_with_terms_reports_unweighted_components():
     assert np.isclose(scored[0, 2], expected)
 
 
+def test_score_pair_block_can_normalize_terms_before_weighting():
+    graph = HeteroGraph(
+        num_nodes=4,
+        node_type=np.zeros(4, dtype=np.int32),
+        relations={},
+    )
+    pairs = np.array([[0, 1, 0.0], [2, 3, 0.0]], dtype=np.float64)
+    z = np.array(
+        [
+            [0.0],
+            [1.0],
+            [0.0],
+            [10.0],
+        ],
+        dtype=np.float32,
+    )
+    profiles = np.zeros((4, 1), dtype=np.float32)
+    conv = np.zeros((4, 1), dtype=np.float32)
+    config = {
+        "scoring": {
+            "lambda_spec": 1.0,
+            "lambda_rel": 0.0,
+            "lambda_feat": 0.0,
+            "lambda_conv": 0.0,
+            "lambda_boundary": 0.0,
+            "spec_volume_weighting": False,
+            "normalization": "p95",
+        },
+        "acceleration": {"dense_backend": "numpy"},
+    }
+    context = prepare_pair_scoring_context(graph, z, profiles, conv, None, config)
+
+    scored, terms = score_pair_block_with_terms(context, pairs)
+
+    assert np.allclose(terms["spec"], np.array([1.0, 100.0], dtype=np.float32))
+    assert scored[1, 2] <= 1.1
+    assert scored[0, 2] < 0.02
+
+
 def test_spec_term_uses_local_variation_volume_factor():
     graph = _same_type_graph_with_degrees()
     pairs = np.array([[0, 3, 0.0]], dtype=np.float64)
