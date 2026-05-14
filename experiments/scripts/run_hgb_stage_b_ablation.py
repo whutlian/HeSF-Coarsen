@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from copy import deepcopy
 from dataclasses import dataclass
@@ -30,6 +31,14 @@ class StageBAblationConfig:
     candidate_source: str
     sketch_dim: int
     sketch_order: int
+    sketch_method: str
+    matching_method: str
+    max_cluster_size: int
+    relation_weighting_method: str
+    metapath_preset: str
+    metapath_operator_weight_total: float
+    experiment_block: str
+    unique_run_key: str
     config: dict
 
 
@@ -44,11 +53,31 @@ def _candidate_flags(source: str) -> dict:
 
 def _variant_config(config: dict, variant: str) -> dict:
     cfg = deepcopy(config)
-    if variant == "base":
+    if variant == "base" or variant in {
+        "C0",
+        "C1",
+        "C2",
+        "C3",
+        "D0",
+        "D1",
+        "D2",
+        "D3",
+        "M0",
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+    }:
         return cfg
     if variant == "uniform_weight":
         cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "uniform"
         cfg.setdefault("metapath_sketch", {}).setdefault("weighting", {})["method"] = "uniform"
+        return cfg
+    if variant == "clipped_inverse_weight":
+        cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "clipped_inverse_energy"
+        return cfg
+    if variant == "inverse_sqrt_weight":
+        cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "inverse_sqrt_energy"
         return cfg
     if variant == "no_metapath":
         cfg.setdefault("metapath_sketch", {})["enabled"] = False
@@ -65,6 +94,147 @@ def _variant_config(config: dict, variant: str) -> dict:
     raise ValueError(f"unsupported Stage B variant: {variant}")
 
 
+def _canonical_metapaths(dataset: str) -> list[dict]:
+    name = dataset.upper()
+    if name == "ACM":
+        return [
+            {
+                "name": "paper_author_paper",
+                "start_type": "paper",
+                "end_type": "paper",
+                "steps": [
+                    {"relation_id": 2, "direction": "forward"},
+                    {"relation_id": 3, "direction": "forward"},
+                ],
+            },
+            {
+                "name": "paper_subject_paper",
+                "start_type": "paper",
+                "end_type": "paper",
+                "steps": [
+                    {"relation_id": 4, "direction": "forward"},
+                    {"relation_id": 5, "direction": "forward"},
+                ],
+            },
+            {
+                "name": "paper_term_paper",
+                "start_type": "paper",
+                "end_type": "paper",
+                "steps": [
+                    {"relation_id": 6, "direction": "forward"},
+                    {"relation_id": 7, "direction": "forward"},
+                ],
+            },
+        ]
+    if name == "DBLP":
+        return [
+            {
+                "name": "author_paper_author",
+                "start_type": "author",
+                "end_type": "author",
+                "steps": [
+                    {"relation_id": 0, "direction": "forward"},
+                    {"relation_id": 3, "direction": "forward"},
+                ],
+            }
+        ]
+    if name == "IMDB":
+        return [
+            {
+                "name": "movie_director_movie",
+                "start_type": "movie",
+                "end_type": "movie",
+                "steps": [
+                    {"relation_id": 0, "direction": "forward"},
+                    {"relation_id": 1, "direction": "forward"},
+                ],
+            },
+            {
+                "name": "movie_actor_movie",
+                "start_type": "movie",
+                "end_type": "movie",
+                "steps": [
+                    {"relation_id": 2, "direction": "forward"},
+                    {"relation_id": 3, "direction": "forward"},
+                ],
+            },
+            {
+                "name": "movie_keyword_movie",
+                "start_type": "movie",
+                "end_type": "movie",
+                "steps": [
+                    {"relation_id": 4, "direction": "forward"},
+                    {"relation_id": 5, "direction": "forward"},
+                ],
+            },
+        ]
+    return []
+
+
+def _apply_metapath_preset(config: dict, dataset: str, preset: str, operator_weight_total: float) -> dict:
+    cfg = deepcopy(config)
+    meta = cfg.setdefault("metapath_sketch", {})
+    preset = str(preset).lower()
+    if preset in {"off", "none", "false"} or float(operator_weight_total) <= 0.0:
+        meta["enabled"] = False
+        meta["operator_weight_total"] = 0.0
+        meta["paths"] = []
+        meta["auto_paths"] = False
+        return cfg
+    meta["enabled"] = True
+    meta["operator_weight_total"] = float(operator_weight_total)
+    if preset in {"canonical", "dataset_canonical"}:
+        meta["paths"] = _canonical_metapaths(dataset)
+        meta["auto_paths"] = False
+    elif preset in {"auto", "auto_paths"}:
+        meta["paths"] = []
+        meta["auto_paths"] = True
+    else:
+        raise ValueError(f"unsupported metapath preset: {preset}")
+    return cfg
+
+
+def _unique_run_key(
+    *,
+    experiment_block: str,
+    dataset: str,
+    variant: str,
+    target_ratio: float,
+    seed: int,
+    candidate_source: str,
+    sketch_dim: int,
+    sketch_order: int,
+    sketch_method: str,
+    max_levels: int,
+    candidate_k: int,
+    matching_method: str,
+    max_cluster_size: int,
+    relation_weighting_method: str,
+    metapath_preset: str,
+    metapath_operator_weight_total: float,
+) -> str:
+    parts = [
+        experiment_block,
+        dataset,
+        variant,
+        f"r={float(target_ratio):.6g}",
+        f"seed={int(seed)}",
+        f"src={candidate_source}",
+        f"d={int(sketch_dim)}",
+        f"o={int(sketch_order)}",
+        f"m={sketch_method}",
+        f"L={int(max_levels)}",
+        f"K={int(candidate_k)}",
+        f"match={matching_method}",
+        f"c={int(max_cluster_size)}",
+        f"rw={relation_weighting_method}",
+        f"mp={metapath_preset}:{float(metapath_operator_weight_total):.6g}",
+    ]
+    text = "|".join(parts)
+    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
+    return f"{experiment_block}:{dataset}:{variant}:{digest}"
+
+
 def generate_stage_b_configs(
     *,
     datasets: Iterable[str],
@@ -76,17 +246,48 @@ def generate_stage_b_configs(
     sketch_orders: Iterable[int],
     seeds: Iterable[int],
     variants: Iterable[str],
+    experiment_block: str = "stage_b_ablation",
     normalization: str = "p95",
     normalization_scope: str = "level",
+    matching_methods: Iterable[str] = ("mutual_best",),
+    max_cluster_sizes: Iterable[int] = (2,),
+    sketch_methods: Iterable[str] | None = None,
+    relation_weighting_methods: Iterable[str] | None = None,
+    metapath_presets: Iterable[str] | None = None,
+    metapath_operator_weight_totals: Iterable[float] | None = None,
 ) -> Iterable[StageBAblationConfig]:
-    for dataset, target_ratio, source, sketch_dim, sketch_order, seed, variant in product(
+    sketch_methods = tuple(sketch_methods or ["chebyshev_heat"])
+    relation_weighting_methods = tuple(relation_weighting_methods or [""])
+    metapath_presets = tuple(metapath_presets or [""])
+    metapath_operator_weight_totals = tuple(metapath_operator_weight_totals or [-1.0])
+    for (
+        dataset,
+        target_ratio,
+        source,
+        sketch_dim,
+        sketch_order,
+        sketch_method,
+        seed,
+        variant,
+        matching_method,
+        max_cluster_size,
+        relation_weighting_method,
+        metapath_preset,
+        metapath_operator_weight_total,
+    ) in product(
         datasets,
         target_ratios,
         candidate_sources,
         sketch_dims,
         sketch_orders,
+        sketch_methods,
         seeds,
         variants,
+        matching_methods,
+        max_cluster_sizes,
+        relation_weighting_methods,
+        metapath_presets,
+        metapath_operator_weight_totals,
     ):
         config = deepcopy(DEFAULT_CONFIG)
         config["seed"] = int(seed)
@@ -94,13 +295,14 @@ def generate_stage_b_configs(
             config["coarsening"],
             target_ratio=float(target_ratio),
             max_levels=int(max_levels),
-            matching_method="mutual_best",
+            matching_method=str(matching_method),
+            max_cluster_size=int(max_cluster_size),
         )
         config["sketch"] = dict(
             config["sketch"],
             dim=int(sketch_dim),
             order=int(sketch_order),
-            method="chebyshev_heat",
+            method=str(sketch_method),
         )
         config["candidates"] = dict(
             config["candidates"],
@@ -124,10 +326,57 @@ def generate_stage_b_configs(
         )
         config["diagnostics"] = dict(config["diagnostics"], enable_large_graph_envelope=True)
         config = _variant_config(config, variant)
+        if relation_weighting_method:
+            config.setdefault("fusion", {}).setdefault("relation_weighting", {})[
+                "method"
+            ] = str(relation_weighting_method)
+            if str(relation_weighting_method) == "inverse_sqrt_energy":
+                config["fusion"]["relation_weighting"]["gamma"] = 0.5
+            if str(relation_weighting_method) == "clipped_inverse_energy":
+                config["fusion"]["relation_weighting"].setdefault("weight_clip_max", 0.25)
+                config["fusion"]["relation_weighting"].setdefault("weight_clip_min", 0.0)
+        effective_relation_weighting = str(
+            config.get("fusion", {}).get("relation_weighting", {}).get("method", "")
+        )
+        if metapath_preset:
+            total = (
+                float(metapath_operator_weight_total)
+                if float(metapath_operator_weight_total) >= 0.0
+                else float(config.get("metapath_sketch", {}).get("operator_weight_total", 0.0))
+            )
+            config = _apply_metapath_preset(config, dataset, metapath_preset, total)
+        effective_metapath_total = float(
+            config.get("metapath_sketch", {}).get("operator_weight_total", 0.0)
+        )
+        effective_metapath_preset = str(metapath_preset or "default")
         ratio_token = str(float(target_ratio)).replace(".", "p")
+        method_token = str(config["sketch"]["method"]).replace("chebyshev_heat", "cheb")
+        match_token = str(matching_method)
+        rw_token = effective_relation_weighting.replace("inverse_energy", "inv")
+        mp_token = effective_metapath_preset
         run_name = (
             f"stageB_{dataset}_{variant}_r{ratio_token}_L{int(max_levels)}_"
-            f"d{int(sketch_dim)}_K{int(candidate_k)}_{source}_seed{int(seed)}"
+            f"d{int(sketch_dim)}_K{int(candidate_k)}_{source}_{method_token}_"
+            f"{match_token}_c{int(max_cluster_size)}_{rw_token}_mp{mp_token}"
+            f"{str(effective_metapath_total).replace('.', 'p')}_seed{int(seed)}"
+        )
+        unique_key = _unique_run_key(
+            experiment_block=experiment_block,
+            dataset=dataset,
+            variant=variant,
+            target_ratio=float(target_ratio),
+            seed=int(seed),
+            candidate_source=source,
+            sketch_dim=int(sketch_dim),
+            sketch_order=int(sketch_order),
+            sketch_method=str(config["sketch"]["method"]),
+            max_levels=int(max_levels),
+            candidate_k=int(candidate_k),
+            matching_method=str(matching_method),
+            max_cluster_size=int(max_cluster_size),
+            relation_weighting_method=effective_relation_weighting,
+            metapath_preset=effective_metapath_preset,
+            metapath_operator_weight_total=effective_metapath_total,
         )
         yield StageBAblationConfig(
             run_name=run_name,
@@ -138,6 +387,14 @@ def generate_stage_b_configs(
             candidate_source=source,
             sketch_dim=int(sketch_dim),
             sketch_order=int(sketch_order),
+            sketch_method=str(config["sketch"]["method"]),
+            matching_method=str(matching_method),
+            max_cluster_size=int(max_cluster_size),
+            relation_weighting_method=effective_relation_weighting,
+            metapath_preset=effective_metapath_preset,
+            metapath_operator_weight_total=effective_metapath_total,
+            experiment_block=experiment_block,
+            unique_run_key=unique_key,
             config=config,
         )
 
@@ -159,8 +416,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sketch-dims", type=int, nargs="+", default=None)
     parser.add_argument("--sketch-order", type=int, default=5)
     parser.add_argument("--sketch-orders", type=int, nargs="+", default=None)
+    parser.add_argument("--sketch-method", default=None)
+    parser.add_argument("--sketch-methods", nargs="+", default=None)
     parser.add_argument("--normalization", default="p95")
     parser.add_argument("--normalization-scope", default="level")
+    parser.add_argument("--matching-method", default=None)
+    parser.add_argument("--matching-methods", nargs="+", default=None)
+    parser.add_argument("--max-cluster-size", type=int, default=None)
+    parser.add_argument("--max-cluster-sizes", type=int, nargs="+", default=None)
+    parser.add_argument("--relation-weighting-method", default=None)
+    parser.add_argument("--relation-weighting-methods", nargs="+", default=None)
+    parser.add_argument("--metapath-preset", default=None, choices=["off", "canonical", "auto"])
+    parser.add_argument("--metapath-presets", nargs="+", default=None)
+    parser.add_argument("--metapath-operator-weight-total", type=float, default=None)
+    parser.add_argument("--metapath-operator-weight-totals", type=float, nargs="+", default=None)
+    parser.add_argument("--experiment-block", default="stage_b_ablation")
     parser.add_argument("--seeds", type=int, nargs="+", default=[12345])
     parser.add_argument(
         "--variants",
@@ -196,6 +466,42 @@ def _sketch_orders(args: argparse.Namespace) -> list[int]:
     return [int(value) for value in (args.sketch_orders or [args.sketch_order])]
 
 
+def _sketch_methods(args: argparse.Namespace) -> list[str] | None:
+    values = args.sketch_methods or ([args.sketch_method] if args.sketch_method else None)
+    return None if values is None else [str(value) for value in values]
+
+
+def _matching_methods(args: argparse.Namespace) -> list[str]:
+    values = args.matching_methods or ([args.matching_method] if args.matching_method else None)
+    return [str(value) for value in (values or ["mutual_best"])]
+
+
+def _max_cluster_sizes(args: argparse.Namespace) -> list[int]:
+    values = args.max_cluster_sizes or ([args.max_cluster_size] if args.max_cluster_size else None)
+    return [int(value) for value in (values or [2])]
+
+
+def _relation_weighting_methods(args: argparse.Namespace) -> list[str] | None:
+    values = args.relation_weighting_methods or (
+        [args.relation_weighting_method] if args.relation_weighting_method else None
+    )
+    return None if values is None else [str(value) for value in values]
+
+
+def _metapath_presets(args: argparse.Namespace) -> list[str] | None:
+    values = args.metapath_presets or ([args.metapath_preset] if args.metapath_preset else None)
+    return None if values is None else [str(value) for value in values]
+
+
+def _metapath_operator_weight_totals(args: argparse.Namespace) -> list[float] | None:
+    values = args.metapath_operator_weight_totals or (
+        [args.metapath_operator_weight_total]
+        if args.metapath_operator_weight_total is not None
+        else None
+    )
+    return None if values is None else [float(value) for value in values]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = repo_root()
@@ -210,8 +516,15 @@ def main(argv: list[str] | None = None) -> int:
         sketch_orders=_sketch_orders(args),
         seeds=args.seeds,
         variants=args.variants,
+        experiment_block=args.experiment_block,
         normalization=args.normalization,
         normalization_scope=args.normalization_scope,
+        matching_methods=_matching_methods(args),
+        max_cluster_sizes=_max_cluster_sizes(args),
+        sketch_methods=_sketch_methods(args),
+        relation_weighting_methods=_relation_weighting_methods(args),
+        metapath_presets=_metapath_presets(args),
+        metapath_operator_weight_totals=_metapath_operator_weight_totals(args),
     ):
         graph_dir = (
             (args.graph_root / item.dataset.lower())
@@ -255,6 +568,14 @@ def main(argv: list[str] | None = None) -> int:
             candidate_source=item.candidate_source,
             sketch_dim=item.sketch_dim,
             sketch_order=item.sketch_order,
+            sketch_method=item.sketch_method,
+            matching_method=item.matching_method,
+            max_cluster_size=item.max_cluster_size,
+            relation_weighting_method=item.relation_weighting_method,
+            metapath_preset=item.metapath_preset,
+            metapath_operator_weight_total=item.metapath_operator_weight_total,
+            experiment_block=item.experiment_block,
+            unique_run_key=item.unique_run_key,
             status="created",
         )
         if args.dry_run:
@@ -285,6 +606,14 @@ def main(argv: list[str] | None = None) -> int:
             candidate_source=item.candidate_source,
             sketch_dim=item.sketch_dim,
             sketch_order=item.sketch_order,
+            sketch_method=item.sketch_method,
+            matching_method=item.matching_method,
+            max_cluster_size=item.max_cluster_size,
+            relation_weighting_method=item.relation_weighting_method,
+            metapath_preset=item.metapath_preset,
+            metapath_operator_weight_total=item.metapath_operator_weight_total,
+            experiment_block=item.experiment_block,
+            unique_run_key=item.unique_run_key,
             command=command,
             status="running",
         )
@@ -305,6 +634,14 @@ def main(argv: list[str] | None = None) -> int:
             candidate_source=item.candidate_source,
             sketch_dim=item.sketch_dim,
             sketch_order=item.sketch_order,
+            sketch_method=item.sketch_method,
+            matching_method=item.matching_method,
+            max_cluster_size=item.max_cluster_size,
+            relation_weighting_method=item.relation_weighting_method,
+            metapath_preset=item.metapath_preset,
+            metapath_operator_weight_total=item.metapath_operator_weight_total,
+            experiment_block=item.experiment_block,
+            unique_run_key=item.unique_run_key,
             command=command,
             status=status,
             returncode=completed.returncode,

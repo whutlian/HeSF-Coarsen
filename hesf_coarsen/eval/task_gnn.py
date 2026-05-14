@@ -1,0 +1,259 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from time import perf_counter
+from typing import Any
+
+import numpy as np
+
+from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
+
+
+@dataclass(frozen=True)
+class TaskEvalResult:
+    metrics: dict[str, Any]
+
+
+def compose_assignments(original_nodes: int, assignment_paths: list[str]) -> np.ndarray:
+    mapping = np.arange(int(original_nodes), dtype=np.int64)
+    for path in assignment_paths:
+        payload = np.load(path)
+        local = payload["assignment"].astype(np.int64, copy=False)
+        mapping = local[mapping]
+    return mapping.astype(np.int64, copy=False)
+
+
+def f1_scores(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
+    y_true = np.asarray(y_true).reshape(-1)
+    y_pred = np.asarray(y_pred).reshape(-1)
+    valid = (y_true >= 0) & (y_pred >= 0)
+    if not np.any(valid):
+        return {"micro_f1": 0.0, "macro_f1": 0.0}
+    truth = y_true[valid].astype(np.int64, copy=False)
+    pred = y_pred[valid].astype(np.int64, copy=False)
+    labels = np.union1d(truth, pred)
+    per_label: list[float] = []
+    for label in labels:
+        tp = int(np.sum((truth == label) & (pred == label)))
+        fp = int(np.sum((truth != label) & (pred == label)))
+        fn = int(np.sum((truth == label) & (pred != label)))
+        denom = 2 * tp + fp + fn
+        per_label.append(0.0 if denom == 0 else float(2 * tp / denom))
+    return {
+        "micro_f1": float(np.mean(truth == pred)),
+        "macro_f1": float(np.mean(per_label) if per_label else 0.0),
+    }
+
+
+def labeled_split(labels: np.ndarray, seed: int, train_fraction: float = 0.6) -> tuple[np.ndarray, np.ndarray]:
+    labeled = np.flatnonzero(np.asarray(labels).reshape(-1) >= 0).astype(np.int64)
+    if len(labeled) == 0:
+        return labeled, labeled
+    rng = np.random.default_rng(int(seed))
+    perm = labeled.copy()
+    rng.shuffle(perm)
+    train_count = max(1, int(round(len(perm) * float(train_fraction))))
+    if train_count >= len(perm) and len(perm) > 1:
+        train_count = len(perm) - 1
+    return perm[:train_count], perm[train_count:]
+
+
+def evaluate_rgcn_task(
+    original: HeteroGraph,
+    coarse: HeteroGraph,
+    original_to_coarse: np.ndarray,
+    *,
+    seed: int = 12345,
+    hidden_dim: int = 32,
+    epochs: int = 20,
+    refine_epochs: int = 10,
+    lr: float = 0.01,
+    weight_decay: float = 5e-4,
+    device: str = "auto",
+) -> TaskEvalResult:
+    try:
+        import torch
+        from torch import nn
+    except Exception as exc:  # pragma: no cover - exercised only without torch installed.
+        return TaskEvalResult(
+            {
+                "model": "rgcn_lite",
+                "skipped": True,
+                "skip_reason": f"torch_unavailable: {exc}",
+            }
+        )
+
+    torch.manual_seed(int(seed))
+    if device == "auto":
+        device_name = "cuda" if torch.cuda.is_available() else "cpu"
+    else:
+        device_name = str(device)
+    dev = torch.device(device_name)
+
+    labels = np.asarray(original.labels if original.labels is not None else np.full(original.num_nodes, -1))
+    coarse_labels = np.asarray(coarse.labels if coarse.labels is not None else np.full(coarse.num_nodes, -1))
+    train_nodes, test_nodes = labeled_split(labels, seed=seed)
+    if len(train_nodes) == 0 or len(test_nodes) == 0:
+        return TaskEvalResult(
+            {
+                "model": "rgcn_lite",
+                "skipped": True,
+                "skip_reason": "not_enough_labeled_nodes",
+            }
+        )
+    num_classes = int(labels[labels >= 0].max(initial=0)) + 1
+    coarse_train_nodes = np.unique(original_to_coarse[train_nodes]).astype(np.int64, copy=False)
+    coarse_train_nodes = coarse_train_nodes[coarse_labels[coarse_train_nodes] >= 0]
+    if len(coarse_train_nodes) == 0:
+        return TaskEvalResult(
+            {
+                "model": "rgcn_lite",
+                "skipped": True,
+                "skip_reason": "no_labeled_coarse_train_nodes",
+            }
+        )
+
+    class RGCNLite(nn.Module):
+        def __init__(self, graph: HeteroGraph):
+            super().__init__()
+            self.hidden_dim = int(hidden_dim)
+            type_ids = sorted(int(type_id) for type_id in np.unique(graph.node_type))
+            self.type_linears = nn.ModuleDict()
+            self.type_embeddings = nn.ParameterDict()
+            for type_id in type_ids:
+                feature = (graph.features or {}).get(type_id)
+                if feature is None:
+                    self.type_embeddings[str(type_id)] = nn.Parameter(torch.zeros(self.hidden_dim))
+                else:
+                    self.type_linears[str(type_id)] = nn.Linear(int(feature.shape[1]), self.hidden_dim)
+            rel_ids = sorted(int(relation_id) for relation_id in graph.relations)
+            self.rel_ids = rel_ids
+            self.rel_weights = nn.ParameterDict(
+                {
+                    str(relation_id): nn.Parameter(
+                        torch.empty(self.hidden_dim, self.hidden_dim)
+                    )
+                    for relation_id in rel_ids
+                }
+            )
+            self.self_linear = nn.Linear(self.hidden_dim, self.hidden_dim)
+            self.out = nn.Linear(self.hidden_dim, int(num_classes))
+            self.dropout = nn.Dropout(0.2)
+            self.reset_parameters()
+
+        def reset_parameters(self) -> None:
+            for module in self.type_linears.values():
+                nn.init.xavier_uniform_(module.weight)
+                nn.init.zeros_(module.bias)
+            for parameter in self.type_embeddings.values():
+                nn.init.normal_(parameter, std=0.02)
+            for parameter in self.rel_weights.values():
+                nn.init.xavier_uniform_(parameter)
+            nn.init.xavier_uniform_(self.self_linear.weight)
+            nn.init.zeros_(self.self_linear.bias)
+            nn.init.xavier_uniform_(self.out.weight)
+            nn.init.zeros_(self.out.bias)
+
+        def encode(self, data: dict[str, Any]) -> Any:
+            h = torch.zeros((data["num_nodes"], self.hidden_dim), device=dev)
+            for type_id, node_tensor in data["type_nodes"].items():
+                key = str(type_id)
+                if key in self.type_linears:
+                    h[node_tensor] = self.type_linears[key](data["features"][type_id])
+                else:
+                    h[node_tensor] = self.type_embeddings[key]
+            return torch.relu(h)
+
+        def forward(self, data: dict[str, Any]) -> Any:
+            h = self.dropout(self.encode(data))
+            out = self.self_linear(h)
+            degree = torch.ones((data["num_nodes"], 1), device=dev)
+            for relation_id, edge in data["edges"].items():
+                src, dst, weight = edge
+                if src.numel() == 0:
+                    continue
+                msg = h[src] @ self.rel_weights[str(relation_id)]
+                msg = msg * weight[:, None]
+                out.index_add_(0, dst, msg)
+                degree.index_add_(0, dst, weight[:, None])
+            h = torch.relu(out / degree.clamp_min(1.0e-6))
+            return self.out(self.dropout(h))
+
+    def graph_data(graph: HeteroGraph) -> dict[str, Any]:
+        type_nodes = {
+            int(type_id): torch.as_tensor(nodes_of_type(graph, int(type_id)), dtype=torch.long, device=dev)
+            for type_id in sorted(np.unique(graph.node_type))
+        }
+        features: dict[int, Any] = {}
+        for type_id, feature in (graph.features or {}).items():
+            features[int(type_id)] = torch.as_tensor(feature, dtype=torch.float32, device=dev)
+        edges = {}
+        for relation_id, rel in graph.relations.items():
+            edges[int(relation_id)] = (
+                torch.as_tensor(rel.src, dtype=torch.long, device=dev),
+                torch.as_tensor(rel.dst, dtype=torch.long, device=dev),
+                torch.as_tensor(rel.weight, dtype=torch.float32, device=dev),
+            )
+        return {"num_nodes": int(graph.num_nodes), "type_nodes": type_nodes, "features": features, "edges": edges}
+
+    coarse_data = graph_data(coarse)
+    original_data = graph_data(original)
+    coarse_y = torch.as_tensor(coarse_labels, dtype=torch.long, device=dev)
+    original_y = torch.as_tensor(labels, dtype=torch.long, device=dev)
+    coarse_train = torch.as_tensor(coarse_train_nodes, dtype=torch.long, device=dev)
+    original_train = torch.as_tensor(train_nodes, dtype=torch.long, device=dev)
+
+    def train_model(model: Any, data: dict[str, Any], y: Any, idx: Any, n_epochs: int) -> float:
+        start = perf_counter()
+        optimizer = torch.optim.Adam(model.parameters(), lr=float(lr), weight_decay=float(weight_decay))
+        loss_fn = nn.CrossEntropyLoss()
+        model.train()
+        for _ in range(max(1, int(n_epochs))):
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(data)
+            loss = loss_fn(logits[idx], y[idx])
+            loss.backward()
+            optimizer.step()
+        return float(perf_counter() - start)
+
+    model = RGCNLite(coarse).to(dev)
+    train_time = train_model(model, coarse_data, coarse_y, coarse_train, int(epochs))
+    model.eval()
+    with torch.no_grad():
+        coarse_logits = model(coarse_data)
+        coarse_pred = coarse_logits.argmax(dim=1).detach().cpu().numpy()
+    coarse_train_f1 = f1_scores(coarse_labels[coarse_train_nodes], coarse_pred[coarse_train_nodes])
+    projected_pred = coarse_pred[original_to_coarse[test_nodes]]
+    projected_f1 = f1_scores(labels[test_nodes], projected_pred)
+
+    refine_model = RGCNLite(original).to(dev)
+    refine_model.load_state_dict(model.state_dict(), strict=False)
+    refine_time = train_model(refine_model, original_data, original_y, original_train, int(refine_epochs))
+    refine_model.eval()
+    with torch.no_grad():
+        original_logits = refine_model(original_data)
+        original_pred = original_logits.argmax(dim=1).detach().cpu().numpy()
+    refined_f1 = f1_scores(labels[test_nodes], original_pred[test_nodes])
+
+    return TaskEvalResult(
+        {
+            "model": "rgcn_lite",
+            "skipped": False,
+            "device": device_name,
+            "num_classes": int(num_classes),
+            "train_labeled_nodes": int(len(train_nodes)),
+            "test_labeled_nodes": int(len(test_nodes)),
+            "coarse_train_nodes": int(len(coarse_train_nodes)),
+            "coarse_train_micro_f1": coarse_train_f1["micro_f1"],
+            "coarse_train_macro_f1": coarse_train_f1["macro_f1"],
+            "projected_original_micro_f1": projected_f1["micro_f1"],
+            "projected_original_macro_f1": projected_f1["macro_f1"],
+            "refined_original_micro_f1": refined_f1["micro_f1"],
+            "refined_original_macro_f1": refined_f1["macro_f1"],
+            "micro_f1": projected_f1["micro_f1"],
+            "macro_f1": projected_f1["macro_f1"],
+            "train_time": float(train_time),
+            "refine_time": float(refine_time),
+            "total_time": float(train_time + refine_time),
+        }
+    )

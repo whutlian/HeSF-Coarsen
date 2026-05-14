@@ -70,6 +70,7 @@ def test_experiment_scripts_support_help():
         "run_hgb_stage_b.py",
         "run_hgb_sweep.py",
         "run_hgb_stage_b_ablation.py",
+        "run_hgb_task_eval.py",
         "summarize_stage_b.py",
         "compare_stage_b.py",
         "compare_hgb_ablation.py",
@@ -235,7 +236,20 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
             "conv": 0.2,
             "boundary": 0.1,
         },
-        "large_graph_envelope": {"process_rss_bytes": 2 * 1024**3},
+        "cumulative_spectral": {
+            "sketch_dirichlet_energy_relative_error": 0.11,
+            "relation_weighted_fused_energy_relative_error": 0.22,
+            "fused_sketch_energy_relative_error": 0.33,
+            "relation_energy_relative_error_max": 0.44,
+            "chebheat_sketch_inner_product_relative_error": 0.55,
+        },
+        "large_graph_envelope": {
+            "process_rss_bytes": 2 * 1024**3,
+            "cuda_memory": {
+                "peak_allocated_bytes": 3 * 1024**3,
+                "peak_reserved_bytes": 4 * 1024**3,
+            },
+        },
     }
     (level_1 / "diagnostics.json").write_text(
         json.dumps({**common, "original_nodes": 100, "coarse_nodes": 70, "compression_ratio": 0.7}),
@@ -252,6 +266,8 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
                 "dataset": "ACM",
                 "run_name": "hgb_ACM_r0p5_L2_d16_K8_base",
                 "variant": "base",
+                "experiment_block": "B1",
+                "unique_run_key": "B1:ACM:base:unit",
             }
         ),
         encoding="utf-8",
@@ -270,7 +286,13 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
 
     assert len(final_rows) == 1
     assert (tmp_path / "summary" / "run_final_summary.csv").exists()
+    assert (tmp_path / "summary" / "all_levels.csv").exists()
+    assert (tmp_path / "summary" / "compare_by_variant.csv").exists()
+    assert (tmp_path / "summary" / "compare_by_source.csv").exists()
+    assert (tmp_path / "summary" / "compare_by_dim.csv").exists()
     assert final_rows[0]["run_count_unique"] == "1"
+    assert final_rows[0]["experiment_block"] == "B1"
+    assert final_rows[0]["unique_run_key"] == "B1:ACM:base:unit"
     assert final_rows[0]["level_row_count"] == "2"
     assert final_rows[0]["final_level"] == "2"
     assert final_rows[0]["initial_nodes"] == "100"
@@ -285,10 +307,17 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert final_rows[0]["final_FSE_unweighted"] == "0.3"
     assert final_rows[0]["final_REE_max"] == "0.4"
     assert final_rows[0]["final_SIPE"] == "0.5"
+    assert final_rows[0]["cumulative_dee"] == "0.11"
+    assert final_rows[0]["cumulative_fwe_weighted"] == "0.22"
+    assert final_rows[0]["cumulative_fse_unweighted"] == "0.33"
+    assert final_rows[0]["cumulative_ree_max"] == "0.44"
+    assert final_rows[0]["cumulative_sipe"] == "0.55"
     assert final_rows[0]["task_macro_f1"] == "0.6"
     assert final_rows[0]["score_contribution_share_spec"] == "0.4"
     assert np.isclose(float(final_rows[0]["runtime_total_run"]), 0.0)
     assert np.isclose(float(final_rows[0]["peak_rss_gb"]), 2.0)
+    assert np.isclose(float(final_rows[0]["peak_vram_allocated_gb"]), 3.0)
+    assert np.isclose(float(final_rows[0]["peak_vram_reserved_gb"]), 4.0)
     assert "spectral_fused_sketch_energy_relative_error" in quality_rows[0]
     assert {row["term"] for row in score_rows} == {"spec", "rel", "feat", "conv", "boundary"}
     spec_score = next(row for row in score_rows if row["term"] == "spec")
@@ -299,7 +328,13 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert bucket_source["selected_count"] == "2.0"
     assert task_rows[0]["task_macro_f1"] == "0.6"
     assert resource_run_rows[0]["peak_rss_gb"] == "2.0"
+    assert resource_run_rows[0]["peak_vram_allocated_gb"] == "3.0"
+    assert resource_run_rows[0]["peak_vram_reserved_gb"] == "4.0"
     assert target_rows[0]["target_hit_rate"] == "1.0"
+    all_level_rows = list(csv.DictReader((tmp_path / "summary" / "all_levels.csv").open()))
+    variant_rows = list(csv.DictReader((tmp_path / "summary" / "compare_by_variant.csv").open()))
+    assert len(all_level_rows) == 2
+    assert variant_rows[0]["run_count"] == "1"
     if importlib.util.find_spec("matplotlib") is not None:
         assert (tmp_path / "summary" / "figures" / "target_ratio_hit_rate.png").exists()
         assert (tmp_path / "summary" / "figures" / "score_contribution_share.png").exists()

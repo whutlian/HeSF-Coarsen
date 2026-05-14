@@ -211,6 +211,10 @@ def test_multilevel_pipeline_writes_spectral_diagnostics_closed_loop(tmp_path):
         saved = json.load(handle)
     assert "spectral" in saved
     assert "relation_weighted_fused_energy_relative_error" in saved["spectral"]
+    assert "cumulative_spectral" in saved
+    assert "relation_weighted_fused_energy_relative_error" in saved["cumulative_spectral"]
+    cumulative_payload = np.load(tmp_path / "level_1" / "cumulative_assignment.npz")
+    assert cumulative_payload["assignment"].shape == (graph.num_nodes,)
 
 
 def test_multilevel_pipeline_runs_lazy_and_chebyshev_sketches(tmp_path):

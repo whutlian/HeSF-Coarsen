@@ -8,6 +8,7 @@ from hesf_coarsen.io.schema import HeteroGraph
 from hesf_coarsen.matching.greedy import (
     finalize_mutual_best,
     initialize_mutual_best_state,
+    run_greedy_cluster_matching,
     run_greedy_matching,
     run_matching,
     run_mutual_best_matching,
@@ -117,6 +118,35 @@ def test_mutual_best_matching_enforces_same_partition_by_default():
     )
 
     assert not paired(assignment, 0, 1)
+
+
+def test_greedy_cluster_matching_respects_max_cluster_size():
+    graph = same_type_graph(5)
+    scored_pairs = np.array(
+        [
+            [0, 1, 0.0],
+            [1, 2, 0.1],
+            [2, 3, 0.2],
+            [3, 4, 0.3],
+        ],
+        dtype=np.float64,
+    )
+
+    assignment = run_greedy_cluster_matching(
+        graph,
+        scored_pairs,
+        {
+            "coarsening": {
+                "same_type_only": True,
+                "same_partition_only": False,
+                "matching_method": "greedy_cluster",
+                "max_cluster_size": 3,
+            }
+        },
+    )
+
+    sizes = sorted(assignment.cluster_sizes().tolist())
+    assert sizes == [2, 3]
 
 
 def test_streaming_mutual_best_matches_batch_matching_across_blocks():

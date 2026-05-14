@@ -96,6 +96,18 @@ def _save_assignment(assignment: Assignment, path: Path) -> None:
     tmp_path.replace(path)
 
 
+def _reset_cuda_peak_memory_stats() -> None:
+    try:
+        import torch  # type: ignore
+    except Exception:
+        return
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+    except Exception:
+        return
+
+
 def _completed_level(
     level_dir: Path,
     level: int,
@@ -461,11 +473,14 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         if not completed_levels
         else None
     )
+    root_spectral_input: np.ndarray | None = None
+    root_relation_weights: dict[int, float] | None = None
     results: list[LevelResult] = []
 
     for level in range(start_level, max_levels + 1):
         if current.num_nodes <= target_nodes:
             break
+        _reset_cuda_peak_memory_stats()
         level_dir = output_dir / f"level_{level}"
         runtime: dict[str, float] = {}
         progress_message(
@@ -784,6 +799,9 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 np.float32,
                 copy=False,
             )
+            if root_spectral_input is None and cumulative_assignment is not None:
+                root_spectral_input = spectral_input
+                root_relation_weights = dict(relation_weights)
             diagnostics["spectral"] = compute_spectral_diagnostics(
                 original=current,
                 coarse=coarse,
@@ -803,6 +821,31 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 ),
                 baseline_max_nodes=diagnostics_cfg.get("spectral_baseline_max_nodes", 5000),
             )
+            if (
+                next_cumulative_assignment is not None
+                and root_spectral_input is not None
+                and root_relation_weights is not None
+            ):
+                cumulative_spectral_baselines = diagnostics_cfg.get("cumulative_spectral_baselines", [])
+                diagnostics["cumulative_spectral"] = compute_spectral_diagnostics(
+                    original=graph,
+                    coarse=coarse,
+                    assignment=Assignment(
+                        assignment=next_cumulative_assignment.astype(np.int64, copy=False),
+                        supernode_type=coarse.node_type.astype(np.int32, copy=False),
+                    ),
+                    seed=int(config.get("seed", 12345)) + level + 10_000,
+                    num_signals=int(root_spectral_input.shape[1]),
+                    smoothing_steps=int(diagnostics_cfg.get("spectral_smoothing_steps", 1)),
+                    relation_weights=root_relation_weights,
+                    Z=root_spectral_input,
+                    exact_eigenvalue_max_nodes=diagnostics_cfg.get(
+                        "cumulative_spectral_exact_eigenvalue_max_nodes",
+                        0,
+                    ),
+                    baseline_methods=cumulative_spectral_baselines,
+                    baseline_max_nodes=diagnostics_cfg.get("spectral_baseline_max_nodes", 5000),
+                )
             runtime["spectral_diagnostics"] = perf_counter() - start_spectral
             diagnostics["runtime_by_stage"] = dict(runtime)
             progress_message(
@@ -812,6 +855,14 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             )
         save_graph(coarse, level_dir)
         _save_assignment(assignment, level_dir / "assignment.npz")
+        if next_cumulative_assignment is not None:
+            _save_assignment(
+                Assignment(
+                    assignment=next_cumulative_assignment.astype(np.int64, copy=False),
+                    supernode_type=coarse.node_type.astype(np.int32, copy=False),
+                ),
+                level_dir / "cumulative_assignment.npz",
+            )
         save_diagnostics(diagnostics, level_dir / "diagnostics.json")
         _save_checkpoint(
             level_dir,

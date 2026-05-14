@@ -190,13 +190,22 @@ def compute_relation_weights(
     method = str(weight_cfg.get("method", "uniform")).lower()
     if method in {"reliability", "reliability_weighted"}:
         method = "inverse_energy"
-    if method not in {"uniform", "volume", "inverse_energy", "feature_smoothness"}:
+    supported = {
+        "uniform",
+        "volume",
+        "inverse_energy",
+        "clipped_inverse_energy",
+        "inverse_sqrt_energy",
+        "feature_smoothness",
+    }
+    if method not in supported:
         raise ValueError(f"unsupported fusion.relation_weighting.method: {method}")
 
     relation_ids = sorted(graph.relations)
     epsilon = float(weight_cfg.get("epsilon", 1e-8))
     eta = float(weight_cfg.get("eta", 0.5))
-    gamma = float(weight_cfg.get("gamma", 1.0))
+    default_gamma = 0.5 if method == "inverse_sqrt_energy" else 1.0
+    gamma = float(weight_cfg.get("gamma", default_gamma))
     sample_edges = weight_cfg.get("sample_edges_per_relation", None)
     sample_edges = None if sample_edges in (None, "") else int(sample_edges)
     seed = int(weight_cfg.get("seed", config.get("seed", 12345)))
@@ -204,7 +213,12 @@ def compute_relation_weights(
     volumes = {relation_id: _relation_volume(graph, relation_id) for relation_id in relation_ids}
     energies = {relation_id: 0.0 for relation_id in relation_ids}
     basis_source = None
-    if method in {"inverse_energy", "feature_smoothness"}:
+    if method in {
+        "inverse_energy",
+        "clipped_inverse_energy",
+        "inverse_sqrt_energy",
+        "feature_smoothness",
+    }:
         B, basis_source = _basis_for_energy(graph, config, weight_cfg, basis, method)
         for relation_id in progress_iter(
             relation_ids,
@@ -234,6 +248,16 @@ def compute_relation_weights(
             for relation_id in relation_ids
         }
     weights = _normalize(raw)
+    clip_min = None
+    clip_max = None
+    if method == "clipped_inverse_energy":
+        clip_min = float(weight_cfg.get("weight_clip_min", weight_cfg.get("clip_min", 0.0)))
+        clip_max = float(weight_cfg.get("weight_clip_max", weight_cfg.get("clip_max", 0.5)))
+        clipped = {
+            relation_id: float(np.clip(value, clip_min, clip_max))
+            for relation_id, value in weights.items()
+        }
+        weights = _normalize(clipped)
     stats_values = list(weights.values())
     diagnostics: dict[str, Any] = {
         "relation_weighting_method": method,
@@ -251,4 +275,7 @@ def compute_relation_weights(
         diagnostics["energy_basis_source"] = basis_source
         diagnostics["energy_basis_object"] = "Z_X"
         diagnostics["energy_estimator"] = "sampled_normalized_edge_energy"
+    if clip_min is not None and clip_max is not None:
+        diagnostics["weight_clip_min"] = clip_min
+        diagnostics["weight_clip_max"] = clip_max
     return RelationWeightResult(weights, energies, volumes, diagnostics)

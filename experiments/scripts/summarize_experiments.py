@@ -13,6 +13,7 @@ from experiments.scripts._common import (
     diagnostics_row,
     discover_run_dirs,
     disk_usage_bytes,
+    flatten_mapping,
     markdown_table,
     read_json,
     write_csv,
@@ -85,6 +86,28 @@ def _peak_rss_gb(level_rows: list[dict[str, Any]], metadata: Mapping[str, Any]) 
         rss_bytes = _as_float(row.get("large_graph_envelope.process_rss_bytes"), None)
         if rss_bytes is not None:
             peaks.append(float(rss_bytes) / (1024.0**3))
+    return "" if not peaks else float(max(peaks))
+
+
+def _peak_vram_gb(
+    level_rows: list[dict[str, Any]],
+    metadata: Mapping[str, Any],
+    *,
+    kind: str,
+) -> float | str:
+    metadata_key = f"peak_vram_{kind}_gb"
+    metadata_peak = _as_float(metadata.get(metadata_key), None)
+    peaks = []
+    if metadata_peak is not None:
+        peaks.append(metadata_peak)
+    byte_key = f"large_graph_envelope.cuda_memory.peak_{kind}_bytes"
+    for row in level_rows:
+        raw_gb = _as_float(row.get(metadata_key), None)
+        if raw_gb is not None:
+            peaks.append(raw_gb)
+        raw_bytes = _as_float(row.get(byte_key), None)
+        if raw_bytes is not None:
+            peaks.append(float(raw_bytes) / (1024.0**3))
     return "" if not peaks else float(max(peaks))
 
 
@@ -213,6 +236,48 @@ def _final_cumulative_row(
     final_fse_unweighted = last.get("spectral.fused_sketch_energy_relative_error", "")
     final_ree_max = last.get("spectral.relation_energy_relative_error_max", "")
     final_sipe = last.get("spectral.chebheat_sketch_inner_product_relative_error", "")
+    cumulative_dee = _first(
+        last,
+        (
+            "cumulative_spectral.sketch_dirichlet_energy_relative_error",
+            "cumulative_spectral.dirichlet_energy_relative_error",
+            "spectral.cumulative_sketch_dirichlet_energy_relative_error",
+        ),
+        final_dee,
+    )
+    cumulative_fwe_weighted = _first(
+        last,
+        (
+            "cumulative_spectral.relation_weighted_fused_energy_relative_error",
+            "spectral.cumulative_relation_weighted_fused_energy_relative_error",
+        ),
+        final_fwe_weighted,
+    )
+    cumulative_fse_unweighted = _first(
+        last,
+        (
+            "cumulative_spectral.fused_sketch_energy_relative_error",
+            "spectral.cumulative_fused_sketch_energy_relative_error",
+        ),
+        final_fse_unweighted,
+    )
+    cumulative_ree_max = _first(
+        last,
+        (
+            "cumulative_spectral.relation_energy_relative_error_max",
+            "spectral.cumulative_relation_energy_relative_error_max",
+        ),
+        final_ree_max,
+    )
+    cumulative_sipe = _first(
+        last,
+        (
+            "cumulative_spectral.chebheat_sketch_inner_product_relative_error",
+            "cumulative_spectral.sketch_inner_product_relative_error",
+            "spectral.cumulative_chebheat_sketch_inner_product_relative_error",
+        ),
+        final_sipe,
+    )
     final = {**base, **last}
     final.update(
         {
@@ -233,17 +298,20 @@ def _final_cumulative_row(
             "final_FSE_unweighted": final_fse_unweighted,
             "final_REE_max": final_ree_max,
             "final_SIPE": final_sipe,
-            "cumulative_dee": final_dee,
-            "cumulative_fwe_weighted": final_fwe_weighted,
-            "cumulative_fse_unweighted": final_fse_unweighted,
-            "cumulative_ree_max": final_ree_max,
-            "cumulative_sipe": final_sipe,
+            "cumulative_dee": cumulative_dee,
+            "cumulative_fwe_weighted": cumulative_fwe_weighted,
+            "cumulative_fse_unweighted": cumulative_fse_unweighted,
+            "cumulative_ree_max": cumulative_ree_max,
+            "cumulative_sipe": cumulative_sipe,
             "task_micro_f1": last.get("task.micro_f1", ""),
             "task_macro_f1": last.get("task.macro_f1", ""),
             "runtime_total_run": _runtime_total(ordered),
             "peak_rss_gb": _peak_rss_gb(ordered, metadata),
+            "peak_vram_allocated_gb": _peak_vram_gb(ordered, metadata, kind="allocated"),
+            "peak_vram_reserved_gb": _peak_vram_gb(ordered, metadata, kind="reserved"),
         }
     )
+    final["peak_vram_gb"] = final["peak_vram_allocated_gb"]
     final.update(_score_share_aliases(last))
     return final
 
@@ -268,10 +336,10 @@ def _core_report_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "variant": variant,
                 "final ratio": _fmt_metric(_mean_numeric(rows, "final_cumulative_ratio")),
-                "DEE ↓": _fmt_metric(_mean_numeric(rows, "final_DEE")),
-                "FSE-unweighted ↓": _fmt_metric(_mean_numeric(rows, "final_FSE_unweighted")),
-                "REE-max ↓": _fmt_metric(_mean_numeric(rows, "final_REE_max")),
-                "SIPE ↓": _fmt_metric(_mean_numeric(rows, "final_SIPE")),
+                "DEE ↓": _fmt_metric(_mean_numeric(rows, "cumulative_dee")),
+                "FSE-unweighted ↓": _fmt_metric(_mean_numeric(rows, "cumulative_fse_unweighted")),
+                "REE-max ↓": _fmt_metric(_mean_numeric(rows, "cumulative_ree_max")),
+                "SIPE ↓": _fmt_metric(_mean_numeric(rows, "cumulative_sipe")),
                 "macro-F1 ↑": _fmt_metric(_mean_numeric(rows, "task_macro_f1")),
                 "runtime ↓": _fmt_metric(_mean_numeric(rows, "runtime_total_run")),
                 "peak RAM": _fmt_metric(_mean_numeric(rows, "peak_rss_gb")),
@@ -282,6 +350,8 @@ def _core_report_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _run_identity(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
+        "experiment_block": row.get("experiment_block", ""),
+        "unique_run_key": row.get("unique_run_key", row.get("run_name", "")),
         "run_name": row.get("run_name", ""),
         "dataset": row.get("dataset", ""),
         "variant": row.get("variant", ""),
@@ -351,6 +421,15 @@ def _task_summary_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             "task_macro_f1": row.get("task_macro_f1", row.get("task.macro_f1", "")),
             "task_labeled_nodes": row.get("task.labeled_nodes", ""),
             "task_skipped": row.get("task.skipped", ""),
+            "coarse_train_micro_f1": row.get("task.coarse_train_micro_f1", ""),
+            "coarse_train_macro_f1": row.get("task.coarse_train_macro_f1", ""),
+            "projected_original_micro_f1": row.get("task.projected_original_micro_f1", ""),
+            "projected_original_macro_f1": row.get("task.projected_original_macro_f1", ""),
+            "refined_original_micro_f1": row.get("task.refined_original_micro_f1", ""),
+            "refined_original_macro_f1": row.get("task.refined_original_macro_f1", ""),
+            "train_time": row.get("task.train_time", ""),
+            "refine_time": row.get("task.refine_time", ""),
+            "total_time": row.get("task.total_time", ""),
         }
         for row in final_rows
     ]
@@ -363,7 +442,17 @@ def _run_resource_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             "runtime_total_run": row.get("runtime_total_run", ""),
             "peak_rss_gb": row.get("peak_rss_gb", ""),
             "peak_vram_gb": row.get("peak_vram_gb", ""),
+            "peak_vram_allocated_gb": row.get("peak_vram_allocated_gb", ""),
+            "peak_vram_reserved_gb": row.get("peak_vram_reserved_gb", ""),
             "process_rss_bytes": row.get("large_graph_envelope.process_rss_bytes", ""),
+            "peak_vram_allocated_bytes": row.get(
+                "large_graph_envelope.cuda_memory.peak_allocated_bytes",
+                "",
+            ),
+            "peak_vram_reserved_bytes": row.get(
+                "large_graph_envelope.cuda_memory.peak_reserved_bytes",
+                "",
+            ),
             "artifact_bytes_total": row.get("large_graph_envelope.artifact_bytes_total", ""),
             "aggregation_shard_bytes": row.get(
                 "large_graph_envelope.artifact_bytes_by_name.aggregation_shards",
@@ -398,6 +487,46 @@ def _target_check_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             }
         )
     return rows
+
+
+def _compare_rows(
+    rows: list[Mapping[str, Any]],
+    group_by: list[str],
+    metrics: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    metrics = metrics or [
+        "final_cumulative_ratio",
+        "target_abs_error",
+        "cumulative_dee",
+        "cumulative_fwe_weighted",
+        "cumulative_fse_unweighted",
+        "cumulative_ree_max",
+        "cumulative_sipe",
+        "task_macro_f1",
+        "runtime_total_run",
+        "peak_rss_gb",
+        "peak_vram_allocated_gb",
+    ]
+    groups: dict[tuple[str, ...], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        key = tuple(str(row.get(column, "")) for column in group_by)
+        groups.setdefault(key, []).append(row)
+    out_rows: list[dict[str, Any]] = []
+    for key, group in sorted(groups.items()):
+        out: dict[str, Any] = {column: value for column, value in zip(group_by, key)}
+        out["run_count"] = int(len(group))
+        for metric in metrics:
+            values = _numeric(row.get(metric) for row in group)
+            if not values:
+                out[f"{metric}_mean"] = ""
+                out[f"{metric}_min"] = ""
+                out[f"{metric}_max"] = ""
+                continue
+            out[f"{metric}_mean"] = float(sum(values) / len(values))
+            out[f"{metric}_min"] = float(min(values))
+            out[f"{metric}_max"] = float(max(values))
+        out_rows.append(out)
+    return out_rows
 
 
 def _numeric(values: Iterable[Any]) -> list[float]:
@@ -553,6 +682,7 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
     resource_rows: list[dict] = []
     quality_rows: list[dict] = []
     final_rows: list[dict] = []
+    level_rows_all: list[dict] = []
     failure_rows: list[dict] = []
 
     run_dirs = discover_run_dirs(inputs)
@@ -560,19 +690,30 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
         metadata_path = run_dir / "metadata.json"
         metadata = read_json(metadata_path) if metadata_path.exists() else {}
         diagnostics_paths = sorted(run_dir.glob("level_*/diagnostics.json"))
+        experiment_block = str(metadata.get("experiment_block", ""))
+        unique_run_key = str(metadata.get("unique_run_key", metadata.get("run_name", run_dir.name)))
+        scalar_metadata = {
+            key: value
+            for key, value in metadata.items()
+            if not isinstance(value, (dict, list))
+        }
         base = {
             "run_name": metadata.get("run_name", run_dir.name),
             "status": metadata.get("status", "success" if diagnostics_paths else "unknown"),
             "dataset": metadata.get("dataset", ""),
             "variant": metadata.get("variant", ""),
+            "experiment_block": experiment_block,
+            "unique_run_key": unique_run_key,
             "run_dir": str(run_dir),
             "failure_reason": metadata.get("failure_reason", ""),
         }
+        base.update({key: value for key, value in scalar_metadata.items() if key not in base})
         if diagnostics_paths:
             level_rows: list[dict] = []
             for diagnostics_path in diagnostics_paths:
                 row = {**base, **diagnostics_row(run_dir, diagnostics_path), "row_type": "level"}
                 level_rows.append(row)
+                level_rows_all.append(row)
                 all_rows.append(row)
                 resource_rows.append(
                     {
@@ -594,6 +735,18 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
                 )
                 quality_rows.append(_quality_row(base, row, row_type="level"))
             final_row = _final_cumulative_row(base, level_rows, metadata)
+            task_eval_path = run_dir / "task_eval.json"
+            if task_eval_path.exists():
+                task_payload = read_json(task_eval_path)
+                final_row.update(flatten_mapping({"task": task_payload}))
+                final_row["task_micro_f1"] = task_payload.get(
+                    "projected_original_micro_f1",
+                    task_payload.get("micro_f1", final_row.get("task_micro_f1", "")),
+                )
+                final_row["task_macro_f1"] = task_payload.get(
+                    "projected_original_macro_f1",
+                    task_payload.get("macro_f1", final_row.get("task_macro_f1", "")),
+                )
             final_rows.append(final_row)
             all_rows.append(final_row)
             quality_rows.append(_quality_row(base, final_row, row_type="final"))
@@ -607,6 +760,7 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
     target_rows = _target_check_rows(final_rows)
 
     write_csv(output / "all_runs.csv", all_rows)
+    write_csv(output / "all_levels.csv", level_rows_all)
     write_csv(output / "final_summary.csv", final_rows)
     write_csv(output / "run_final_summary.csv", final_rows)
     write_csv(output / "resource_summary.csv", resource_rows)
@@ -616,6 +770,12 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
     write_csv(output / "candidate_source_pareto.csv", _candidate_source_pareto_rows(final_rows))
     write_csv(output / "task_summary.csv", _task_summary_rows(final_rows))
     write_csv(output / "target_check.csv", target_rows)
+    write_csv(output / "compare_by_variant.csv", _compare_rows(final_rows, ["dataset", "variant"]))
+    write_csv(output / "compare_by_source.csv", _compare_rows(final_rows, ["dataset", "candidate_source"]))
+    write_csv(
+        output / "compare_by_dim.csv",
+        _compare_rows(final_rows, ["dataset", "sketch_method", "sketch_dim"]),
+    )
     write_csv(output / "failures.csv", failure_rows)
     _maybe_write_figures(output, final_rows, target_rows)
     core_rows = _core_report_rows(final_rows)

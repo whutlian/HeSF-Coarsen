@@ -72,6 +72,92 @@ def run_greedy_matching(
     )
 
 
+def run_greedy_cluster_matching(
+    graph: HeteroGraph,
+    scored_pairs: np.ndarray,
+    config: dict,
+    partition_id: np.ndarray | None = None,
+) -> Assignment:
+    coarsen_cfg = config.get("coarsening", {})
+    same_type_only = bool(coarsen_cfg.get("same_type_only", True))
+    same_partition_only = bool(coarsen_cfg.get("same_partition_only", True))
+    max_cluster_size = max(2, int(coarsen_cfg.get("max_cluster_size", 4)))
+    max_matched_pairs = coarsen_cfg.get("max_matched_pairs")
+    max_merges = None if max_matched_pairs is None else max(0, int(max_matched_pairs))
+    if max_merges == 0:
+        return _singleton_assignment(graph)
+
+    parent = np.arange(graph.num_nodes, dtype=np.int64)
+    size = np.ones(graph.num_nodes, dtype=np.int32)
+
+    def find(node: int) -> int:
+        root = int(node)
+        while parent[root] != root:
+            root = int(parent[root])
+        while parent[int(node)] != int(node):
+            next_node = int(parent[int(node)])
+            parent[int(node)] = root
+            node = next_node
+        return root
+
+    if scored_pairs.size:
+        pairs = np.asarray(scored_pairs)
+        left = pairs[:, 0].astype(np.int64, copy=False)
+        right = pairs[:, 1].astype(np.int64, copy=False)
+        costs = pairs[:, 2].astype(np.float64, copy=False)
+        order = np.lexsort((right, left, costs))
+    else:
+        pairs = np.empty((0, 3), dtype=np.float64)
+        order = np.empty(0, dtype=np.int64)
+
+    merges = 0
+    for row_index in order:
+        if max_merges is not None and merges >= max_merges:
+            break
+        i = int(pairs[row_index, 0])
+        j = int(pairs[row_index, 1])
+        if i == j:
+            continue
+        if same_type_only and graph.node_type[i] != graph.node_type[j]:
+            continue
+        if (
+            same_partition_only
+            and partition_id is not None
+            and partition_id[i] != partition_id[j]
+        ):
+            continue
+        root_i = find(i)
+        root_j = find(j)
+        if root_i == root_j:
+            continue
+        if same_type_only and graph.node_type[root_i] != graph.node_type[root_j]:
+            continue
+        if int(size[root_i]) + int(size[root_j]) > max_cluster_size:
+            continue
+        if size[root_i] < size[root_j] or (size[root_i] == size[root_j] and root_j < root_i):
+            root_i, root_j = root_j, root_i
+        parent[root_j] = root_i
+        size[root_i] += size[root_j]
+        merges += 1
+
+    root_to_super: dict[int, int] = {}
+    assignment = np.empty(graph.num_nodes, dtype=np.int64)
+    super_types: list[int] = []
+    for node in range(graph.num_nodes):
+        root = find(node)
+        super_id = root_to_super.get(root)
+        if super_id is None:
+            super_id = len(super_types)
+            root_to_super[root] = super_id
+            super_types.append(int(graph.node_type[node]))
+        assignment[node] = super_id
+
+    return Assignment(
+        assignment=assignment,
+        supernode_type=np.asarray(super_types, dtype=np.int32),
+    )
+
+
 def _singleton_assignment(graph: HeteroGraph) -> Assignment:
     assignment = np.arange(graph.num_nodes, dtype=np.int64)
     return Assignment(assignment=assignment, supernode_type=graph.node_type.astype(np.int32, copy=True))
@@ -256,4 +342,6 @@ def run_matching(
         return run_mutual_best_matching(graph, scored_pairs, config, partition_id=partition_id)
     if method in {"greedy", "global_greedy", "sorted_greedy"}:
         return run_greedy_matching(graph, scored_pairs, config, partition_id=partition_id)
+    if method in {"greedy_cluster", "cluster_greedy", "block_local_approximate_greedy"}:
+        return run_greedy_cluster_matching(graph, scored_pairs, config, partition_id=partition_id)
     raise ValueError(f"unsupported matching_method: {method}")

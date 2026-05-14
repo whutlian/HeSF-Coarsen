@@ -86,6 +86,28 @@ def _current_rss_bytes() -> int | None:
         return None
 
 
+def _cuda_memory_stats() -> dict[str, Any]:
+    try:
+        import torch  # type: ignore
+    except Exception:
+        return {"available": False}
+    try:
+        if not torch.cuda.is_available():
+            return {"available": False}
+        device = torch.cuda.current_device()
+        return {
+            "available": True,
+            "device": int(device),
+            "device_name": str(torch.cuda.get_device_name(device)),
+            "current_allocated_bytes": int(torch.cuda.memory_allocated(device)),
+            "current_reserved_bytes": int(torch.cuda.memory_reserved(device)),
+            "peak_allocated_bytes": int(torch.cuda.max_memory_allocated(device)),
+            "peak_reserved_bytes": int(torch.cuda.max_memory_reserved(device)),
+        }
+    except Exception:
+        return {"available": False}
+
+
 def _sample_indices(length: int, sample_size: int) -> np.ndarray:
     if length <= 0 or sample_size <= 0:
         return np.empty(0, dtype=np.int64)
@@ -161,6 +183,7 @@ def compute_large_graph_envelope(
         "relation_edge_samples": relation_samples,
         "graph_array_bytes": _graph_array_bytes(graph),
         "process_rss_bytes": rss,
+        "cuda_memory": _cuda_memory_stats(),
         "hardware_max_ram_bytes": max_ram_bytes,
         "rss_fraction_of_configured_ram": (
             None if rss is None or not max_ram_bytes else float(rss / max_ram_bytes)
@@ -216,6 +239,7 @@ def compute_diagnostics(
         },
         "candidate_source_counts": dict(source_counts),
         "matched_pairs": int(np.sum(sizes == 2)),
+        "matched_merges": int(np.sum(np.maximum(sizes - 1, 0))),
         "singleton_ratio": float(np.sum(sizes == 1) / max(len(sizes), 1)),
         "max_cluster_size": int(sizes.max(initial=0)),
         "relation_weight_before": original_weights,
