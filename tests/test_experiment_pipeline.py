@@ -427,12 +427,11 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
         assert (tmp_path / "summary" / "figures" / "task_vs_cumulative_dee.png").exists()
     assert "Unique runs: 1" in report
     assert "Level rows: 2" in report
-    assert "cumulative DEE" in report
-    assert "cumulative FWE-weighted" in report
-    assert "cumulative FSE-unweighted" in report
-    assert "coarse train macro-F1" in report
-    assert "projected macro-F1" in report
-    assert "refined macro-F1" in report
+    expected_core_header = (
+        "| variant | final ratio | DEE \u2193 | FSE-unweighted \u2193 | "
+        "REE-max \u2193 | SIPE \u2193 | macro-F1 \u2191 | runtime \u2193 | peak RAM |"
+    )
+    assert expected_core_header in report
     assert "task_primary_metric" in report
     assert "peak_vram_reserved_gb" in report
     assert "spectral_baseline_computed_count" in report
