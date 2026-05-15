@@ -78,6 +78,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "fusion": {
         "symmetric_relation_operator": True,
         "symmetric_relation_scale": 0.5,
+        "relation_operator_mode": "relationwise",
         "estimate_operator_norm": True,
         "operator_norm_iterations": 8,
         "operator_norm_probe_dim": 4,
@@ -162,6 +163,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "spec_volume_weighting": True,
         "spec_volume_epsilon": 1e-12,
         "relation_profile_distance": "jsd",
+        "relation_profile_mode": "relationwise",
         "relation_profile_epsilon": 1e-12,
         "relation_guard": {
             "enabled": False,
@@ -183,6 +185,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "diagnostics": {
         "enable_large_graph_envelope": False,
+        "spectral_relation_detail": True,
         "edge_sample_size": 1024,
         "enable_spectral": True,
         "spectral_num_signals": 4,

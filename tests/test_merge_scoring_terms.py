@@ -7,6 +7,7 @@ from hesf_coarsen.scoring.merge_cost import (
     score_candidate_pairs,
     score_pair_block,
 )
+from hesf_coarsen.scoring.relation_profile import compute_relation_profiles
 
 
 def _same_type_graph_with_degrees() -> HeteroGraph:
@@ -358,3 +359,40 @@ def test_boundary_penalty_uses_node_level_terminal_risk_within_partition():
     )
 
     assert np.isclose(cost, 2.0)
+
+
+def test_relation_profile_single_relation_sum_removes_relation_id_columns():
+    graph = HeteroGraph(
+        num_nodes=4,
+        node_type=np.zeros(4, dtype=np.int32),
+        relations={
+            0: RelationAdj(
+                src=np.array([0, 1], dtype=np.int64),
+                dst=np.array([1, 2], dtype=np.int64),
+                weight=np.ones(2, dtype=np.float32),
+                src_type=0,
+                dst_type=0,
+                relation_id=0,
+            ),
+            1: RelationAdj(
+                src=np.array([0, 2], dtype=np.int64),
+                dst=np.array([2, 3], dtype=np.int64),
+                weight=np.ones(2, dtype=np.float32),
+                src_type=0,
+                dst_type=0,
+                relation_id=1,
+            ),
+        },
+        relation_specs={
+            0: RelationSpec(0, "node_to_node_a", 0, 0),
+            1: RelationSpec(1, "node_to_node_b", 0, 0),
+        },
+    )
+
+    relationwise = compute_relation_profiles(graph)
+    flattened = compute_relation_profiles(graph, mode="single_relation_sum")
+
+    assert relationwise.shape == (4, 4)
+    assert flattened.shape == (4, 2)
+    assert np.allclose(flattened[0], [1.0, 0.0])
+    assert np.allclose(flattened[3], [0.0, 1.0])

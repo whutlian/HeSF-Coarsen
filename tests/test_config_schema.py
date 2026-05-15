@@ -20,12 +20,14 @@ def test_default_config_uses_canonical_sketch_schema():
     assert config["metapath_sketch"]["weighting"]["method"] == "uniform"
     assert isinstance(config["fusion"]["relation_weighting"], dict)
     assert config["fusion"]["relation_weighting"]["method"] == "uniform"
+    assert config["fusion"]["relation_operator_mode"] == "relationwise"
     assert config["fusion"]["symmetric_relation_scale"] == 0.5
     assert config["fusion"]["estimate_operator_norm"] is True
     assert config["fusion"]["chebyshev_rescale_if_needed"] is True
     assert config["coarsening"]["feature_aggregation"] == "mean"
     assert config["scoring"]["spec_volume_weighting"] is True
     assert config["scoring"]["relation_profile_distance"] == "jsd"
+    assert config["scoring"]["relation_profile_mode"] == "relationwise"
     assert config["scoring"]["conv_response_operator"] == "fused_operator"
     assert config["scoring"]["boundary_mode"] == "node_risk"
     assert config["scoring"]["boundary_hub_gamma"] > 0.0
@@ -55,6 +57,7 @@ def test_default_config_promotes_hesf_lvc_mainline():
     assert config["scoring"]["normalization_scope"] == "level"
     assert config["scoring"]["lambda_spec"] == 1.0
     assert config["scoring"]["lambda_conv"] == 0.5
+    assert config["diagnostics"]["spectral_relation_detail"] is True
     assert config["candidates"]["source"] == "onehop_twohop_bucket"
     assert config["candidates"]["total_budget_K"] == 8
 

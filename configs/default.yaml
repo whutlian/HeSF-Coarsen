@@ -60,6 +60,7 @@ sketch:
 fusion:
   symmetric_relation_operator: true
   symmetric_relation_scale: 0.5
+  relation_operator_mode: relationwise
   estimate_operator_norm: true
   operator_norm_iterations: 8
   operator_norm_probe_dim: 4
@@ -135,6 +136,7 @@ scoring:
   spec_volume_weighting: true
   spec_volume_epsilon: 1.0e-12
   relation_profile_distance: jsd
+  relation_profile_mode: relationwise
   relation_profile_epsilon: 1.0e-12
   relation_guard:
     enabled: false
@@ -153,6 +155,7 @@ features:
   projection_chunk_size: 100000
 diagnostics:
   enable_large_graph_envelope: false
+  spectral_relation_detail: true
   edge_sample_size: 1024
   enable_spectral: true
   spectral_num_signals: 4

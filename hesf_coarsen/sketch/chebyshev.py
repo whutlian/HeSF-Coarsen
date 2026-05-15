@@ -39,6 +39,7 @@ def chebyshev_heat_filter(
     symmetric_relation_operator: bool = True,
     symmetric_relation_scale: float = 0.5,
     reverse_relation_policy: str = "include_all",
+    relation_operator_mode: str = "relationwise",
     operator_scale: float = 1.0,
     progress_config: dict | None = None,
     progress_desc: str = "chebyshev recurrence",
@@ -65,6 +66,7 @@ def chebyshev_heat_filter(
             symmetric_relation_operator=symmetric_relation_operator,
             symmetric_relation_scale=symmetric_relation_scale,
             reverse_relation_policy=reverse_relation_policy,
+            relation_operator_mode=relation_operator_mode,
         )
 
     T_prev = B.astype(np.float32, copy=False)

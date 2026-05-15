@@ -6,6 +6,7 @@ from hesf_coarsen.sketch.operators import (
     apply_fused_operator,
     apply_metapath_operator,
     apply_relation_operator,
+    apply_single_relation_sum_operator,
 )
 
 
@@ -128,3 +129,26 @@ def test_fused_operator_includes_weighted_metapath_operator_without_materializin
     assert np.allclose(actual, expected)
     assert np.allclose(laplacian, H - expected)
     assert np.allclose(metapath[graph.node_type == 1], 0.0)
+
+
+def test_fused_operator_can_flatten_relations_into_single_summed_operator():
+    graph = _reverse_pair_graph()
+    H = np.arange(graph.num_nodes * 2, dtype=np.float32).reshape(graph.num_nodes, 2) / 10.0
+    relation_weights = {0: 1.0 / 3.0, 1: 1.0 / 3.0, 2: 1.0 / 3.0}
+
+    actual = apply_fused_operator(
+        graph,
+        H,
+        relation_weights,
+        relation_operator_mode="single_relation_sum",
+    )
+    expected = apply_single_relation_sum_operator(graph, H)
+    relationwise = apply_fused_operator(
+        graph,
+        H,
+        relation_weights,
+        relation_operator_mode="relationwise",
+    )
+
+    assert np.allclose(actual, expected)
+    assert not np.allclose(actual, relationwise)

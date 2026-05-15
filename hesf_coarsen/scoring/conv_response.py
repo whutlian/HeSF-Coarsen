@@ -13,6 +13,7 @@ def compute_conv_response_sketch(
     relation_weights: dict[int, float] | None = None,
     *,
     operator: str = "fused_operator",
+    relation_operator_mode: str = "relationwise",
 ) -> np.ndarray:
     """Compute a ConvMatch-style relation convolution response sketch.
 
@@ -24,7 +25,17 @@ def compute_conv_response_sketch(
     H = H.astype(np.float32, copy=False)
     operator = str(operator)
     if operator == "fused_operator":
-        return apply_fused_operator(graph, H, relation_weights)
+        return apply_fused_operator(
+            graph,
+            H,
+            relation_weights,
+            relation_operator_mode=relation_operator_mode,
+        )
     if operator == "lazy_smoothing":
-        return apply_fused_smoothing(graph, H, relation_weights)
+        return apply_fused_smoothing(
+            graph,
+            H,
+            relation_weights,
+            relation_operator_mode=relation_operator_mode,
+        )
     raise ValueError(f"unsupported conv response operator: {operator}")

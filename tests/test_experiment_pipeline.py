@@ -72,6 +72,7 @@ def test_experiment_scripts_support_help():
         "run_hgb_stage_b_ablation.py",
         "run_hgb_task_eval.py",
         "run_hgb_next4_mainline.py",
+        "run_hgb_next4_relation_fusion.py",
         "run_hgb_next4_baselines.py",
         "evaluate_refine_curve.py",
         "summarize_stage_b.py",
@@ -540,6 +541,72 @@ def test_next4_mainline_dry_run_generates_required_variants(tmp_path):
     assert h3["scoring"]["lambda_conv"] == 0.35
     assert h4["scoring"]["lambda_conv"] == 0.0
     assert h6["scoring"]["lambda_spec"] == 0.0
+
+
+def test_next4_mainline_default_freezes_short_confirmation_matrix(tmp_path):
+    from experiments.scripts.run_hgb_next4_mainline import main
+
+    exit_code = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(tmp_path),
+            "--target-ratio",
+            "0.5",
+            "--seeds",
+            "12345",
+            "--dry-run",
+        ]
+    )
+
+    run_names = sorted(path.parent.name for path in tmp_path.glob("next4_*/config.yaml"))
+
+    assert exit_code == 0
+    assert len(run_names) == 5
+    assert {name.split("_")[2] for name in run_names} == {"H0", "H2", "H3", "H4", "H6"}
+    assert not any("_H5_" in name for name in run_names)
+
+
+def test_next4_relation_fusion_dry_run_generates_required_variants(tmp_path):
+    from experiments.scripts.run_hgb_next4_relation_fusion import main
+
+    exit_code = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(tmp_path),
+            "--target-ratio",
+            "0.5",
+            "--seeds",
+            "12345",
+            "--dry-run",
+        ]
+    )
+
+    configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in tmp_path.glob("next4_rel_*/config.yaml")
+    }
+
+    assert exit_code == 0
+    assert len(configs) == 4
+    full = next(cfg for name, cfg in configs.items() if "_H2-full_" in name)
+    flatten = next(cfg for name, cfg in configs.items() if "_H2-single-relation-sum_" in name)
+    no_rel = next(cfg for name, cfg in configs.items() if "_H2-no-rel-term_" in name)
+    fused_only = next(cfg for name, cfg in configs.items() if "_H2-uniform-fused-only_" in name)
+    assert full["fusion"]["relation_operator_mode"] == "relationwise"
+    assert full["scoring"]["lambda_rel"] > 0.0
+    assert flatten["fusion"]["relation_operator_mode"] == "single_relation_sum"
+    assert flatten["scoring"]["relation_profile_mode"] == "single_relation_sum"
+    assert no_rel["scoring"]["lambda_rel"] == 0.0
+    assert no_rel["scoring"]["relation_guard"]["enabled"] is False
+    assert fused_only["scoring"]["lambda_rel"] == 0.0
+    assert fused_only["scoring"]["lambda_conv"] == 0.0
+    assert fused_only["scoring"]["lambda_feat"] == 0.0
+    assert fused_only["scoring"]["lambda_boundary"] == 0.0
+    assert fused_only["diagnostics"]["spectral_relation_detail"] is False
 
 
 def test_next4_mainline_dry_run_generates_terminal_guard_variants(tmp_path):
@@ -1335,6 +1402,32 @@ def test_spectral_diagnostics_api_returns_bounded_metrics(tmp_path):
         "graphzoom_style",
         "convmatch_style",
     }
+
+
+def test_spectral_diagnostics_can_skip_per_relation_detail(tmp_path):
+    from hesf_coarsen.eval.spectral_diagnostics import compute_spectral_diagnostics
+
+    graph = generate_synthetic_graph(num_users=8, num_items=5, num_tags=3, seed=1411)
+    result = run_multilevel_coarsening(graph, _tiny_config(tmp_path / "run"))[0]
+    z = np.arange(graph.num_nodes * 3, dtype=np.float32).reshape(graph.num_nodes, 3) / 10.0
+
+    diagnostics = compute_spectral_diagnostics(
+        original=graph,
+        coarse=result.graph,
+        assignment=result.assignment,
+        seed=11,
+        num_signals=3,
+        smoothing_steps=1,
+        relation_weights={relation_id: 1.0 for relation_id in graph.relations},
+        Z=z,
+        relation_detail=False,
+    )
+
+    assert "relation_energy_before" not in diagnostics
+    assert "relation_energy_after" not in diagnostics
+    assert "relation_energy_relative_error" not in diagnostics
+    assert "relation_energy_relative_error_max" not in diagnostics
+    assert "fused_sketch_energy_relative_error" in diagnostics
 
 
 def test_spectral_diagnostics_target_matches_cumulative_baselines(tmp_path):

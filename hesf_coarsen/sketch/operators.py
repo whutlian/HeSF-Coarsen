@@ -117,6 +117,83 @@ def apply_relation_operator(
     raise ValueError(f"unsupported relation operator direction: {direction}")
 
 
+def _single_relation_sum_degrees(graph: HeteroGraph) -> tuple[np.ndarray, np.ndarray]:
+    src_degree = np.zeros(graph.num_nodes, dtype=np.float32)
+    dst_degree = np.zeros(graph.num_nodes, dtype=np.float32)
+    for rel in graph.relations.values():
+        np.add.at(src_degree, rel.src, rel.weight)
+        np.add.at(dst_degree, rel.dst, rel.weight)
+    return src_degree, dst_degree
+
+
+def apply_single_relation_sum_operator(
+    graph: HeteroGraph,
+    H: np.ndarray,
+    *,
+    direction: str = "symmetric",
+    symmetric_relation_scale: float = 0.5,
+) -> np.ndarray:
+    """Apply one normalized operator over the sum of all relation adjacencies."""
+
+    H = np.asarray(H, dtype=np.float32)
+    if H.shape[0] != graph.num_nodes:
+        raise ValueError("H must have one row per graph node")
+
+    direction = str(direction).lower()
+    if direction not in {"forward", "backward", "symmetric"}:
+        raise ValueError(f"unsupported single relation sum direction: {direction}")
+    scale = float(symmetric_relation_scale)
+    if scale < 0.0:
+        raise ValueError("symmetric_relation_scale must be non-negative")
+
+    src_degree, dst_degree = _single_relation_sum_degrees(graph)
+
+    def apply_forward() -> np.ndarray:
+        out = np.zeros_like(H, dtype=np.float32)
+        for rel in graph.relations.values():
+            denom = np.sqrt(src_degree[rel.src] * dst_degree[rel.dst])
+            weights = rel.weight / np.maximum(denom, 1e-12)
+            np.add.at(out, rel.dst, H[rel.src] * weights[:, None])
+        return out
+
+    def apply_backward() -> np.ndarray:
+        out = np.zeros_like(H, dtype=np.float32)
+        for rel in graph.relations.values():
+            denom = np.sqrt(src_degree[rel.src] * dst_degree[rel.dst])
+            weights = rel.weight / np.maximum(denom, 1e-12)
+            np.add.at(out, rel.src, H[rel.dst] * weights[:, None])
+        return out
+
+    if direction == "forward":
+        return apply_forward().astype(np.float32, copy=False)
+    if direction == "backward":
+        return apply_backward().astype(np.float32, copy=False)
+    return (np.float32(scale) * (apply_forward() + apply_backward())).astype(
+        np.float32,
+        copy=False,
+    )
+
+
+def _normalize_relation_operator_mode(raw: str | None) -> str:
+    mode = str(raw or "relationwise").lower().replace("-", "_")
+    aliases = {
+        "relation_aware": "relationwise",
+        "relationwise": "relationwise",
+        "per_relation": "relationwise",
+        "single": "single_relation_sum",
+        "flatten": "single_relation_sum",
+        "flatten_sum": "single_relation_sum",
+        "single_relation": "single_relation_sum",
+        "single_relation_sum": "single_relation_sum",
+    }
+    if mode not in aliases:
+        raise ValueError(
+            "fusion.relation_operator_mode must be one of: "
+            "relationwise, single_relation_sum"
+        )
+    return aliases[mode]
+
+
 def apply_fused_operator(
     graph: HeteroGraph,
     H: np.ndarray,
@@ -126,6 +203,7 @@ def apply_fused_operator(
     symmetric_relation_operator: bool = True,
     symmetric_relation_scale: float = 0.5,
     reverse_relation_policy: str = "include_all",
+    relation_operator_mode: str = "relationwise",
     weights_cache: dict[int, np.ndarray] | None = None,
     backend: str = "numpy",
 ) -> np.ndarray:
@@ -136,6 +214,26 @@ def apply_fused_operator(
         raise ValueError("H must have one row per graph node")
     if reverse_relation_policy not in {"auto", "include_all", "drop_detected_reverse_for_spectral_operator"}:
         raise ValueError(f"unsupported fusion.reverse_relation_policy: {reverse_relation_policy}")
+    operator_mode = _normalize_relation_operator_mode(relation_operator_mode)
+
+    if operator_mode == "single_relation_sum":
+        out = apply_single_relation_sum_operator(
+            graph,
+            H,
+            direction="symmetric" if symmetric_relation_operator else "forward",
+            symmetric_relation_scale=symmetric_relation_scale,
+        )
+        for path, weight in metapath_weights or []:
+            weight = float(weight)
+            if weight == 0.0:
+                continue
+            out += np.float32(weight) * apply_metapath_operator(
+                graph,
+                H,
+                path,
+                require_closed=True,
+            )
+        return out.astype(np.float32, copy=False)
 
     relation_ids = sorted(graph.relations)
     if relation_weights is None:
@@ -185,6 +283,7 @@ def apply_fused_laplacian(
     symmetric_relation_operator: bool = True,
     symmetric_relation_scale: float = 0.5,
     reverse_relation_policy: str = "include_all",
+    relation_operator_mode: str = "relationwise",
     backend: str = "numpy",
 ) -> np.ndarray:
     """Apply L_F H = H - S_F H without building L_F."""
@@ -198,6 +297,7 @@ def apply_fused_laplacian(
         symmetric_relation_operator=symmetric_relation_operator,
         symmetric_relation_scale=symmetric_relation_scale,
         reverse_relation_policy=reverse_relation_policy,
+        relation_operator_mode=relation_operator_mode,
         backend=backend,
     )
 
@@ -210,6 +310,7 @@ def estimate_fused_operator_norm(
     symmetric_relation_operator: bool = True,
     symmetric_relation_scale: float = 0.5,
     reverse_relation_policy: str = "include_all",
+    relation_operator_mode: str = "relationwise",
     num_iterations: int = 8,
     probe_dim: int = 4,
     seed: int = 12345,
@@ -237,6 +338,7 @@ def estimate_fused_operator_norm(
             symmetric_relation_operator=symmetric_relation_operator,
             symmetric_relation_scale=symmetric_relation_scale,
             reverse_relation_policy=reverse_relation_policy,
+            relation_operator_mode=relation_operator_mode,
             backend=backend,
         )
         candidate_norm = float(np.linalg.norm(candidate))

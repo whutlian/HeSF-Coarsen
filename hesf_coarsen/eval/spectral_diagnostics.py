@@ -40,10 +40,16 @@ def _smooth(
     signals: np.ndarray,
     smoothing_steps: int,
     relation_weights: dict[int, float] | None,
+    relation_operator_mode: str = "relationwise",
 ) -> np.ndarray:
     smoothed = signals.astype(np.float32, copy=True)
     for _ in range(max(int(smoothing_steps), 0)):
-        smoothed = apply_fused_smoothing(graph, smoothed, relation_weights=relation_weights)
+        smoothed = apply_fused_smoothing(
+            graph,
+            smoothed,
+            relation_weights=relation_weights,
+            relation_operator_mode=relation_operator_mode,
+        )
     return smoothed
 
 
@@ -51,8 +57,14 @@ def _fused_energy(
     graph: HeteroGraph,
     signals: np.ndarray,
     relation_weights: dict[int, float] | None,
+    relation_operator_mode: str = "relationwise",
 ) -> float:
-    sketch = apply_fused_smoothing(graph, signals, relation_weights=relation_weights)
+    sketch = apply_fused_smoothing(
+        graph,
+        signals,
+        relation_weights=relation_weights,
+        relation_operator_mode=relation_operator_mode,
+    )
     return float(np.sum(sketch.astype(np.float64) * sketch.astype(np.float64)))
 
 
@@ -106,9 +118,15 @@ def _inner_product_relative_error(Z: np.ndarray, Z_c: np.ndarray) -> float:
 def _dense_smoothing_operator(
     graph: HeteroGraph,
     relation_weights: dict[int, float] | None,
+    relation_operator_mode: str = "relationwise",
 ) -> np.ndarray:
     eye = np.eye(graph.num_nodes, dtype=np.float32)
-    return apply_fused_smoothing(graph, eye, relation_weights=relation_weights).astype(np.float64)
+    return apply_fused_smoothing(
+        graph,
+        eye,
+        relation_weights=relation_weights,
+        relation_operator_mode=relation_operator_mode,
+    ).astype(np.float64)
 
 
 def _sample_graph_by_nodes(graph: HeteroGraph, max_nodes: int) -> HeteroGraph:
@@ -163,6 +181,7 @@ def _exact_eigenvalue_sanity(
     coarse: HeteroGraph,
     relation_weights: dict[int, float] | None,
     max_nodes: int | None,
+    relation_operator_mode: str = "relationwise",
     k: int = 8,
 ) -> dict[str, Any] | None:
     if max_nodes is None or max_nodes <= 0:
@@ -174,8 +193,16 @@ def _exact_eigenvalue_sanity(
         original = _sample_graph_by_nodes(original, int(max_nodes))
         coarse = _sample_graph_by_nodes(coarse, int(max_nodes))
         sampled = True
-    original_operator = _dense_smoothing_operator(original, relation_weights)
-    coarse_operator = _dense_smoothing_operator(coarse, relation_weights)
+    original_operator = _dense_smoothing_operator(
+        original,
+        relation_weights,
+        relation_operator_mode=relation_operator_mode,
+    )
+    coarse_operator = _dense_smoothing_operator(
+        coarse,
+        relation_weights,
+        relation_operator_mode=relation_operator_mode,
+    )
     original_laplacian = np.eye(original.num_nodes) - original_operator
     coarse_laplacian = np.eye(coarse.num_nodes) - coarse_operator
     original_laplacian = 0.5 * (original_laplacian + original_laplacian.T)
@@ -399,6 +426,8 @@ def _baseline_comparison(
     baseline_max_levels: int | None,
     baseline_task_eval: bool,
     baseline_task_eval_params: dict[str, Any] | None,
+    relation_operator_mode: str,
+    relation_detail: bool,
 ) -> dict[str, Any]:
     if isinstance(baseline_methods, str):
         methods = [method.strip() for method in baseline_methods.split(",") if method.strip()]
@@ -463,6 +492,8 @@ def _baseline_comparison(
             Z=Z,
             baseline_methods=None,
             exact_eigenvalue_max_nodes=exact_eigenvalue_max_nodes,
+            relation_operator_mode=relation_operator_mode,
+            relation_detail=relation_detail,
         )
         comparison[method] = {
             "status": "computed",
@@ -482,9 +513,10 @@ def _baseline_comparison(
             "fused_sketch_energy_relative_error": baseline_metrics[
                 "fused_sketch_energy_relative_error"
             ],
-            "relation_energy_relative_error_max": baseline_metrics[
-                "relation_energy_relative_error_max"
-            ],
+            "relation_energy_relative_error_max": baseline_metrics.get(
+                "relation_energy_relative_error_max",
+                "",
+            ),
             "chebheat_sketch_inner_product_relative_error": baseline_metrics[
                 "chebheat_sketch_inner_product_relative_error"
             ],
@@ -555,6 +587,8 @@ def compute_spectral_diagnostics(
     baseline_max_levels: int | None = None,
     baseline_task_eval: bool = False,
     baseline_task_eval_params: dict[str, Any] | None = None,
+    relation_operator_mode: str = "relationwise",
+    relation_detail: bool = True,
 ) -> dict[str, Any]:
     """Compute sparse, sketch-based spectral diagnostics for one coarsening level."""
 
@@ -570,7 +604,13 @@ def compute_spectral_diagnostics(
     if Z.shape[1] > int(num_signals):
         Z = Z[:, : max(int(num_signals), 1)]
 
-    original_signals = _smooth(original, Z, smoothing_steps, relation_weights)
+    original_signals = _smooth(
+        original,
+        Z,
+        smoothing_steps,
+        relation_weights,
+        relation_operator_mode=relation_operator_mode,
+    )
     if Z_c is None:
         coarse_seed = _aggregate_signals(Z, assignment)
     else:
@@ -581,30 +621,47 @@ def compute_spectral_diagnostics(
             raise ValueError("Z_c must have one row per coarse node")
     if coarse_seed.shape[1] > Z.shape[1]:
         coarse_seed = coarse_seed[:, : Z.shape[1]]
-    coarse_signals = _smooth(coarse, coarse_seed, smoothing_steps, relation_weights)
+    coarse_signals = _smooth(
+        coarse,
+        coarse_seed,
+        smoothing_steps,
+        relation_weights,
+        relation_operator_mode=relation_operator_mode,
+    )
 
     original_relation_energy: dict[str, float] = {}
     coarse_relation_energy: dict[str, float] = {}
     relation_relative_errors: dict[str, float] = {}
-    for relation_id in sorted(set(original.relations) | set(coarse.relations)):
-        before = (
-            _relation_energy(original, relation_id, original_signals)
-            if relation_id in original.relations
-            else 0.0
-        )
-        after = (
-            _relation_energy(coarse, relation_id, coarse_signals)
-            if relation_id in coarse.relations
-            else 0.0
-        )
-        original_relation_energy[str(relation_id)] = before
-        coarse_relation_energy[str(relation_id)] = after
-        relation_relative_errors[str(relation_id)] = _relative_error(before, after)
+    if relation_detail:
+        for relation_id in sorted(set(original.relations) | set(coarse.relations)):
+            before = (
+                _relation_energy(original, relation_id, original_signals)
+                if relation_id in original.relations
+                else 0.0
+            )
+            after = (
+                _relation_energy(coarse, relation_id, coarse_signals)
+                if relation_id in coarse.relations
+                else 0.0
+            )
+            original_relation_energy[str(relation_id)] = before
+            coarse_relation_energy[str(relation_id)] = after
+            relation_relative_errors[str(relation_id)] = _relative_error(before, after)
 
     energy_before = dirichlet_energy(original, original_signals)
     energy_after = dirichlet_energy(coarse, coarse_signals)
-    fused_before = _fused_energy(original, original_signals, relation_weights)
-    fused_after = _fused_energy(coarse, coarse_signals, relation_weights)
+    fused_before = _fused_energy(
+        original,
+        original_signals,
+        relation_weights,
+        relation_operator_mode=relation_operator_mode,
+    )
+    fused_after = _fused_energy(
+        coarse,
+        coarse_signals,
+        relation_weights,
+        relation_operator_mode=relation_operator_mode,
+    )
     weighted_fused_before = _relation_weighted_fused_energy(
         original,
         original_signals,
@@ -625,10 +682,6 @@ def compute_spectral_diagnostics(
         "sketch_dirichlet_energy_before": float(energy_before),
         "sketch_dirichlet_energy_after": float(energy_after),
         "sketch_dirichlet_energy_relative_error": _relative_error(energy_before, energy_after),
-        "relation_energy_before": original_relation_energy,
-        "relation_energy_after": coarse_relation_energy,
-        "relation_energy_relative_error": relation_relative_errors,
-        "relation_energy_relative_error_max": float(max(relation_relative_errors.values(), default=0.0)),
         "fused_sketch_energy_before": float(fused_before),
         "fused_sketch_energy_after": float(fused_after),
         "fused_sketch_energy_relative_error": _relative_error(fused_before, fused_after),
@@ -643,6 +696,17 @@ def compute_spectral_diagnostics(
             coarse_signals,
         ),
     }
+    if relation_detail:
+        diagnostics.update(
+            {
+                "relation_energy_before": original_relation_energy,
+                "relation_energy_after": coarse_relation_energy,
+                "relation_energy_relative_error": relation_relative_errors,
+                "relation_energy_relative_error_max": float(
+                    max(relation_relative_errors.values(), default=0.0)
+                ),
+            }
+        )
     diagnostics["sketch_inner_product_relative_error"] = diagnostics[
         "chebheat_sketch_inner_product_relative_error"
     ]
@@ -651,6 +715,7 @@ def compute_spectral_diagnostics(
         coarse,
         relation_weights,
         exact_eigenvalue_max_nodes,
+        relation_operator_mode=relation_operator_mode,
     )
     if eigen_sanity is not None:
         diagnostics["exact_eigenvalue_sanity"] = eigen_sanity
@@ -669,5 +734,7 @@ def compute_spectral_diagnostics(
         baseline_max_levels,
         baseline_task_eval,
         baseline_task_eval_params,
+        relation_operator_mode,
+        relation_detail,
     )
     return diagnostics

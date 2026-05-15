@@ -18,15 +18,19 @@ from experiments.scripts._common import (
     write_command_metadata,
     write_config_snapshot,
 )
-from hesf_coarsen.config import DEFAULT_CONFIG
+from experiments.scripts.run_hgb_next4_mainline import _make_config
 
 
-NEXT4_VARIANTS = ("H0", "H2", "H3", "H4", "H6")
-NEXT4_AGGRESSIVE_VARIANTS = ("A0", "A1", "A2", "A3", "A4")
+RELATION_FUSION_VARIANTS = (
+    "H2-full",
+    "H2-single-relation-sum",
+    "H2-no-rel-term",
+    "H2-uniform-fused-only",
+)
 
 
 @dataclass(frozen=True)
-class Next4Config:
+class RelationFusionConfig:
     run_name: str
     dataset: str
     variant: str
@@ -36,72 +40,21 @@ class Next4Config:
     unique_run_key: str
 
 
-def _candidate_flags(source: str) -> dict:
-    return {
-        "enable_onehop": "onehop" in source,
-        "enable_capped_twohop": "twohop" in source,
-        "enable_bucket": "bucket" in source,
-        "enable_partition_ann": source.endswith("_ann") or "ann" in source,
-    }
-
-
-def _variant_settings(variant: str) -> dict[str, float | int | str]:
-    settings: dict[str, dict[str, float | int | str]] = {
-        "H0": {"matching_method": "mutual_best", "max_cluster_size": 2, "lambda_conv": 0.5, "lambda_spec": 1.0},
-        "H1": {"matching_method": "greedy_cluster", "max_cluster_size": 3, "lambda_conv": 0.5, "lambda_spec": 1.0},
-        "H2": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.5, "lambda_spec": 1.0},
-        "H3": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.35, "lambda_spec": 1.0},
-        "H4": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.0, "lambda_spec": 1.0},
-        "H5": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.0, "lambda_spec": 1.0},
-        "H6": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.5, "lambda_spec": 0.0},
-        "A0": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.5, "lambda_spec": 1.0},
-        "A1": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.5, "lambda_spec": 1.0},
-        "A2": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.5, "lambda_spec": 1.0},
-        "A3": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.5, "lambda_spec": 1.0},
-        "A4": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.5, "lambda_spec": 1.0},
-    }
-    if variant not in settings:
-        raise ValueError(f"unsupported Next4 variant: {variant}")
-    return settings[variant]
-
-
-def _terminal_guard_settings(variant: str) -> dict:
-    base = {
-        "enabled": False,
-        "protect_hubs": False,
-        "protect_rare_relation_carriers": False,
-        "protect_boundary_nodes": False,
-        "protect_train_label_conflict_nodes": False,
-        "hub_degree_percentile": 95,
-        "rare_relation_min_count": 1,
-        "label_entropy_threshold": 0.0,
-        "max_terminal_cluster_size": 2,
-    }
-    if variant == "A1":
-        base.update({"enabled": True, "protect_hubs": True})
-    elif variant == "A2":
-        base.update({"enabled": True, "protect_rare_relation_carriers": True})
-    elif variant == "A3":
-        base.update({"enabled": True, "protect_train_label_conflict_nodes": True})
-    elif variant == "A4":
-        base.update(
-            {
-                "enabled": True,
-                "protect_hubs": True,
-                "protect_rare_relation_carriers": True,
-                "protect_boundary_nodes": True,
-                "protect_train_label_conflict_nodes": True,
-            }
-        )
-    return base
+def _target_ratios(args: argparse.Namespace) -> list[float]:
+    values: list[float] = []
+    if args.target_ratios:
+        values.extend(float(value) for value in args.target_ratios)
+    if args.target_ratio:
+        values.extend(float(value) for value in args.target_ratio)
+    return values or [0.5]
 
 
 def _run_key(dataset: str, variant: str, target_ratio: float, seed: int, max_levels: int, candidate_k: int) -> str:
-    text = f"next4|{dataset}|{variant}|{target_ratio:.6g}|{seed}|{max_levels}|{candidate_k}"
-    return f"next4:{dataset}:{variant}:{hashlib.sha1(text.encode('utf-8')).hexdigest()[:10]}"
+    text = f"next4-relfusion|{dataset}|{variant}|{target_ratio:.6g}|{seed}|{max_levels}|{candidate_k}"
+    return f"next4-relfusion:{dataset}:{variant}:{hashlib.sha1(text.encode('utf-8')).hexdigest()[:10]}"
 
 
-def _make_config(
+def _make_relation_fusion_config(
     *,
     variant: str,
     target_ratio: float,
@@ -110,60 +63,42 @@ def _make_config(
     candidate_source: str,
     candidate_k: int,
 ) -> dict:
-    settings = _variant_settings(variant)
-    cfg = deepcopy(DEFAULT_CONFIG)
-    cfg["seed"] = int(seed)
-    cfg["coarsening"] = dict(
-        cfg["coarsening"],
-        target_ratio=float(target_ratio),
-        max_levels=int(max_levels),
-        matching_method=str(settings["matching_method"]),
-        max_cluster_size=int(settings["max_cluster_size"]),
+    if variant not in RELATION_FUSION_VARIANTS:
+        raise ValueError(f"unsupported relation-fusion variant: {variant}")
+    cfg = _make_config(
+        variant="H2",
+        target_ratio=target_ratio,
+        seed=seed,
+        max_levels=max_levels,
+        candidate_source=candidate_source,
+        candidate_k=candidate_k,
     )
-    if str(variant).startswith("A"):
-        cfg["coarsening"]["terminal_guard"] = _terminal_guard_settings(str(variant))
-    cfg["sketch"] = dict(
-        cfg["sketch"],
-        method="chebyshev_heat",
-        dim=16,
-        order=5,
-        dtype="float16",
-        row_normalize=True,
-    )
-    cfg["fusion"] = dict(cfg.get("fusion", {}))
-    cfg["fusion"]["relation_weighting"] = dict(
-        cfg["fusion"].get("relation_weighting", {}),
-        method="uniform",
-    )
-    cfg["metapath_sketch"] = dict(
-        cfg.get("metapath_sketch", {}),
-        enabled=False,
-        preset="off",
-        operator_weight_total=0.0,
-        paths=[],
-        auto_paths=False,
-    )
-    cfg["candidates"] = dict(
-        cfg["candidates"],
-        total_budget_K=int(candidate_k),
-        twohop_budget_K2=max(1, int(candidate_k) // 2),
-        ann_budget_K=int(candidate_k),
-        enable_fallback=True,
-        fallback_penalty=1.0e6,
-        fallback_max_fraction=0.05,
-        **_candidate_flags(candidate_source),
-    )
-    cfg["scoring"] = dict(
-        cfg["scoring"],
-        normalization="p95",
-        normalization_scope="level",
-        lambda_spec=float(settings["lambda_spec"]),
-        lambda_conv=float(settings["lambda_conv"]),
-    )
+    cfg.setdefault("fusion", {})["relation_operator_mode"] = "relationwise"
+    cfg.setdefault("scoring", {})["relation_profile_mode"] = "relationwise"
+    cfg.setdefault("diagnostics", {})["spectral_relation_detail"] = True
+
+    if variant == "H2-single-relation-sum":
+        cfg["fusion"]["relation_operator_mode"] = "single_relation_sum"
+        cfg["scoring"]["relation_profile_mode"] = "single_relation_sum"
+    elif variant == "H2-no-rel-term":
+        cfg["scoring"]["lambda_rel"] = 0.0
+        cfg["scoring"].setdefault("relation_guard", {})["enabled"] = False
+    elif variant == "H2-uniform-fused-only":
+        cfg["scoring"].update(
+            {
+                "lambda_rel": 0.0,
+                "lambda_conv": 0.0,
+                "lambda_feat": 0.0,
+                "lambda_boundary": 0.0,
+            }
+        )
+        cfg["scoring"].setdefault("relation_guard", {})["enabled"] = False
+        cfg["diagnostics"]["spectral_relation_detail"] = False
+
     return cfg
 
 
-def generate_next4_configs(
+def generate_relation_fusion_configs(
     *,
     datasets: Iterable[str],
     variants: Iterable[str],
@@ -172,9 +107,9 @@ def generate_next4_configs(
     max_levels: int,
     candidate_source: str,
     candidate_k: int,
-) -> Iterable[Next4Config]:
+) -> Iterable[RelationFusionConfig]:
     for dataset, variant, target_ratio, seed in product(datasets, variants, target_ratios, seeds):
-        cfg = _make_config(
+        cfg = _make_relation_fusion_config(
             variant=str(variant),
             target_ratio=float(target_ratio),
             seed=int(seed),
@@ -184,10 +119,10 @@ def generate_next4_configs(
         )
         ratio_token = str(float(target_ratio)).replace(".", "p")
         run_name = (
-            f"next4_{dataset}_{variant}_r{ratio_token}_L{int(max_levels)}_"
+            f"next4_rel_{dataset}_{variant}_r{ratio_token}_L{int(max_levels)}_"
             f"d16_K{int(candidate_k)}_{candidate_source}_seed{int(seed)}"
         )
-        yield Next4Config(
+        yield RelationFusionConfig(
             run_name=run_name,
             dataset=str(dataset),
             variant=str(variant),
@@ -199,13 +134,13 @@ def generate_next4_configs(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run Next4 HGB mainline variants H0/H2/H3/H4/H6 and aggressive A0-A4.")
+    parser = argparse.ArgumentParser(description="Run Next4 H2 relation-fusion ablations.")
     parser.add_argument("--datasets", nargs="+", default=["ACM", "DBLP", "IMDB"])
     parser.add_argument("--root", type=Path, default=Path("data"))
     parser.add_argument("--data-root", type=Path)
     parser.add_argument("--graph-root", type=Path)
-    parser.add_argument("--output", type=Path, default=Path("outputs/experiments/hgb_next4"))
-    parser.add_argument("--variants", nargs="+", default=list(NEXT4_VARIANTS))
+    parser.add_argument("--output", type=Path, default=Path("outputs/experiments/hgb_next4_relation_fusion"))
+    parser.add_argument("--variants", nargs="+", default=list(RELATION_FUSION_VARIANTS))
     parser.add_argument("--target-ratio", type=float, action="append", dest="target_ratio")
     parser.add_argument("--target-ratios", type=float, nargs="+", default=None)
     parser.add_argument("--seeds", type=int, nargs="+", default=[12345])
@@ -220,20 +155,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _target_ratios(args: argparse.Namespace) -> list[float]:
-    values: list[float] = []
-    if args.target_ratios:
-        values.extend(float(value) for value in args.target_ratios)
-    if args.target_ratio:
-        values.extend(float(value) for value in args.target_ratio)
-    return values or [0.5]
-
-
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = repo_root()
     raw_root = args.data_root or args.root
-    for item in generate_next4_configs(
+    for item in generate_relation_fusion_configs(
         datasets=args.datasets,
         variants=args.variants,
         target_ratios=_target_ratios(args),
@@ -286,9 +212,12 @@ def main(argv: list[str] | None = None) -> int:
             "matching_method": config["coarsening"]["matching_method"],
             "max_cluster_size": config["coarsening"]["max_cluster_size"],
             "relation_weighting_method": "uniform",
+            "relation_operator_mode": config["fusion"].get("relation_operator_mode", "relationwise"),
+            "relation_profile_mode": config["scoring"].get("relation_profile_mode", "relationwise"),
+            "spectral_relation_detail": config["diagnostics"].get("spectral_relation_detail", True),
             "metapath_preset": "off",
             "metapath_operator_weight_total": 0.0,
-            "experiment_block": "next4_mainline",
+            "experiment_block": "next4_relation_fusion",
             "unique_run_key": item.unique_run_key,
         }
         write_command_metadata(run_dir, run_name=item.run_name, status="created", **metadata)

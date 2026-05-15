@@ -278,6 +278,7 @@ def _resolved_config_diagnostics(config: dict) -> dict:
             "relation_weighting": {
                 "method": relation_weighting.get("method"),
             },
+            "relation_operator_mode": fusion.get("relation_operator_mode", "relationwise"),
         },
         "metapath_sketch": {
             "enabled": metapath.get("enabled"),
@@ -293,6 +294,7 @@ def _resolved_config_diagnostics(config: dict) -> dict:
                 "lambda_boundary",
                 "normalization",
                 "normalization_scope",
+                "relation_profile_mode",
             )
         },
         "candidates": {
@@ -962,7 +964,10 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         progress_message(config, f"level {level}: scoring start")
         start = perf_counter()
         progress_message(config, f"level {level}: scoring relation profiles start")
-        relation_profiles = compute_relation_profiles(current)
+        relation_profile_mode = str(
+            config.get("scoring", {}).get("relation_profile_mode", "relationwise")
+        )
+        relation_profiles = compute_relation_profiles(current, mode=relation_profile_mode)
         progress_message(config, f"level {level}: scoring relation profiles done")
         progress_message(config, f"level {level}: scoring fusion weights start")
         relation_weights = compute_relation_fusion_weights(current, Z.astype(np.float32), config)
@@ -973,6 +978,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             Z.astype(np.float32, copy=False),
             relation_weights,
             operator=str(config.get("scoring", {}).get("conv_response_operator", "fused_operator")),
+            relation_operator_mode=str(config.get("fusion", {}).get("relation_operator_mode", "relationwise")),
         )
         progress_message(config, f"level {level}: scoring conv response done")
         progress_message(config, f"level {level}: scoring candidate pairs start")
@@ -1289,6 +1295,10 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                     ["random", "heavy_edge", "graphzoom_style", "convmatch_style"],
                 ),
                 baseline_max_nodes=diagnostics_cfg.get("spectral_baseline_max_nodes", 5000),
+                relation_operator_mode=str(
+                    config.get("fusion", {}).get("relation_operator_mode", "relationwise")
+                ),
+                relation_detail=bool(diagnostics_cfg.get("spectral_relation_detail", True)),
             )
             if (
                 next_cumulative_assignment is not None
@@ -1333,6 +1343,10 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                     baseline_task_eval_params=dict(
                         diagnostics_cfg.get("cumulative_spectral_baseline_task_eval_params", {})
                     ),
+                    relation_operator_mode=str(
+                        config.get("fusion", {}).get("relation_operator_mode", "relationwise")
+                    ),
+                    relation_detail=bool(diagnostics_cfg.get("spectral_relation_detail", True)),
                 )
             runtime["spectral_diagnostics"] = perf_counter() - start_spectral
             diagnostics["runtime_by_stage"] = dict(runtime)

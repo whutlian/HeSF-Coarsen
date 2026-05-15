@@ -144,6 +144,7 @@ def _compute_lazy_sketch(
     symmetric = bool(fusion_cfg.get("symmetric_relation_operator", True))
     symmetric_relation_scale = float(fusion_cfg.get("symmetric_relation_scale", 0.5))
     reverse_policy = str(fusion_cfg.get("reverse_relation_policy", "include_all"))
+    relation_operator_mode = str(fusion_cfg.get("relation_operator_mode", "relationwise"))
     metapath_cfg = config.get("metapath_sketch", {})
     metapath_enabled = bool(metapath_cfg.get("enabled", False))
 
@@ -227,6 +228,7 @@ def _compute_lazy_sketch(
             symmetric_relation_operator=symmetric,
             symmetric_relation_scale=symmetric_relation_scale,
             reverse_relation_policy=reverse_policy,
+            relation_operator_mode=relation_operator_mode,
         )
         current = (0.5 * current + 0.5 * smoothed).astype(np.float32, copy=False)
         if step >= max(order - num_scales, 0):
@@ -269,6 +271,7 @@ def _compute_lazy_sketch(
             **relation_result.diagnostics,
             "symmetric_relation_operator": bool(symmetric),
             "symmetric_relation_scale": float(symmetric_relation_scale),
+            "relation_operator_mode": relation_operator_mode,
         },
         "metapath_sketch": meta_diag,
     }
@@ -301,6 +304,7 @@ def _compute_chebyshev_heat_sketch(
     symmetric = bool(fusion_cfg.get("symmetric_relation_operator", True))
     symmetric_relation_scale = float(fusion_cfg.get("symmetric_relation_scale", 0.5))
     reverse_policy = str(fusion_cfg.get("reverse_relation_policy", "include_all"))
+    relation_operator_mode = str(fusion_cfg.get("relation_operator_mode", "relationwise"))
 
     start_total = perf_counter()
     weight_basis_dim = max(1, min(heat_dim or total_dim, int(sketch_cfg.get("weight_basis_dim", 8))))
@@ -385,6 +389,7 @@ def _compute_chebyshev_heat_sketch(
             symmetric_relation_operator=symmetric,
             symmetric_relation_scale=symmetric_relation_scale,
             reverse_relation_policy=reverse_policy,
+            relation_operator_mode=relation_operator_mode,
             num_iterations=int(fusion_cfg.get("operator_norm_iterations", 8)),
             probe_dim=int(fusion_cfg.get("operator_norm_probe_dim", 4)),
             seed=int(fusion_cfg.get("operator_norm_seed", seed + 17)),
@@ -411,6 +416,7 @@ def _compute_chebyshev_heat_sketch(
         {
             "symmetric_relation_operator": bool(symmetric),
             "symmetric_relation_scale": float(symmetric_relation_scale),
+            "relation_operator_mode": relation_operator_mode,
             "chebyshev_scaling": chebyshev_scaling,
             "operator_norm_estimation_enabled": bool(estimate_norm),
             "estimated_operator_norm": (
@@ -449,6 +455,7 @@ def _compute_chebyshev_heat_sketch(
             symmetric_relation_operator=symmetric,
             symmetric_relation_scale=symmetric_relation_scale,
             reverse_relation_policy=reverse_policy,
+            relation_operator_mode=relation_operator_mode,
             operator_scale=chebyshev_operator_scale,
             progress_config=config,
             progress_desc=f"chebyshev heat t={heat_time}",
