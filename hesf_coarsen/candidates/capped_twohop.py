@@ -436,6 +436,16 @@ def generate_capped_twohop_candidates(
     twohop_score_scale = 1.0 + max(0.0, 1.0 - twohop_max_fraction)
     same_partition = bool(coarsen_cfg.get("same_partition_only", True))
     seed = int(config.get("seed", 12345))
+    twohop_mode = str(candidate_cfg.get("twohop_mode", "full"))
+    per_node_budget = int(candidate_cfg.get("twohop_budget_per_node", 0) or 0)
+    max_time_budget = candidate_cfg.get("twohop_max_time_budget_sec")
+    max_time_budget = None if max_time_budget in (None, "", False) else float(max_time_budget)
+    expansion_start = perf_counter()
+    endpoint_emit_counts = (
+        np.zeros(graph.num_nodes, dtype=np.int32)
+        if twohop_mode == "capped_sampled" and per_node_budget > 0
+        else None
+    )
 
     incident: dict[int, dict[int, list[int]]] = defaultdict(lambda: defaultdict(list))
     for rel in graph.relations.values():
@@ -474,8 +484,16 @@ def generate_capped_twohop_candidates(
                     group = np.sort(rng.choice(group, size=cap, replace=False))
                 pair_seed = seed + middle * 9176 + endpoint_type * 131
                 for i, j in _sample_pairs(group, per_middle_pair_cap, pair_seed):
+                    if max_time_budget is not None and float(perf_counter() - expansion_start) >= max_time_budget:
+                        return
+                    if endpoint_emit_counts is not None:
+                        if endpoint_emit_counts[i] >= per_node_budget or endpoint_emit_counts[j] >= per_node_budget:
+                            continue
                     diff = Z[i].astype(np.float32) - Z[j].astype(np.float32)
                     store.add(i, j, float(np.dot(diff, diff)) * twohop_score_scale, "capped_twohop")
+                    if endpoint_emit_counts is not None:
+                        endpoint_emit_counts[i] += 1
+                        endpoint_emit_counts[j] += 1
 
 
 def _collect_incident_for_middle_range(
@@ -522,6 +540,10 @@ def generate_capped_twohop_candidates_chunked(
     seed = int(config.get("seed", 12345))
     global_cap = candidate_cfg.get("middle_degree_cap_policy", "p99")
     cap = None if global_cap in (None, "none", "off", False) else int(global_cap) if isinstance(global_cap, (int, float)) else None
+    twohop_mode = str(candidate_cfg.get("twohop_mode", "full"))
+    per_node_budget = int(candidate_cfg.get("twohop_budget_per_node", 0) or 0)
+    max_time_budget = candidate_cfg.get("twohop_max_time_budget_sec")
+    max_time_budget = None if max_time_budget in (None, "", False) else float(max_time_budget)
 
     index_start = perf_counter()
     incident_index = CappedTwoHopIncidentIndex.from_graph(
@@ -533,8 +555,15 @@ def generate_capped_twohop_candidates_chunked(
     incident_index_build_time = float(perf_counter() - index_start)
     expansion_start = perf_counter()
     total_emitted = 0
+    skipped_by_node_budget = 0
     max_per_middle = 0
     middle_count = 0
+    stopped_by_time_budget = False
+    endpoint_emit_counts = (
+        np.zeros(graph.num_nodes, dtype=np.int32)
+        if twohop_mode == "capped_sampled" and per_node_budget > 0
+        else None
+    )
     ranges = range(0, graph.num_nodes, middle_chunk_size)
     total = (graph.num_nodes + middle_chunk_size - 1) // middle_chunk_size
     for start_middle in progress_iter(
@@ -544,6 +573,9 @@ def generate_capped_twohop_candidates_chunked(
         config=config,
         unit="chunk",
     ):
+        if max_time_budget is not None and float(perf_counter() - expansion_start) >= max_time_budget:
+            stopped_by_time_budget = True
+            break
         stop_middle = min(start_middle + middle_chunk_size, graph.num_nodes)
         incident = incident_index.collect_middle_range(start_middle, stop_middle)
         if cap is None and global_cap not in (None, "none", "off", False):
@@ -583,17 +615,40 @@ def generate_capped_twohop_candidates_chunked(
                     pair_seed = seed + middle * 9176 + endpoint_type * 131
                     pairs = _sample_pairs(group, remaining, pair_seed)
                     for i, j in pairs:
+                        if max_time_budget is not None and float(perf_counter() - expansion_start) >= max_time_budget:
+                            stopped_by_time_budget = True
+                            break
+                        if endpoint_emit_counts is not None:
+                            if endpoint_emit_counts[i] >= per_node_budget or endpoint_emit_counts[j] >= per_node_budget:
+                                skipped_by_node_budget += 1
+                                continue
                         diff = Z[i].astype(np.float32) - Z[j].astype(np.float32)
                         store.add(i, j, float(np.dot(diff, diff)) * twohop_score_scale, "capped_twohop")
-                    middle_emitted += len(pairs)
-                    total_emitted += len(pairs)
+                        if endpoint_emit_counts is not None:
+                            endpoint_emit_counts[i] += 1
+                            endpoint_emit_counts[j] += 1
+                        middle_emitted += 1
+                        total_emitted += 1
+                    if stopped_by_time_budget:
+                        break
                 if middle_emitted >= per_middle_pair_cap:
                     break
+                if stopped_by_time_budget:
+                    break
             max_per_middle = max(max_per_middle, middle_emitted)
+            if stopped_by_time_budget:
+                break
+        if stopped_by_time_budget:
+            break
     return {
         "middle_nodes_considered": middle_count,
         "pairs_considered": total_emitted,
         "max_pairs_emitted_per_middle": max_per_middle,
         "incident_index_build_time": incident_index_build_time,
         "twohop_expansion_time": float(perf_counter() - expansion_start),
+        "twohop_mode": twohop_mode,
+        "twohop_budget_per_node": int(per_node_budget),
+        "twohop_max_time_budget_sec": "" if max_time_budget is None else float(max_time_budget),
+        "pairs_skipped_by_node_budget": int(skipped_by_node_budget),
+        "stopped_by_time_budget": bool(stopped_by_time_budget),
     }

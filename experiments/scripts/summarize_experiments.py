@@ -223,6 +223,17 @@ def _with_task_aliases(row: dict[str, Any]) -> None:
             "task_primary_macro_f1": primary_macro,
             "task_micro_f1": refined_micro or projected_micro or row.get("task_micro_f1", ""),
             "task_macro_f1": primary_macro or projected_macro or row.get("task_macro_f1", ""),
+            "task_target_node_type": _task_value(row, "target_node_type"),
+            "task_target_node_type_id": _task_value(row, "target_node_type_id"),
+            "task_num_labeled_nodes_train": _task_value(row, "num_labeled_nodes_train"),
+            "task_num_labeled_nodes_val": _task_value(row, "num_labeled_nodes_val"),
+            "task_num_labeled_nodes_test": _task_value(row, "num_labeled_nodes_test"),
+            "task_num_classes_present_train": _task_value(row, "num_classes_present_train"),
+            "task_num_classes_present_val": _task_value(row, "num_classes_present_val"),
+            "task_num_classes_present_test": _task_value(row, "num_classes_present_test"),
+            "task_macro_f1_empty_class_policy": _task_value(row, "macro_f1_empty_class_policy"),
+            "task_official_split_consistency": _task_value(row, "official_split_consistency"),
+            "task_coarse_train_label_source": _task_value(row, "coarse_train_label_source"),
             "compute_device": _task_value(row, "device") or row.get("compute_device", "cpu"),
         }
     )
@@ -857,6 +868,31 @@ def _task_summary_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             "task_macro_f1": row.get("task_macro_f1", row.get("task.macro_f1", "")),
             "task_labeled_nodes": row.get("task.labeled_nodes", ""),
             "task_skipped": row.get("task.skipped", ""),
+            "target_node_type": row.get("task_target_node_type", row.get("task.target_node_type", "")),
+            "target_node_type_id": row.get("task_target_node_type_id", row.get("task.target_node_type_id", "")),
+            "num_labeled_nodes_train": row.get("task_num_labeled_nodes_train", row.get("task.num_labeled_nodes_train", "")),
+            "num_labeled_nodes_val": row.get("task_num_labeled_nodes_val", row.get("task.num_labeled_nodes_val", "")),
+            "num_labeled_nodes_test": row.get("task_num_labeled_nodes_test", row.get("task.num_labeled_nodes_test", "")),
+            "num_labeled_nodes_total": row.get("task_num_labeled_nodes_total", row.get("task.num_labeled_nodes_total", "")),
+            "label_coverage_train": row.get("task_label_coverage_train", row.get("task.label_coverage_train", "")),
+            "label_coverage_val": row.get("task_label_coverage_val", row.get("task.label_coverage_val", "")),
+            "label_coverage_test": row.get("task_label_coverage_test", row.get("task.label_coverage_test", "")),
+            "train_only_label_coverage": row.get(
+                "task_train_only_label_coverage",
+                row.get("task.train_only_label_coverage", ""),
+            ),
+            "task_split_policy": row.get("task_task_split_policy", row.get("task.task_split_policy", "")),
+            "test_label_leakage_check": row.get(
+                "task_test_label_leakage_check",
+                row.get("task.test_label_leakage_check", ""),
+            ),
+            "num_classes": row.get("task_num_classes", row.get("task.num_classes", "")),
+            "num_classes_present_train": row.get("task_num_classes_present_train", row.get("task.num_classes_present_train", "")),
+            "num_classes_present_val": row.get("task_num_classes_present_val", row.get("task.num_classes_present_val", "")),
+            "num_classes_present_test": row.get("task_num_classes_present_test", row.get("task.num_classes_present_test", "")),
+            "macro_f1_empty_class_policy": row.get("task_macro_f1_empty_class_policy", row.get("task.macro_f1_empty_class_policy", "")),
+            "official_split_consistency": row.get("task_official_split_consistency", row.get("task.official_split_consistency", "")),
+            "coarse_train_label_source": row.get("task_coarse_train_label_source", row.get("task.coarse_train_label_source", "")),
             "coarse_train_micro_f1": row.get("task_coarse_train_micro_f1", row.get("task.coarse_train_micro_f1", "")),
             "coarse_train_macro_f1": row.get("task_coarse_train_macro_f1", row.get("task.coarse_train_macro_f1", "")),
             "projected_original_micro_f1": row.get("task_projected_micro_f1", row.get("task.projected_original_micro_f1", "")),
@@ -1062,6 +1098,100 @@ def _compare_rows(
             out[f"{metric}_mean"] = float(sum(values) / len(values))
             out[f"{metric}_min"] = float(min(values))
             out[f"{metric}_max"] = float(max(values))
+        out_rows.append(out)
+    return out_rows
+
+
+PAPER_TABLE_METRICS = [
+    "final_cumulative_ratio",
+    "cumulative_dee",
+    "cumulative_fse_unweighted",
+    "cumulative_ree_max",
+    "cumulative_sipe",
+    "cumulative_sampled_eigen_error",
+    "task_projected_micro_f1",
+    "task_projected_macro_f1",
+    "task_refined_micro_f1",
+    "task_refined_macro_f1",
+    "task_refined_micro_f1@0",
+    "task_refined_macro_f1@0",
+    "task_refined_micro_f1@1",
+    "task_refined_macro_f1@1",
+    "task_refined_micro_f1@3",
+    "task_refined_macro_f1@3",
+    "task_refined_micro_f1@5",
+    "task_refined_macro_f1@5",
+    "task_best_refined_macro_f1",
+    "task_refine_auc_macro_f1",
+    "task_full_graph_rgcn_lite_default_macro_f1",
+    "task_full_graph_rgcn_lite_tuned_macro_f1",
+    "task_full_graph_han_small_macro_f1",
+    "task_full_graph_hgt_small_macro_f1",
+    "runtime_total_run",
+    "candidate_generation_time",
+    "candidate_substage_times.twohop_expansion",
+    "candidate_substage_times.bucket_emit",
+    "peak_rss_gb",
+    "peak_vram_gb",
+    "peak_vram_allocated_gb",
+    "peak_vram_reserved_gb",
+    "candidate_buffer_bytes",
+]
+
+
+def _std(values: list[float]) -> float:
+    if len(values) <= 1:
+        return 0.0
+    mean = float(sum(values) / len(values))
+    return float((sum((value - mean) ** 2 for value in values) / (len(values) - 1)) ** 0.5)
+
+
+def _fmt_mean_pm_std(mean: float, std: float) -> str:
+    return f"{mean:.4f} +/- {std:.4f}"
+
+
+def _compute_device_mark(rows: list[Mapping[str, Any]]) -> str:
+    for row in rows:
+        device = str(row.get("compute_device", row.get("task.device", ""))).lower()
+        cuda_available = str(row.get("cuda_available", "")).lower() == "true"
+        peak_vram = max(
+            _as_float(row.get("peak_vram_gb"), 0.0) or 0.0,
+            _as_float(row.get("peak_vram_allocated_gb"), 0.0) or 0.0,
+            _as_float(row.get("peak_vram_reserved_gb"), 0.0) or 0.0,
+        )
+        if "cuda" in device or "gpu" in device or cuda_available or peak_vram > 0.0:
+            return "GPU"
+    return "CPU"
+
+
+def _mean_std_rows(final_rows: list[dict[str, Any]], group_by: list[str]) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for row in final_rows:
+        key = tuple(str(row.get(column, "")) for column in group_by)
+        groups.setdefault(key, []).append(row)
+    out_rows: list[dict[str, Any]] = []
+    for key, group in sorted(groups.items()):
+        out: dict[str, Any] = {column: value for column, value in zip(group_by, key)}
+        out["run_count"] = int(len(group))
+        seeds = {str(row.get("seed", "")) for row in group if str(row.get("seed", ""))}
+        out["seed_count"] = int(len(seeds))
+        out["compute_device_mark"] = _compute_device_mark(group)
+        if "dataset" not in out:
+            datasets = sorted({str(row.get("dataset", "")) for row in group if str(row.get("dataset", ""))})
+            out["datasets"] = ",".join(datasets)
+        for metric in PAPER_TABLE_METRICS:
+            values = _numeric(row.get(metric) for row in group)
+            column = metric.replace(".", "_").replace("@", "at")
+            if not values:
+                out[f"{column}_mean"] = ""
+                out[f"{column}_std"] = ""
+                out[f"{column}_mean_pm_std"] = ""
+                continue
+            mean = float(sum(values) / len(values))
+            std = _std(values)
+            out[f"{column}_mean"] = mean
+            out[f"{column}_std"] = std
+            out[f"{column}_mean_pm_std"] = _fmt_mean_pm_std(mean, std)
         out_rows.append(out)
     return out_rows
 
@@ -1397,14 +1527,21 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
         output / "compare_by_dim.csv",
         _compare_rows(final_rows, ["dataset", "sketch_method", "sketch_dim"]),
     )
+    paper_mean_std_rows = _mean_std_rows(final_rows, ["variant"])
+    paper_dataset_variant_rows = _mean_std_rows(final_rows, ["dataset", "variant"])
+    write_csv(output / "paper_table_mean_std.csv", paper_mean_std_rows)
+    write_csv(output / "paper_table_dataset_variant.csv", paper_dataset_variant_rows)
     write_csv(output / "failures.csv", failure_rows)
     _maybe_write_figures(output, final_rows, target_rows)
     core_rows = _core_report_rows(final_rows)
     report_rows = final_rows[:20]
+    gpu_marked_runs = sum(1 for row in final_rows if _compute_device_mark([row]) == "GPU")
     report = [
         "# Experiment Summary",
         "",
         f"Unique runs: {len(final_rows)}",
+        f"GPU-marked runs: {gpu_marked_runs}",
+        f"CPU-only runs: {len(final_rows) - gpu_marked_runs}",
         f"Level rows: {sum(int(row.get('level_row_count', 0) or 0) for row in final_rows)}",
         f"Rows: {len(all_rows)}",
         f"Failures: {len(failure_rows)}",

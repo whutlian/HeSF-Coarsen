@@ -34,19 +34,53 @@ class OGBNMediumConfig:
 
 
 def _variant_settings(variant: str) -> dict[str, float | int | str]:
+    normalized = str(variant)
+    aliases = {
+        "H2-fullcand": "H2",
+        "H2-full": "H2",
+        "H2-opt": "H2",
+        "H3-opt": "H3",
+        "H4-opt": "H4",
+        "flatten-sum-opt": "H2",
+        "flatten/sum-opt": "H2",
+        "H2-single-relation-sum": "H2",
+    }
+    normalized = aliases.get(normalized, normalized)
     settings: dict[str, dict[str, float | int | str]] = {
         "H2": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.5, "lambda_spec": 1.0},
         "H3": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.35, "lambda_spec": 1.0},
         "H4": {"matching_method": "greedy_cluster", "max_cluster_size": 4, "lambda_conv": 0.0, "lambda_spec": 1.0},
     }
-    if variant not in settings:
+    if normalized not in settings:
         raise ValueError(f"unsupported OGBN-MAG medium variant: {variant}")
-    return settings[variant]
+    return settings[normalized]
 
 
-def _run_key(variant: str, seed: int, target_ratio: float, optimized_candidates: bool) -> str:
-    text = f"ogbn-mag-medium|{variant}|{seed}|{target_ratio:.6g}|{optimized_candidates}"
+def _is_flatten_sum_variant(variant: str) -> bool:
+    return str(variant) in {"flatten-sum-opt", "flatten/sum-opt", "H2-single-relation-sum"}
+
+
+def _run_key(
+    variant: str,
+    seed: int,
+    target_ratio: float,
+    candidate_mode: str,
+    twohop_budget_per_node: int,
+) -> str:
+    text = f"ogbn-mag-medium|{variant}|{seed}|{target_ratio:.6g}|{candidate_mode}|{twohop_budget_per_node}"
     return f"ogbn-medium:{variant}:{hashlib.sha1(text.encode('utf-8')).hexdigest()[:10]}"
+
+
+def _candidate_mode_label(candidate_mode: str) -> str:
+    aliases = {
+        "full": "full_candidates",
+        "fullcand": "full_candidates",
+        "onehop_twohop_bucket": "full_candidates",
+        "optimized": "optimized",
+        "onehop_bucket": "optimized",
+        "limited": "limited_twohop",
+    }
+    return aliases.get(str(candidate_mode), str(candidate_mode))
 
 
 def _make_config(
@@ -56,10 +90,16 @@ def _make_config(
     seed: int,
     target_ratio: float,
     max_levels: int,
-    optimized_candidates: bool,
+    candidate_mode: str,
+    twohop_budget_per_node: int,
+    twohop_max_time_budget_sec: float | None,
     device: str,
 ) -> dict:
     settings = _variant_settings(str(variant))
+    mode = _candidate_mode_label(str(candidate_mode))
+    enable_onehop = mode in {"full_candidates", "optimized", "onehop_only", "limited_twohop"}
+    enable_bucket = mode in {"full_candidates", "optimized", "bucket_only", "limited_twohop"}
+    enable_twohop = mode in {"full_candidates", "limited_twohop"}
     cfg = deepcopy(DEFAULT_CONFIG)
     cfg["seed"] = int(seed)
     cfg["acceleration"] = dict(
@@ -109,6 +149,9 @@ def _make_config(
         lambda_conv=float(settings["lambda_conv"]),
         relation_profile_mode="relationwise",
     )
+    if _is_flatten_sum_variant(str(variant)):
+        cfg["fusion"]["relation_operator_mode"] = "single_relation_sum"
+        cfg["scoring"]["relation_profile_mode"] = "single_relation_sum"
     cfg["candidates"] = dict(
         cfg["candidates"],
         store_backend="array",
@@ -119,10 +162,10 @@ def _make_config(
         middle_chunk_size=100_000,
         node_chunk_size=500_000,
         mmap_dir=str(run_dir / "candidate_mmap"),
-        incident_index_mmap_dir=None if optimized_candidates else str(run_dir / "incident_index_mmap"),
-        enable_onehop=True,
-        enable_capped_twohop=not bool(optimized_candidates),
-        enable_bucket=True,
+        incident_index_mmap_dir=str(run_dir / "incident_index_mmap") if enable_twohop else None,
+        enable_onehop=enable_onehop,
+        enable_capped_twohop=enable_twohop,
+        enable_bucket=enable_bucket,
         enable_partition_ann=False,
         enable_fallback=True,
         fallback_penalty=1.0e6,
@@ -130,6 +173,13 @@ def _make_config(
         per_middle_pair_cap=64,
         bucket_pair_cap=64,
         simhash_bits=16,
+        twohop_mode="capped_sampled" if mode == "limited_twohop" else "full",
+        twohop_budget_per_node=int(twohop_budget_per_node) if mode == "limited_twohop" else 0,
+        twohop_max_time_budget_sec=(
+            float(twohop_max_time_budget_sec)
+            if mode == "limited_twohop" and twohop_max_time_budget_sec is not None
+            else None
+        ),
     )
     cfg["features"] = dict(
         cfg["features"],
@@ -159,10 +209,12 @@ def generate_configs(
     seeds: Iterable[int],
     target_ratio: float,
     max_levels: int,
-    optimized_candidates: bool,
+    candidate_mode: str,
+    twohop_budget_per_node: int,
+    twohop_max_time_budget_sec: float | None,
     device: str,
 ) -> Iterable[OGBNMediumConfig]:
-    mode = "optimized" if optimized_candidates else "full_candidates"
+    mode = _candidate_mode_label(str(candidate_mode))
     for variant, seed in product(variants, seeds):
         run_name = f"ogbn_mag_medium_{variant}_r{str(float(target_ratio)).replace('.', 'p')}_{mode}_seed{int(seed)}"
         run_dir = output / run_name
@@ -176,10 +228,18 @@ def generate_configs(
                 seed=int(seed),
                 target_ratio=float(target_ratio),
                 max_levels=int(max_levels),
-                optimized_candidates=bool(optimized_candidates),
+                candidate_mode=mode,
+                twohop_budget_per_node=int(twohop_budget_per_node),
+                twohop_max_time_budget_sec=twohop_max_time_budget_sec,
                 device=str(device),
             ),
-            unique_run_key=_run_key(str(variant), int(seed), float(target_ratio), bool(optimized_candidates)),
+            unique_run_key=_run_key(
+                str(variant),
+                int(seed),
+                float(target_ratio),
+                mode,
+                int(twohop_budget_per_node),
+            ),
         )
 
 
@@ -194,6 +254,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--optimized-candidates", action="store_true")
+    parser.add_argument(
+        "--candidate-mode",
+        choices=["full", "fullcand", "onehop_twohop_bucket", "optimized", "onehop_bucket", "bucket_only", "onehop_only", "limited_twohop"],
+    )
+    parser.add_argument("--twohop-budget-per-node", type=int, default=1)
+    parser.add_argument("--twohop-max-time-budget-sec", type=float)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser
@@ -203,13 +269,19 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = repo_root()
     rows: list[dict[str, object]] = []
+    candidate_mode = args.candidate_mode
+    if candidate_mode is None:
+        candidate_mode = "optimized" if args.optimized_candidates else "full_candidates"
+    candidate_mode = _candidate_mode_label(str(candidate_mode))
     for item in generate_configs(
         output=args.output,
         variants=args.variants,
         seeds=args.seeds,
         target_ratio=float(args.target_ratio),
         max_levels=int(args.max_levels),
-        optimized_candidates=bool(args.optimized_candidates),
+        candidate_mode=candidate_mode,
+        twohop_budget_per_node=int(args.twohop_budget_per_node),
+        twohop_max_time_budget_sec=args.twohop_max_time_budget_sec,
         device=str(args.device),
     ):
         run_dir = args.output / item.run_name
@@ -240,8 +312,9 @@ def main(argv: list[str] | None = None) -> int:
             "target_ratio": float(args.target_ratio),
             "experiment_block": "ogbn_mag_next4_medium",
             "input_graph_dir": str(args.input),
-            "candidate_source": "onehop_bucket_fallback" if args.optimized_candidates else "onehop_twohop_bucket",
-            "optimized_candidates": bool(args.optimized_candidates),
+            "candidate_source": candidate_mode,
+            "candidate_mode": candidate_mode,
+            "optimized_candidates": candidate_mode != "full_candidates",
             "compute_device": str(args.device),
             "unique_run_key": item.unique_run_key,
         }

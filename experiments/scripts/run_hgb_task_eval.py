@@ -91,6 +91,10 @@ def evaluate_run(
     full_graph_rgcn_lite: bool,
     full_graph_baselines: list[str] | None = None,
     full_graph_tuned_epochs: int | None = None,
+    target_node_type: str | None = None,
+    train_fraction: float = 0.6,
+    val_fraction: float = 0.2,
+    macro_empty_class_policy: str = "truth_pred_union",
 ) -> dict[str, Any]:
     metadata_path = run_dir / "metadata.json"
     metadata = read_json(metadata_path) if metadata_path.exists() else {}
@@ -117,6 +121,10 @@ def evaluate_run(
         full_graph_rgcn_lite=bool(full_graph_rgcn_lite),
         full_graph_baselines=full_graph_baselines,
         full_graph_tuned_epochs=full_graph_tuned_epochs,
+        target_node_type=target_node_type,
+        train_fraction=float(train_fraction),
+        val_fraction=float(val_fraction),
+        macro_empty_class_policy=str(macro_empty_class_policy),
     ).metrics
     result.update(
         {
@@ -164,6 +172,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--full-graph-tuned-epochs", type=int)
+    parser.add_argument("--target-node-type")
+    parser.add_argument("--train-fraction", type=float, default=0.6)
+    parser.add_argument("--val-fraction", type=float, default=0.2)
+    parser.add_argument(
+        "--macro-empty-class-policy",
+        default="truth_pred_union",
+        choices=["truth_pred_union", "eval_present"],
+    )
     parser.add_argument("--limit", type=int)
     parser.add_argument("--progress", action="store_true")
     return parser
@@ -204,6 +220,10 @@ def main(argv: list[str] | None = None) -> int:
                 full_graph_rgcn_lite=args.full_graph_rgcn_lite,
                 full_graph_baselines=args.full_graph_baselines,
                 full_graph_tuned_epochs=args.full_graph_tuned_epochs,
+                target_node_type=args.target_node_type,
+                train_fraction=float(args.train_fraction),
+                val_fraction=float(args.val_fraction),
+                macro_empty_class_policy=str(args.macro_empty_class_policy),
             )
         except Exception as exc:
             row = {

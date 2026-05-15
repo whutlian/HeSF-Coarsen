@@ -96,8 +96,16 @@ def _terminal_guard_settings(variant: str) -> dict:
     return base
 
 
-def _run_key(dataset: str, variant: str, target_ratio: float, seed: int, max_levels: int, candidate_k: int) -> str:
-    text = f"next4|{dataset}|{variant}|{target_ratio:.6g}|{seed}|{max_levels}|{candidate_k}"
+def _run_key(
+    dataset: str,
+    variant: str,
+    target_ratio: float,
+    seed: int,
+    max_levels: int,
+    candidate_k: int,
+    candidate_source: str,
+) -> str:
+    text = f"next4|{dataset}|{variant}|{target_ratio:.6g}|{seed}|{max_levels}|{candidate_k}|{candidate_source}"
     return f"next4:{dataset}:{variant}:{hashlib.sha1(text.encode('utf-8')).hexdigest()[:10]}"
 
 
@@ -109,6 +117,8 @@ def _make_config(
     max_levels: int,
     candidate_source: str,
     candidate_k: int,
+    twohop_budget_per_node: int = 1,
+    twohop_max_time_budget_sec: float | None = None,
 ) -> dict:
     settings = _variant_settings(variant)
     cfg = deepcopy(DEFAULT_CONFIG)
@@ -148,6 +158,13 @@ def _make_config(
         total_budget_K=int(candidate_k),
         twohop_budget_K2=max(1, int(candidate_k) // 2),
         ann_budget_K=int(candidate_k),
+        twohop_mode="capped_sampled" if "limited" in str(candidate_source) else "full",
+        twohop_budget_per_node=int(twohop_budget_per_node) if "limited" in str(candidate_source) else 0,
+        twohop_max_time_budget_sec=(
+            float(twohop_max_time_budget_sec)
+            if "limited" in str(candidate_source) and twohop_max_time_budget_sec is not None
+            else None
+        ),
         enable_fallback=True,
         fallback_penalty=1.0e6,
         fallback_max_fraction=0.05,
@@ -172,6 +189,8 @@ def generate_next4_configs(
     max_levels: int,
     candidate_source: str,
     candidate_k: int,
+    twohop_budget_per_node: int = 1,
+    twohop_max_time_budget_sec: float | None = None,
 ) -> Iterable[Next4Config]:
     for dataset, variant, target_ratio, seed in product(datasets, variants, target_ratios, seeds):
         cfg = _make_config(
@@ -181,6 +200,8 @@ def generate_next4_configs(
             max_levels=max_levels,
             candidate_source=candidate_source,
             candidate_k=candidate_k,
+            twohop_budget_per_node=int(twohop_budget_per_node),
+            twohop_max_time_budget_sec=twohop_max_time_budget_sec,
         )
         ratio_token = str(float(target_ratio)).replace(".", "p")
         run_name = (
@@ -194,7 +215,15 @@ def generate_next4_configs(
             target_ratio=float(target_ratio),
             seed=int(seed),
             config=cfg,
-            unique_run_key=_run_key(str(dataset), str(variant), float(target_ratio), int(seed), int(max_levels), int(candidate_k)),
+            unique_run_key=_run_key(
+                str(dataset),
+                str(variant),
+                float(target_ratio),
+                int(seed),
+                int(max_levels),
+                int(candidate_k),
+                str(candidate_source),
+            ),
         )
 
 
@@ -213,6 +242,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-levels", type=int, default=4)
     parser.add_argument("--candidate-source", default="onehop_twohop_bucket")
     parser.add_argument("--candidate-K", "--candidate-k", type=int, default=8, dest="candidate_K")
+    parser.add_argument("--twohop-budget-per-node", type=int, default=1)
+    parser.add_argument("--twohop-max-time-budget-sec", type=float)
     parser.add_argument("--progress", action="store_true")
     parser.add_argument("--progress-backend", choices=["auto", "plain", "tqdm"], default="plain")
     parser.add_argument("--progress-interval", type=float)
@@ -241,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
         max_levels=args.max_levels,
         candidate_source=args.candidate_source,
         candidate_k=args.candidate_K,
+        twohop_budget_per_node=int(args.twohop_budget_per_node),
+        twohop_max_time_budget_sec=args.twohop_max_time_budget_sec,
     ):
         graph_dir = (
             (args.graph_root / item.dataset.lower())

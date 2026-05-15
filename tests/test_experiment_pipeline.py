@@ -366,6 +366,11 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
                 "eval_on": "original_test_refined",
                 "projection_eval_on": "original_test_projected",
                 "refine_eval_on": "original_test_refined",
+                "label_coverage_train": 0.91,
+                "label_coverage_val": 0.82,
+                "label_coverage_test": 0.73,
+                "train_only_label_coverage": 0.64,
+                "task_split_policy": "synthetic_stratified",
             }
         ),
         encoding="utf-8",
@@ -380,6 +385,8 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     task_rows = list(csv.DictReader((tmp_path / "summary" / "task_summary.csv").open()))
     resource_run_rows = list(csv.DictReader((tmp_path / "summary" / "resource_summary_runlevel.csv").open()))
     target_rows = list(csv.DictReader((tmp_path / "summary" / "target_check.csv").open()))
+    paper_rows = list(csv.DictReader((tmp_path / "summary" / "paper_table_mean_std.csv").open()))
+    paper_dataset_rows = list(csv.DictReader((tmp_path / "summary" / "paper_table_dataset_variant.csv").open()))
     report = (tmp_path / "summary" / "report.md").read_text(encoding="utf-8")
 
     assert len(final_rows) == 1
@@ -390,6 +397,8 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert (tmp_path / "summary" / "compare_by_dataset_variant.csv").exists()
     assert (tmp_path / "summary" / "compare_by_source.csv").exists()
     assert (tmp_path / "summary" / "compare_by_dim.csv").exists()
+    assert (tmp_path / "summary" / "paper_table_mean_std.csv").exists()
+    assert (tmp_path / "summary" / "paper_table_dataset_variant.csv").exists()
     assert final_rows[0]["run_count_unique"] == "1"
     assert final_rows[0]["experiment_block"] == "B1"
     assert final_rows[0]["unique_run_key"] == "B1:ACM:base:unit"
@@ -484,6 +493,11 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert task_rows[0]["task_best_refined_macro_f1"] == "0.72"
     assert task_rows[0]["task_refine_auc_macro_f1"] == "0.686"
     assert task_rows[0]["task_primary_macro_f1"] == "0.72"
+    assert task_rows[0]["label_coverage_train"] == "0.91"
+    assert task_rows[0]["label_coverage_val"] == "0.82"
+    assert task_rows[0]["label_coverage_test"] == "0.73"
+    assert task_rows[0]["train_only_label_coverage"] == "0.64"
+    assert task_rows[0]["task_split_policy"] == "synthetic_stratified"
     assert resource_run_rows[0]["peak_rss_gb"] == "2.0"
     assert resource_run_rows[0]["peak_cpu_memory_gb"] == "2.0"
     assert resource_run_rows[0]["peak_vram_allocated_gb"] == "3.0"
@@ -492,6 +506,12 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert resource_run_rows[0]["cuda_available"] == "true"
     assert resource_run_rows[0]["cpu_only"] == "false"
     assert target_rows[0]["target_hit_rate"] == "1.0"
+    assert paper_rows[0]["variant"] == "base"
+    assert paper_rows[0]["compute_device_mark"] == "GPU"
+    assert paper_rows[0]["cumulative_dee_mean"] == "0.11"
+    assert paper_rows[0]["cumulative_dee_std"] == "0.0"
+    assert paper_rows[0]["task_refined_macro_f1_mean_pm_std"] == "0.7200 +/- 0.0000"
+    assert paper_dataset_rows[0]["dataset"] == "ACM"
     all_level_rows = list(csv.DictReader((tmp_path / "summary" / "all_levels.csv").open()))
     variant_rows = list(csv.DictReader((tmp_path / "summary" / "compare_by_variant.csv").open()))
     assert len(all_level_rows) == 2
@@ -503,6 +523,7 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
         assert (tmp_path / "summary" / "figures" / "source_distribution_by_variant.png").exists()
         assert (tmp_path / "summary" / "figures" / "task_vs_cumulative_dee.png").exists()
     assert "Unique runs: 1" in report
+    assert "GPU-marked runs: 1" in report
     assert "Level rows: 2" in report
     expected_core_header = (
         "| variant | final ratio | DEE \u2193 | FSE-unweighted \u2193 | "
@@ -592,6 +613,43 @@ def test_next4_mainline_default_freezes_short_confirmation_matrix(tmp_path):
     assert not any("_H5_" in name for name in run_names)
 
 
+def test_next4_mainline_limited_twohop_candidate_source_sets_budgeted_mode(tmp_path):
+    from experiments.scripts.run_hgb_next4_mainline import main
+
+    exit_code = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(tmp_path),
+            "--variants",
+            "H2",
+            "--target-ratio",
+            "0.5",
+            "--seeds",
+            "12345",
+            "--candidate-source",
+            "onehop_bucket_limited_twohop",
+            "--twohop-budget-per-node",
+            "2",
+            "--twohop-max-time-budget-sec",
+            "15",
+            "--dry-run",
+        ]
+    )
+
+    config_path = next(tmp_path.glob("next4_*/config.yaml"))
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert config["candidates"]["enable_onehop"] is True
+    assert config["candidates"]["enable_bucket"] is True
+    assert config["candidates"]["enable_capped_twohop"] is True
+    assert config["candidates"]["twohop_mode"] == "capped_sampled"
+    assert config["candidates"]["twohop_budget_per_node"] == 2
+    assert config["candidates"]["twohop_max_time_budget_sec"] == 15.0
+
+
 def test_ogbn_mag_next4_medium_dry_run_generates_cuda_h2h3h4(tmp_path):
     from experiments.scripts.run_ogbn_mag_next4_medium import main
 
@@ -633,6 +691,79 @@ def test_ogbn_mag_next4_medium_dry_run_generates_cuda_h2h3h4(tmp_path):
     assert h2["diagnostics"]["enable_large_graph_envelope"] is True
     assert h3["scoring"]["lambda_conv"] == 0.35
     assert h4["scoring"]["lambda_conv"] == 0.0
+
+
+def test_ogbn_mag_next4_medium_limited_twohop_mode_sets_budgeted_twohop(tmp_path):
+    from experiments.scripts.run_ogbn_mag_next4_medium import main
+
+    exit_code = main(
+        [
+            "--input",
+            str(tmp_path / "missing_subset"),
+            "--output",
+            str(tmp_path),
+            "--variants",
+            "H2",
+            "--seeds",
+            "12345",
+            "--device",
+            "cuda",
+            "--candidate-mode",
+            "limited_twohop",
+            "--twohop-budget-per-node",
+            "2",
+            "--twohop-max-time-budget-sec",
+            "30",
+            "--dry-run",
+        ]
+    )
+
+    config_path = next(tmp_path.glob("ogbn_mag_medium_*/config.yaml"))
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert config["candidates"]["enable_onehop"] is True
+    assert config["candidates"]["enable_bucket"] is True
+    assert config["candidates"]["enable_capped_twohop"] is True
+    assert config["candidates"]["twohop_mode"] == "capped_sampled"
+    assert config["candidates"]["twohop_budget_per_node"] == 2
+    assert config["candidates"]["twohop_max_time_budget_sec"] == 30.0
+
+
+def test_ogbn_mag_next4_medium_accepts_protocol_variant_names(tmp_path):
+    from experiments.scripts.run_ogbn_mag_next4_medium import main
+
+    exit_code = main(
+        [
+            "--input",
+            str(tmp_path / "missing_subset"),
+            "--output",
+            str(tmp_path),
+            "--variants",
+            "H2-opt",
+            "H3-opt",
+            "H4-opt",
+            "flatten-sum-opt",
+            "--seeds",
+            "12345",
+            "--device",
+            "cuda",
+            "--candidate-mode",
+            "optimized",
+            "--dry-run",
+        ]
+    )
+
+    configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in tmp_path.glob("ogbn_mag_medium_*/config.yaml")
+    }
+    flatten_cfg = next(cfg for name, cfg in configs.items() if "flatten-sum-opt" in name)
+
+    assert exit_code == 0
+    assert len(configs) == 4
+    assert flatten_cfg["fusion"]["relation_operator_mode"] == "single_relation_sum"
+    assert flatten_cfg["scoring"]["relation_profile_mode"] == "single_relation_sum"
 
 
 def test_next4_relation_fusion_dry_run_generates_required_variants(tmp_path):

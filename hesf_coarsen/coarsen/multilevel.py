@@ -303,6 +303,9 @@ def _resolved_config_diagnostics(config: dict) -> dict:
             for key in (
                 "total_budget_K",
                 "twohop_budget_K2",
+                "twohop_mode",
+                "twohop_budget_per_node",
+                "twohop_max_time_budget_sec",
                 "ann_budget_K",
                 "enable_onehop",
                 "enable_capped_twohop",

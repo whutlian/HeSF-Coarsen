@@ -139,6 +139,51 @@ def test_chunked_capped_twohop_keeps_per_node_and_per_middle_caps():
     assert store.source_counts().get("capped_twohop", 0) > 0
 
 
+def test_chunked_capped_twohop_limited_mode_caps_endpoint_participation():
+    graph = generate_synthetic_graph(num_users=20, num_items=1, num_tags=2, seed=717)
+    z = np.zeros((graph.num_nodes, 4), dtype=np.float32)
+    partition_id = np.zeros(graph.num_nodes, dtype=np.int32)
+    base_config = dict(DEFAULT_CONFIG)
+    base_config["candidates"] = dict(
+        DEFAULT_CONFIG["candidates"],
+        total_budget_K=20,
+        middle_degree_cap_policy="none",
+        per_middle_pair_cap=20,
+    )
+    full_store = ArrayCandidateStore(graph.node_type, K=20)
+    full_stats = generate_capped_twohop_candidates_chunked(
+        graph,
+        z,
+        partition_id,
+        base_config,
+        full_store,
+        middle_chunk_size=3,
+        edge_chunk_size=5,
+    )
+    limited_config = dict(base_config)
+    limited_config["candidates"] = dict(
+        base_config["candidates"],
+        twohop_mode="capped_sampled",
+        twohop_budget_per_node=1,
+    )
+    limited_store = ArrayCandidateStore(graph.node_type, K=20)
+
+    limited_stats = generate_capped_twohop_candidates_chunked(
+        graph,
+        z,
+        partition_id,
+        limited_config,
+        limited_store,
+        middle_chunk_size=3,
+        edge_chunk_size=5,
+    )
+
+    assert limited_stats["twohop_mode"] == "capped_sampled"
+    assert limited_stats["twohop_budget_per_node"] == 1
+    assert limited_stats["pairs_skipped_by_node_budget"] > 0
+    assert limited_stats["pairs_considered"] < full_stats["pairs_considered"]
+
+
 def _canonical_incident(incident):
     return {
         (int(middle), int(endpoint_type)): sorted({int(node) for node in nodes})

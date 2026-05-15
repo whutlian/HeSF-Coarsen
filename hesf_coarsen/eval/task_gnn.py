@@ -23,7 +23,12 @@ def compose_assignments(original_nodes: int, assignment_paths: list[str]) -> np.
     return mapping.astype(np.int64, copy=False)
 
 
-def f1_scores(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
+def f1_scores(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    *,
+    macro_empty_class_policy: str = "truth_pred_union",
+) -> dict[str, float]:
     y_true = np.asarray(y_true).reshape(-1)
     y_pred = np.asarray(y_pred).reshape(-1)
     valid = (y_true >= 0) & (y_pred >= 0)
@@ -31,7 +36,13 @@ def f1_scores(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
         return {"micro_f1": 0.0, "macro_f1": 0.0}
     truth = y_true[valid].astype(np.int64, copy=False)
     pred = y_pred[valid].astype(np.int64, copy=False)
-    labels = np.union1d(truth, pred)
+    policy = str(macro_empty_class_policy)
+    if policy == "eval_present":
+        labels = np.unique(truth)
+    elif policy == "truth_pred_union":
+        labels = np.union1d(truth, pred)
+    else:
+        raise ValueError(f"unsupported macro_empty_class_policy: {macro_empty_class_policy}")
     per_label: list[float] = []
     for label in labels:
         tp = int(np.sum((truth == label) & (pred == label)))
@@ -56,6 +67,137 @@ def labeled_split(labels: np.ndarray, seed: int, train_fraction: float = 0.6) ->
     if train_count >= len(perm) and len(perm) > 1:
         train_count = len(perm) - 1
     return perm[:train_count], perm[train_count:]
+
+
+def resolve_target_node_type(graph: HeteroGraph, target_node_type: str | int | None) -> int | None:
+    if target_node_type is None or str(target_node_type) == "":
+        return None
+    if isinstance(target_node_type, (int, np.integer)):
+        type_id = int(target_node_type)
+        if np.any(graph.node_type == type_id):
+            return type_id
+        raise ValueError(f"target_node_type {type_id} is not present in graph")
+    text = str(target_node_type)
+    try:
+        type_id = int(text)
+    except ValueError:
+        type_id = -1
+    if type_id >= 0:
+        if np.any(graph.node_type == type_id):
+            return type_id
+        raise ValueError(f"target_node_type {type_id} is not present in graph")
+
+    name_to_type: dict[str, int] = {}
+    for spec in graph.relation_specs.values():
+        parts = str(spec.name).split("__")
+        if len(parts) >= 3:
+            name_to_type.setdefault(parts[0], int(spec.src_type))
+            name_to_type.setdefault(parts[-1], int(spec.dst_type))
+    if text in name_to_type:
+        return int(name_to_type[text])
+    raise ValueError(f"target_node_type {target_node_type!r} could not be resolved from relation schema")
+
+
+def _stratified_three_way_split(
+    labeled_nodes: np.ndarray,
+    labels: np.ndarray,
+    *,
+    seed: int,
+    train_fraction: float,
+    val_fraction: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(int(seed))
+    train_parts: list[np.ndarray] = []
+    val_parts: list[np.ndarray] = []
+    test_parts: list[np.ndarray] = []
+    labeled_nodes = np.asarray(labeled_nodes, dtype=np.int64).reshape(-1)
+    labels = np.asarray(labels).reshape(-1)
+    for label in np.unique(labels[labeled_nodes]):
+        group = labeled_nodes[labels[labeled_nodes] == label].copy()
+        rng.shuffle(group)
+        n = int(len(group))
+        if n == 0:
+            continue
+        if n == 1:
+            train_count, val_count = 1, 0
+        else:
+            train_count = max(1, int(np.floor(n * float(train_fraction))))
+            train_count = min(train_count, n - 1)
+            remaining = n - train_count
+            if remaining >= 2 and float(val_fraction) > 0.0:
+                val_count = max(1, int(np.floor(n * float(val_fraction))))
+                val_count = min(val_count, remaining - 1)
+            else:
+                val_count = 0
+        train_parts.append(group[:train_count])
+        if val_count:
+            val_parts.append(group[train_count : train_count + val_count])
+        if train_count + val_count < n:
+            test_parts.append(group[train_count + val_count :])
+    train = np.concatenate(train_parts) if train_parts else np.array([], dtype=np.int64)
+    val = np.concatenate(val_parts) if val_parts else np.array([], dtype=np.int64)
+    test = np.concatenate(test_parts) if test_parts else np.array([], dtype=np.int64)
+    for split in (train, val, test):
+        rng.shuffle(split)
+    return train.astype(np.int64), val.astype(np.int64), test.astype(np.int64)
+
+
+def select_task_protocol_split(
+    graph: HeteroGraph,
+    labels: np.ndarray,
+    *,
+    seed: int,
+    target_node_type: str | int | None = None,
+    train_fraction: float = 0.6,
+    val_fraction: float = 0.2,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    labels = np.asarray(labels).reshape(-1)
+    type_id = resolve_target_node_type(graph, target_node_type)
+    if type_id is None:
+        candidate_nodes = np.arange(graph.num_nodes, dtype=np.int64)
+        target_label = "all_labeled"
+    else:
+        candidate_nodes = nodes_of_type(graph, int(type_id))
+        target_label = str(target_node_type)
+    labeled_nodes = candidate_nodes[labels[candidate_nodes] >= 0].astype(np.int64, copy=False)
+    train_nodes, val_nodes, test_nodes = _stratified_three_way_split(
+        labeled_nodes,
+        labels,
+        seed=int(seed),
+        train_fraction=float(train_fraction),
+        val_fraction=float(val_fraction),
+    )
+
+    def _coverage(nodes: np.ndarray) -> float:
+        if len(nodes) == 0:
+            return 0.0
+        return float(np.mean(labels[nodes] >= 0))
+
+    def _class_count(nodes: np.ndarray) -> int:
+        if len(nodes) == 0:
+            return 0
+        return int(len(np.unique(labels[nodes][labels[nodes] >= 0])))
+
+    suffix = "target_type" if type_id is not None else "all_labeled"
+    diagnostics: dict[str, Any] = {
+        "target_node_type": target_label,
+        "target_node_type_id": "" if type_id is None else int(type_id),
+        "task_split_policy": "synthetic_stratified",
+        "official_split_consistency": f"synthetic_stratified_{suffix}",
+        "macro_f1_empty_class_policy": "truth_pred_union",
+        "coarse_train_label_source": "train_only",
+        "num_labeled_nodes_total": int(len(labeled_nodes)),
+        "num_labeled_nodes_train": int(len(train_nodes)),
+        "num_labeled_nodes_val": int(len(val_nodes)),
+        "num_labeled_nodes_test": int(len(test_nodes)),
+        "label_coverage_train": _coverage(train_nodes),
+        "label_coverage_val": _coverage(val_nodes),
+        "label_coverage_test": _coverage(test_nodes),
+        "num_classes_present_train": _class_count(train_nodes),
+        "num_classes_present_val": _class_count(val_nodes),
+        "num_classes_present_test": _class_count(test_nodes),
+    }
+    return train_nodes, val_nodes, test_nodes, diagnostics
 
 
 def train_only_coarse_labels(
@@ -145,6 +287,10 @@ def evaluate_rgcn_task(
     full_graph_rgcn_lite: bool = False,
     full_graph_baselines: Iterable[str] | None = None,
     full_graph_tuned_epochs: int | None = None,
+    target_node_type: str | int | None = None,
+    train_fraction: float = 0.6,
+    val_fraction: float = 0.2,
+    macro_empty_class_policy: str = "truth_pred_union",
 ) -> TaskEvalResult:
     try:
         import torch
@@ -166,13 +312,22 @@ def evaluate_rgcn_task(
     dev = torch.device(device_name)
 
     labels = np.asarray(original.labels if original.labels is not None else np.full(original.num_nodes, -1))
-    train_nodes, test_nodes = labeled_split(labels, seed=seed)
+    train_nodes, val_nodes, test_nodes, task_protocol = select_task_protocol_split(
+        original,
+        labels,
+        seed=int(seed),
+        target_node_type=target_node_type,
+        train_fraction=float(train_fraction),
+        val_fraction=float(val_fraction),
+    )
+    task_protocol["macro_f1_empty_class_policy"] = str(macro_empty_class_policy)
     if len(train_nodes) == 0 or len(test_nodes) == 0:
         return TaskEvalResult(
             {
                 "model": "rgcn_lite",
                 "skipped": True,
                 "skip_reason": "not_enough_labeled_nodes",
+                **task_protocol,
             }
         )
     num_classes = int(labels[labels >= 0].max(initial=0)) + 1
@@ -475,7 +630,11 @@ def evaluate_rgcn_task(
         elapsed = 0.0
         if 0 in checkpoint_set:
             pred = eval_model(model, data)
-            f1 = f1_scores(labels[test_nodes], pred[test_nodes])
+            f1 = f1_scores(
+                labels[test_nodes],
+                pred[test_nodes],
+                macro_empty_class_policy=macro_empty_class_policy,
+            )
             scores[0] = {
                 "micro_f1": f1["micro_f1"],
                 "macro_f1": f1["macro_f1"],
@@ -494,7 +653,11 @@ def evaluate_rgcn_task(
             elapsed += float(perf_counter() - start)
             if epoch in checkpoint_set:
                 pred = eval_model(model, data)
-                f1 = f1_scores(labels[test_nodes], pred[test_nodes])
+                f1 = f1_scores(
+                    labels[test_nodes],
+                    pred[test_nodes],
+                    macro_empty_class_policy=macro_empty_class_policy,
+                )
                 scores[epoch] = {
                     "micro_f1": f1["micro_f1"],
                     "macro_f1": f1["macro_f1"],
@@ -505,9 +668,17 @@ def evaluate_rgcn_task(
     model = RGCNLite(coarse).to(dev)
     train_time = train_model(model, coarse_data, coarse_y, coarse_train, int(epochs))
     coarse_pred = eval_model(model, coarse_data)
-    coarse_train_f1 = f1_scores(coarse_labels[coarse_train_nodes], coarse_pred[coarse_train_nodes])
+    coarse_train_f1 = f1_scores(
+        coarse_labels[coarse_train_nodes],
+        coarse_pred[coarse_train_nodes],
+        macro_empty_class_policy=macro_empty_class_policy,
+    )
     projected_pred = coarse_pred[original_to_coarse[test_nodes]]
-    projected_f1 = f1_scores(labels[test_nodes], projected_pred)
+    projected_f1 = f1_scores(
+        labels[test_nodes],
+        projected_pred,
+        macro_empty_class_policy=macro_empty_class_policy,
+    )
 
     refine_model = RGCNLite(original).to(dev)
     refine_model.load_state_dict(model.state_dict(), strict=False)
@@ -515,7 +686,11 @@ def evaluate_rgcn_task(
     if refine_epochs_list is None:
         refine_time = train_model(refine_model, original_data, original_y, original_train, int(refine_epochs))
         original_pred = eval_model(refine_model, original_data)
-        refined_f1 = f1_scores(labels[test_nodes], original_pred[test_nodes])
+        refined_f1 = f1_scores(
+            labels[test_nodes],
+            original_pred[test_nodes],
+            macro_empty_class_policy=macro_empty_class_policy,
+        )
         checkpoint_metrics = {
             int(refine_epochs): {
                 "micro_f1": refined_f1["micro_f1"],
@@ -552,8 +727,10 @@ def evaluate_rgcn_task(
         "refine_eval_on": "original_test_refined",
         "num_classes": int(num_classes),
         "train_labeled_nodes": int(len(train_nodes)),
+        "val_labeled_nodes": int(len(val_nodes)),
         "test_labeled_nodes": int(len(test_nodes)),
         "coarse_train_nodes": int(len(coarse_train_nodes)),
+        **task_protocol,
         **label_protocol,
         "coarse_train_micro_f1": coarse_train_f1["micro_f1"],
         "coarse_train_macro_f1": coarse_train_f1["macro_f1"],
@@ -639,7 +816,11 @@ def evaluate_rgcn_task(
                 weight_decay_value=float(spec["weight_decay"]),
             )
             full_pred = eval_model(full_model, original_data)
-            full_f1 = f1_scores(labels[test_nodes], full_pred[test_nodes])
+            full_f1 = f1_scores(
+                labels[test_nodes],
+                full_pred[test_nodes],
+                macro_empty_class_policy=macro_empty_class_policy,
+            )
             metrics.update(
                 {
                     f"{baseline_name}_micro_f1": full_f1["micro_f1"],
