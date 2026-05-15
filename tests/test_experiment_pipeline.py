@@ -768,8 +768,69 @@ def test_stage_b_ablation_supports_m_g_s_next_stage_matrices(tmp_path):
     assert s1["sketch"]["dim"] == 32
     assert s2["candidates"]["quotas"]["bucket_min_fraction"] == 0.3
     assert s2["candidates"]["quotas"]["twohop_max_fraction"] == 0.7
+    assert s2["candidates"]["quotas"]["enforce_on"] == "selected_matches"
     assert s3["candidates"]["quotas"]["bucket_min_fraction"] == 0.3
     assert s3["candidates"]["quotas"]["twohop_max_fraction"] == 0.7
+    assert s3["candidates"]["quotas"]["enforce_on"] == "selected_matches"
+
+
+def test_stage_b_ablation_supports_pdf_next_round_variants(tmp_path):
+    from experiments.scripts.run_hgb_stage_b_ablation import main
+
+    exit_code = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(tmp_path),
+            "--target-ratios",
+            "0.5",
+            "--max-levels",
+            "4",
+            "--candidate-source",
+            "onehop_twohop_bucket",
+            "--candidate-K",
+            "8",
+            "--seeds",
+            "12345",
+            "--variants",
+            "M0-repeat",
+            "M0-conv0.35",
+            "M0-conv0.65",
+            "M0-relation-guard",
+            "G3-fixed",
+            "G3-task",
+            "G3-relation",
+            "--dry-run",
+        ]
+    )
+
+    configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in tmp_path.glob("stageB_*/config.yaml")
+    }
+    assert exit_code == 0
+    assert len(configs) == 7
+    repeat = next(cfg for name, cfg in configs.items() if "_M0-repeat_" in name)
+    conv035 = next(cfg for name, cfg in configs.items() if "_M0-conv0.35_" in name)
+    conv065 = next(cfg for name, cfg in configs.items() if "_M0-conv0.65_" in name)
+    relation_guard = next(cfg for name, cfg in configs.items() if "_M0-relation-guard_" in name)
+    g3_fixed = next(cfg for name, cfg in configs.items() if "_G3-fixed_" in name)
+    g3_task = next(cfg for name, cfg in configs.items() if "_G3-task_" in name)
+    g3_relation = next(cfg for name, cfg in configs.items() if "_G3-relation_" in name)
+
+    assert repeat["sketch"]["method"] == "chebyshev_heat"
+    assert repeat["sketch"]["dim"] == 16
+    assert repeat["fusion"]["relation_weighting"]["method"] == "uniform"
+    assert repeat["metapath_sketch"]["enabled"] is False
+    assert repeat["scoring"]["lambda_conv"] == 0.5
+    assert conv035["scoring"]["lambda_conv"] == 0.35
+    assert conv065["scoring"]["lambda_conv"] == 0.65
+    assert relation_guard["scoring"]["relation_guard"]["enabled"] is True
+    assert g3_fixed["coarsening"]["matching_method"] == "greedy_cluster"
+    assert g3_fixed["coarsening"]["cumulative_guard"]["accept_metric"] == "true_cumulative"
+    assert g3_task["coarsening"]["cumulative_guard"]["objective"] == "task"
+    assert g3_relation["coarsening"]["cumulative_guard"]["objective"] == "relation"
 
 
 def test_sanity_runner_outputs_summary_and_report(tmp_path):
@@ -882,6 +943,38 @@ def test_spectral_diagnostics_api_returns_bounded_metrics(tmp_path):
         "graphzoom_style",
         "convmatch_style",
     }
+
+
+def test_spectral_diagnostics_target_matches_cumulative_baselines(tmp_path):
+    from hesf_coarsen.eval.spectral_diagnostics import compute_spectral_diagnostics
+
+    graph = generate_synthetic_graph(num_users=12, num_items=8, num_tags=4, seed=1402)
+    result = run_multilevel_coarsening(graph, _tiny_config(tmp_path / "run"))[0]
+    z = np.arange(graph.num_nodes * 3, dtype=np.float32).reshape(graph.num_nodes, 3) / 10.0
+
+    diagnostics = compute_spectral_diagnostics(
+        original=graph,
+        coarse=result.graph,
+        assignment=result.assignment,
+        seed=11,
+        num_signals=3,
+        smoothing_steps=1,
+        relation_weights={relation_id: 1.0 for relation_id in graph.relations},
+        Z=z,
+        exact_eigenvalue_max_nodes=64,
+        baseline_methods=["random", "heavy_edge"],
+        baseline_max_nodes=64,
+        baseline_target_ratio=0.5,
+        baseline_target_tolerance=0.05,
+        baseline_max_levels=4,
+    )
+
+    for baseline in diagnostics["baseline_comparison"].values():
+        assert baseline["status"] == "computed"
+        assert baseline["target_ratio"] == 0.5
+        assert baseline["target_abs_error"] <= 0.05
+        assert baseline["target_hit"] is True
+        assert baseline["levels"] >= 1
 
 
 def test_synthetic_scale_estimate_has_expected_fields():

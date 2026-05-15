@@ -132,8 +132,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "hamming_radius": 0,
         "adaptive_hamming_radius": False,
         "quotas": {
+            "enforce_on": "candidate_retention",
             "bucket_min_fraction": 0.0,
             "twohop_max_fraction": 1.0,
+            "fallback_max_fraction": 1.0,
         },
     },
     "scoring": {

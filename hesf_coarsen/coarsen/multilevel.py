@@ -18,7 +18,7 @@ from hesf_coarsen.candidates.capped_twohop import (
 )
 from hesf_coarsen.candidates.onehop import generate_onehop_candidates, generate_onehop_candidates_chunked
 from hesf_coarsen.candidates.partition_ann import generate_partition_ann_candidates
-from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph_chunked
+from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph, coarsen_graph_chunked
 from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.eval.diagnostics import compute_diagnostics, save_diagnostics
 from hesf_coarsen.eval.spectral_diagnostics import compute_spectral_diagnostics
@@ -457,8 +457,9 @@ def _repair_bad_clusters(
     after_sipe_proxy = float(after_objective["cluster_sketch_spread"])
     cumulative_energy_delta = float(after_dee_proxy - before_dee_proxy)
     accept_only_if_improves = bool(guard.get("accept_only_if_cumulative_improves", False))
+    accept_metric = str(guard.get("accept_metric", "proxy")).lower().replace("-", "_")
     accepted = (after_dee_proxy < before_dee_proxy) or (after_sipe_proxy < before_sipe_proxy)
-    if accept_only_if_improves and not accepted:
+    if accept_only_if_improves and accept_metric != "true_cumulative" and not accepted:
         repaired = assignment
         repaired_sizes = sizes
         after_dee_proxy = before_dee_proxy
@@ -485,6 +486,132 @@ def _repair_bad_clusters(
         "node_reduction_before": int(np.sum(np.maximum(sizes - 1, 0))),
         "node_reduction_after": int(np.sum(np.maximum(repaired_sizes - 1, 0))),
     }
+
+
+def _maybe_apply_true_cumulative_repair_gate(
+    *,
+    original: HeteroGraph,
+    current: HeteroGraph,
+    before_assignment: Assignment,
+    repaired_assignment: Assignment,
+    cumulative_assignment: np.ndarray | None,
+    root_spectral_input: np.ndarray | None,
+    current_spectral_input: np.ndarray,
+    root_relation_weights: dict[int, float] | None,
+    current_relation_weights: dict[int, float],
+    config: dict,
+    diagnostics: dict,
+    seed: int,
+) -> tuple[Assignment, dict]:
+    guard = config.get("coarsening", {}).get("cumulative_guard", {})
+    accept_metric = str(guard.get("accept_metric", "proxy")).lower().replace("-", "_")
+    if (
+        accept_metric != "true_cumulative"
+        or not bool(guard.get("accept_only_if_cumulative_improves", False))
+        or not bool(diagnostics.get("repair_accepted", False))
+        or cumulative_assignment is None
+    ):
+        return repaired_assignment, diagnostics
+
+    spectral_input = root_spectral_input
+    relation_weights = root_relation_weights
+    if spectral_input is None and current is original:
+        spectral_input = current_spectral_input
+        relation_weights = current_relation_weights
+    if spectral_input is None or relation_weights is None:
+        diagnostics["true_cumulative_accept"] = None
+        diagnostics["repair_rejected_by_true_cumulative"] = False
+        diagnostics["true_cumulative_skipped_reason"] = "missing_root_spectral_state"
+        return repaired_assignment, diagnostics
+
+    before_cumulative = before_assignment.assignment[cumulative_assignment]
+    after_cumulative = repaired_assignment.assignment[cumulative_assignment]
+    feature_aggregation, feature_weights, _feature_diag = _feature_aggregation_options(config)
+    before_coarse = coarsen_graph(
+        current,
+        before_assignment,
+        feature_aggregation=feature_aggregation,
+        feature_weights=feature_weights,
+        pagerank_iterations=int(
+            config.get("coarsening", {}).get("feature_aggregation_pagerank_iterations", 20)
+        ),
+        pagerank_damping=float(
+            config.get("coarsening", {}).get("feature_aggregation_pagerank_damping", 0.85)
+        ),
+    )
+    after_coarse = coarsen_graph(
+        current,
+        repaired_assignment,
+        feature_aggregation=feature_aggregation,
+        feature_weights=feature_weights,
+        pagerank_iterations=int(
+            config.get("coarsening", {}).get("feature_aggregation_pagerank_iterations", 20)
+        ),
+        pagerank_damping=float(
+            config.get("coarsening", {}).get("feature_aggregation_pagerank_damping", 0.85)
+        ),
+    )
+    diagnostics_cfg = config.get("diagnostics", {})
+    smoothing_steps = int(diagnostics_cfg.get("spectral_smoothing_steps", 1))
+    eigen_max_nodes = diagnostics_cfg.get("cumulative_spectral_exact_eigenvalue_max_nodes", 0)
+    before_metrics = compute_spectral_diagnostics(
+        original=original,
+        coarse=before_coarse,
+        assignment=Assignment(
+            assignment=before_cumulative.astype(np.int64, copy=False),
+            supernode_type=before_coarse.node_type.astype(np.int32, copy=False),
+        ),
+        seed=int(seed),
+        num_signals=int(spectral_input.shape[1]),
+        smoothing_steps=smoothing_steps,
+        relation_weights=relation_weights,
+        Z=spectral_input,
+        exact_eigenvalue_max_nodes=eigen_max_nodes,
+        baseline_methods=None,
+    )
+    after_metrics = compute_spectral_diagnostics(
+        original=original,
+        coarse=after_coarse,
+        assignment=Assignment(
+            assignment=after_cumulative.astype(np.int64, copy=False),
+            supernode_type=after_coarse.node_type.astype(np.int32, copy=False),
+        ),
+        seed=int(seed) + 1,
+        num_signals=int(spectral_input.shape[1]),
+        smoothing_steps=smoothing_steps,
+        relation_weights=relation_weights,
+        Z=spectral_input,
+        exact_eigenvalue_max_nodes=eigen_max_nodes,
+        baseline_methods=None,
+    )
+    before_dee = float(before_metrics.get("dirichlet_energy_relative_error", 0.0))
+    after_dee = float(after_metrics.get("dirichlet_energy_relative_error", 0.0))
+    before_sipe = float(before_metrics.get("sketch_inner_product_relative_error", 0.0))
+    after_sipe = float(after_metrics.get("sketch_inner_product_relative_error", 0.0))
+    accepted = (after_dee < before_dee) or (after_sipe < before_sipe)
+    diagnostics.update(
+        {
+            "true_cumulative_accept": bool(accepted),
+            "repair_rejected_by_true_cumulative": bool(not accepted),
+            "true_cumulative_dee_before": before_dee,
+            "true_cumulative_dee_after": after_dee,
+            "true_cumulative_sipe_before": before_sipe,
+            "true_cumulative_sipe_after": after_sipe,
+            "true_cumulative_ree_max_before": float(
+                before_metrics.get("relation_energy_relative_error_max", 0.0)
+            ),
+            "true_cumulative_ree_max_after": float(
+                after_metrics.get("relation_energy_relative_error_max", 0.0)
+            ),
+        }
+    )
+    if accepted:
+        return repaired_assignment, diagnostics
+    diagnostics["repair_accepted"] = False
+    diagnostics["node_reduction_after"] = diagnostics.get("node_reduction_before")
+    diagnostics["estimated_cumulative_dee_after"] = diagnostics.get("estimated_cumulative_dee_before")
+    diagnostics["estimated_cumulative_sipe_after"] = diagnostics.get("estimated_cumulative_sipe_before")
+    return before_assignment, diagnostics
 
 
 def _classification_f1_from_labels(truth: np.ndarray, predicted: np.ndarray) -> dict:
@@ -849,7 +976,12 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         progress_message(config, f"level {level}: matching start (method={matching_method})")
         if streaming_mutual_best:
             assert streaming_state is not None
-            assignment = finalize_mutual_best(current, streaming_state, level_matching_config)
+            assignment = finalize_mutual_best(
+                current,
+                streaming_state,
+                level_matching_config,
+                source_lookup=getattr(store, "source_for_pair", None),
+            )
         else:
             assert scored is not None
             assignment = run_matching(
@@ -859,11 +991,33 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 partition_id=partition_id,
             )
         progress_message(config, f"level {level}: matching done")
+        pre_repair_assignment = assignment
         assignment, cumulative_guard_diag = _repair_bad_clusters(
             current,
             assignment,
             Z.astype(np.float32, copy=False),
             level_matching_config,
+        )
+        repair_spectral_num_signals = int(
+            config.get("diagnostics", {}).get("spectral_num_signals", min(Z.shape[1], 4))
+        )
+        repair_spectral_input = Z[:, : max(1, min(repair_spectral_num_signals, Z.shape[1]))].astype(
+            np.float32,
+            copy=False,
+        )
+        assignment, cumulative_guard_diag = _maybe_apply_true_cumulative_repair_gate(
+            original=graph,
+            current=current,
+            before_assignment=pre_repair_assignment,
+            repaired_assignment=assignment,
+            cumulative_assignment=cumulative_assignment,
+            root_spectral_input=root_spectral_input,
+            current_spectral_input=repair_spectral_input,
+            root_relation_weights=root_relation_weights,
+            current_relation_weights=relation_weights,
+            config=level_matching_config,
+            diagnostics=cumulative_guard_diag,
+            seed=int(config.get("seed", 12345)) + level + 20_000,
         )
         matched_pairs_by_source = selected_pair_sources(
             assignment,
@@ -966,6 +1120,18 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         )
         diagnostics["config"] = _resolved_config_diagnostics(scoring_config)
         diagnostics["matched_pairs_by_source"] = matched_pairs_by_source
+        if streaming_state is not None and streaming_state.selected_quota_diagnostics is not None:
+            quota_diag = streaming_state.selected_quota_diagnostics
+            diagnostics["selected_match_quota"] = quota_diag
+            diagnostics["selected_match_source_distribution_before_quota"] = quota_diag.get(
+                "selected_match_source_distribution_before_quota",
+                {},
+            )
+            diagnostics["selected_match_source_distribution_after_quota"] = quota_diag.get(
+                "selected_match_source_distribution_after_quota",
+                {},
+            )
+            diagnostics["quota_violation"] = quota_diag.get("quota_violation", {})
         diagnostics["fallback_selected_fraction"] = float(
             matched_pairs_by_source.get("fallback", 0)
             / max(int(diagnostics.get("matched_pairs", 0)), 1)
@@ -1032,6 +1198,19 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                     ),
                     baseline_methods=cumulative_spectral_baselines,
                     baseline_max_nodes=diagnostics_cfg.get("spectral_baseline_max_nodes", 5000),
+                    baseline_target_ratio=float(config.get("coarsening", {}).get("target_ratio", 0.0)),
+                    baseline_target_tolerance=float(
+                        diagnostics_cfg.get(
+                            "baseline_target_tolerance",
+                            diagnostics_cfg.get("target_tolerance", 0.02),
+                        )
+                    ),
+                    baseline_max_levels=int(
+                        diagnostics_cfg.get(
+                            "baseline_max_levels",
+                            config.get("coarsening", {}).get("max_levels", 4),
+                        )
+                    ),
                 )
             runtime["spectral_diagnostics"] = perf_counter() - start_spectral
             diagnostics["runtime_by_stage"] = dict(runtime)

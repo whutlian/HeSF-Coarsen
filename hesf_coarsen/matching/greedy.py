@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import ceil, floor
 
 import numpy as np
 
@@ -198,6 +199,7 @@ class MutualBestState:
     best_cost: np.ndarray
     best_neighbor: np.ndarray
     best_source: np.ndarray | None = None
+    selected_quota_diagnostics: dict | None = None
 
 
 def initialize_mutual_best_state(graph: HeteroGraph) -> MutualBestState:
@@ -284,10 +286,149 @@ def selected_pair_sources(
     return counts
 
 
+def _source_name(source_lookup, left: int, right: int) -> str:
+    if source_lookup is None:
+        return "unknown"
+    value = source_lookup(int(left), int(right))
+    return "unknown" if value is None else str(value)
+
+
+def _quota_source_key(source: str) -> str:
+    normalized = str(source).lower()
+    if normalized in {"twohop", "capped_twohop", "capped-twohop"}:
+        return "capped_twohop"
+    return normalized
+
+
+def _source_distribution(
+    left: np.ndarray,
+    right: np.ndarray,
+    indices: np.ndarray,
+    source_lookup,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for index in indices:
+        source = _source_name(source_lookup, int(left[index]), int(right[index]))
+        counts[source] = counts.get(source, 0) + 1
+    return counts
+
+
+def _quota_diagnostics(
+    *,
+    enforced: bool,
+    before: dict[str, int],
+    after: dict[str, int],
+    quotas: dict,
+) -> dict:
+    total = max(int(sum(after.values())), 1)
+    bucket_min = float(quotas.get("bucket_min_fraction", 0.0) or 0.0)
+    twohop_max = quotas.get("twohop_max_fraction")
+    fallback_max = quotas.get("fallback_max_fraction")
+    bucket_fraction = float(after.get("bucket", 0) / total)
+    twohop_fraction = float(
+        (after.get("capped_twohop", 0) + after.get("twohop", 0)) / total
+    )
+    fallback_fraction = float(after.get("fallback", 0) / total)
+    violation = {
+        "bucket": float(max(0.0, bucket_min - bucket_fraction)),
+        "twohop": 0.0
+        if twohop_max is None
+        else float(max(0.0, twohop_fraction - float(twohop_max))),
+        "fallback": 0.0
+        if fallback_max is None
+        else float(max(0.0, fallback_fraction - float(fallback_max))),
+    }
+    return {
+        "enforced": bool(enforced),
+        "selected_match_source_distribution_before_quota": before,
+        "selected_match_source_distribution_after_quota": after,
+        "quota_violation": violation,
+    }
+
+
+def _apply_selected_match_quotas(
+    left: np.ndarray,
+    right: np.ndarray,
+    costs: np.ndarray,
+    config: dict,
+    source_lookup,
+    max_matched_pairs: int | None,
+) -> tuple[np.ndarray, np.ndarray, dict | None]:
+    limit = len(left) if max_matched_pairs is None else min(len(left), max(0, int(max_matched_pairs)))
+    if limit <= 0:
+        empty = np.empty(0, dtype=np.int64)
+        return empty, empty, None
+    order = np.lexsort((right, left, costs))
+    left = left[order]
+    right = right[order]
+    costs = costs[order]
+    quotas = config.get("candidates", {}).get("quotas", {}) or {}
+    enforce_on = str(quotas.get("enforce_on", "candidate_retention")).lower()
+    top_indices = np.arange(limit, dtype=np.int64)
+    before = _source_distribution(left, right, top_indices, source_lookup)
+    if enforce_on not in {"selected_matches", "selected-match", "selected"} or source_lookup is None:
+        after = before
+        diagnostics = _quota_diagnostics(enforced=False, before=before, after=after, quotas=quotas)
+        return left[top_indices], right[top_indices], diagnostics
+
+    bucket_min_fraction = float(quotas.get("bucket_min_fraction", 0.0) or 0.0)
+    twohop_max_fraction = quotas.get("twohop_max_fraction")
+    fallback_max_fraction = quotas.get("fallback_max_fraction")
+    min_bucket = int(ceil(limit * bucket_min_fraction - 1.0e-12))
+    max_by_source: dict[str, int] = {}
+    if twohop_max_fraction is not None:
+        max_by_source["capped_twohop"] = int(floor(limit * float(twohop_max_fraction) + 1.0e-12))
+    if fallback_max_fraction is not None:
+        max_by_source["fallback"] = int(floor(limit * float(fallback_max_fraction) + 1.0e-12))
+
+    source_keys = np.asarray(
+        [_quota_source_key(_source_name(source_lookup, int(i), int(j))) for i, j in zip(left, right)],
+        dtype=object,
+    )
+    selected: list[int] = []
+    selected_set: set[int] = set()
+    counts: dict[str, int] = {}
+
+    def add_index(index: int, *, ignore_max: bool = False) -> bool:
+        if index in selected_set or len(selected) >= limit:
+            return False
+        source = str(source_keys[index])
+        if not ignore_max and source in max_by_source and counts.get(source, 0) >= max_by_source[source]:
+            return False
+        selected.append(index)
+        selected_set.add(index)
+        counts[source] = counts.get(source, 0) + 1
+        return True
+
+    if min_bucket > 0:
+        for index, source in enumerate(source_keys):
+            if source == "bucket" and counts.get("bucket", 0) < min_bucket:
+                add_index(index, ignore_max=True)
+            if counts.get("bucket", 0) >= min_bucket:
+                break
+
+    for index in range(len(left)):
+        if len(selected) >= limit:
+            break
+        add_index(index)
+
+    if len(selected) < limit:
+        for index in range(len(left)):
+            if len(selected) >= limit:
+                break
+            add_index(index, ignore_max=True)
+
+    chosen = np.asarray(selected, dtype=np.int64)
+    after = _source_distribution(left, right, chosen, source_lookup)
+    diagnostics = _quota_diagnostics(enforced=True, before=before, after=after, quotas=quotas)
+    return left[chosen], right[chosen], diagnostics
+
+
 def finalize_mutual_best(
     graph: HeteroGraph,
     state: MutualBestState,
     config: dict,
+    source_lookup=None,
 ) -> Assignment:
     coarsen_cfg = config.get("coarsening", {})
     max_matched_pairs = coarsen_cfg.get("max_matched_pairs")
@@ -311,11 +452,15 @@ def finalize_mutual_best(
     mutual_right = state.best_neighbor[mutual_left]
     mutual_cost = state.best_cost[mutual_left]
 
-    if max_matched_pairs is not None and len(mutual_left) > max_matched_pairs:
-        order = np.lexsort((mutual_right, mutual_left, mutual_cost))
-        keep = order[:max_matched_pairs]
-        mutual_left = mutual_left[keep]
-        mutual_right = mutual_right[keep]
+    mutual_left, mutual_right, quota_diagnostics = _apply_selected_match_quotas(
+        mutual_left,
+        mutual_right,
+        mutual_cost,
+        config,
+        source_lookup,
+        max_matched_pairs,
+    )
+    state.selected_quota_diagnostics = quota_diagnostics
 
     return _assignment_from_pair_arrays(graph, mutual_left, mutual_right)
 

@@ -246,6 +246,12 @@ def _baseline_method_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
             ),
             "",
         )
+        aliases[f"baseline_{safe}_target_ratio"] = row.get(f"{base}target_ratio", "")
+        aliases[f"baseline_{safe}_target_tolerance"] = row.get(f"{base}target_tolerance", "")
+        aliases[f"baseline_{safe}_target_abs_error"] = row.get(f"{base}target_abs_error", "")
+        aliases[f"baseline_{safe}_target_hit"] = row.get(f"{base}target_hit", "")
+        aliases[f"baseline_{safe}_levels"] = row.get(f"{base}levels", "")
+        aliases[f"baseline_{safe}_stopped_by"] = row.get(f"{base}stopped_by", "")
     return aliases
 
 

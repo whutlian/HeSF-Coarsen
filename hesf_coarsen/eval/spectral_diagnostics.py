@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import ceil
 from time import perf_counter
 from typing import Any
 
@@ -316,6 +317,72 @@ def _baseline_assignment(
     return _assignment_from_pairs(graph, pairs, max_pairs)
 
 
+def _target_matched_baseline(
+    graph: HeteroGraph,
+    method: str,
+    target_ratio: float,
+    target_tolerance: float,
+    max_levels: int,
+    seed: int,
+    relation_weights: dict[int, float] | None,
+    dim: int,
+) -> tuple[HeteroGraph, Assignment, dict[str, Any]]:
+    target_ratio = float(target_ratio)
+    tolerance = max(float(target_tolerance), 0.0)
+    target_nodes = max(1, int(ceil(graph.num_nodes * target_ratio - 1.0e-12)))
+    current = graph
+    cumulative = np.arange(graph.num_nodes, dtype=np.int64)
+    levels = 0
+    stopped_by = "max_levels"
+    for level in range(1, max(int(max_levels), 1) + 1):
+        current_ratio = float(current.num_nodes / max(graph.num_nodes, 1))
+        if abs(current_ratio - target_ratio) <= tolerance or current.num_nodes <= target_nodes:
+            stopped_by = "target_hit"
+            break
+        desired_nodes = max(target_nodes, int(ceil(current.num_nodes * 0.5 - 1.0e-12)))
+        max_pairs = max(0, int(current.num_nodes) - int(desired_nodes))
+        if max_pairs <= 0:
+            stopped_by = "no_decrease"
+            break
+        assignment = _baseline_assignment(
+            current,
+            method,
+            max_pairs=max_pairs,
+            seed=int(seed) + 97 * level,
+            relation_weights=relation_weights,
+            dim=dim,
+        )
+        coarse = coarsen_graph(current, assignment)
+        if coarse.num_nodes >= current.num_nodes:
+            stopped_by = "no_decrease"
+            current = coarse
+            cumulative = assignment.assignment[cumulative]
+            break
+        cumulative = assignment.assignment[cumulative]
+        current = coarse
+        levels = level
+    final_ratio = float(current.num_nodes / max(graph.num_nodes, 1))
+    target_abs_error = float(abs(final_ratio - target_ratio))
+    if target_abs_error <= tolerance:
+        stopped_by = "target_hit"
+    diagnostics = {
+        "target_ratio": target_ratio,
+        "target_tolerance": tolerance,
+        "target_hit": bool(target_abs_error <= tolerance),
+        "target_abs_error": target_abs_error,
+        "levels": int(levels),
+        "stopped_by": stopped_by,
+    }
+    return (
+        current,
+        Assignment(
+            assignment=cumulative.astype(np.int64, copy=False),
+            supernode_type=current.node_type.astype(np.int32, copy=False),
+        ),
+        diagnostics,
+    )
+
+
 def _baseline_comparison(
     original: HeteroGraph,
     actual_assignment: Assignment,
@@ -326,6 +393,9 @@ def _baseline_comparison(
     baseline_methods: str | list[str] | tuple[str, ...] | None,
     baseline_max_nodes: int | None,
     exact_eigenvalue_max_nodes: int | None,
+    baseline_target_ratio: float | None,
+    baseline_target_tolerance: float,
+    baseline_max_levels: int | None,
 ) -> dict[str, Any]:
     if isinstance(baseline_methods, str):
         methods = [method.strip() for method in baseline_methods.split(",") if method.strip()]
@@ -347,15 +417,37 @@ def _baseline_comparison(
     comparison: dict[str, Any] = {}
     for offset, method in enumerate(methods):
         start = perf_counter()
-        baseline_assignment = _baseline_assignment(
-            original,
-            method,
-            max_pairs=max_pairs,
-            seed=int(seed) + 104729 * offset,
-            relation_weights=relation_weights,
-            dim=Z.shape[1],
-        )
-        baseline_coarse = coarsen_graph(original, baseline_assignment)
+        baseline_control: dict[str, Any]
+        if baseline_target_ratio is None:
+            baseline_assignment = _baseline_assignment(
+                original,
+                method,
+                max_pairs=max_pairs,
+                seed=int(seed) + 104729 * offset,
+                relation_weights=relation_weights,
+                dim=Z.shape[1],
+            )
+            baseline_coarse = coarsen_graph(original, baseline_assignment)
+            baseline_ratio = float(baseline_coarse.num_nodes / max(original.num_nodes, 1))
+            baseline_control = {
+                "target_ratio": baseline_ratio,
+                "target_tolerance": 0.0,
+                "target_hit": True,
+                "target_abs_error": 0.0,
+                "levels": 1,
+                "stopped_by": "matched_pair_budget",
+            }
+        else:
+            baseline_coarse, baseline_assignment, baseline_control = _target_matched_baseline(
+                original,
+                method,
+                target_ratio=float(baseline_target_ratio),
+                target_tolerance=float(baseline_target_tolerance),
+                max_levels=int(baseline_max_levels or 4),
+                seed=int(seed) + 104729 * offset,
+                relation_weights=relation_weights,
+                dim=Z.shape[1],
+            )
         baseline_matched_pairs = int(np.sum(baseline_assignment.cluster_sizes() == 2))
         baseline_metrics = compute_spectral_diagnostics(
             original,
@@ -374,6 +466,7 @@ def _baseline_comparison(
             "coarse_nodes": int(baseline_coarse.num_nodes),
             "final_cumulative_ratio": float(baseline_coarse.num_nodes / max(original.num_nodes, 1)),
             "matched_pairs": baseline_matched_pairs,
+            **baseline_control,
             "dirichlet_energy_relative_error": baseline_metrics[
                 "dirichlet_energy_relative_error"
             ],
@@ -414,6 +507,9 @@ def compute_spectral_diagnostics(
     exact_eigenvalue_max_nodes: int | None = None,
     baseline_methods: str | list[str] | tuple[str, ...] | None = None,
     baseline_max_nodes: int | None = None,
+    baseline_target_ratio: float | None = None,
+    baseline_target_tolerance: float = 0.02,
+    baseline_max_levels: int | None = None,
 ) -> dict[str, Any]:
     """Compute sparse, sketch-based spectral diagnostics for one coarsening level."""
 
@@ -523,5 +619,8 @@ def compute_spectral_diagnostics(
         baseline_methods,
         baseline_max_nodes,
         exact_eigenvalue_max_nodes,
+        baseline_target_ratio,
+        baseline_target_tolerance,
+        baseline_max_levels,
     )
     return diagnostics

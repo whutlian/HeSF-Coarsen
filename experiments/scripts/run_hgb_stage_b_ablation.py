@@ -51,6 +51,41 @@ def _candidate_flags(source: str) -> dict:
     }
 
 
+def _configure_m0_mainline(config: dict) -> dict:
+    cfg = deepcopy(config)
+    cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "uniform"
+    cfg.setdefault("sketch", {})["method"] = "chebyshev_heat"
+    cfg.setdefault("sketch", {})["dim"] = 16
+    cfg.setdefault("metapath_sketch", {})["preset"] = "off"
+    cfg["metapath_sketch"]["enabled"] = False
+    cfg["metapath_sketch"]["operator_weight_total"] = 0.0
+    cfg["metapath_sketch"]["paths"] = []
+    cfg["metapath_sketch"]["auto_paths"] = False
+    cfg.setdefault("scoring", {})["lambda_conv"] = 0.5
+    return cfg
+
+
+def _configure_g3_true_cumulative_repair(config: dict, objective: str) -> dict:
+    cfg = deepcopy(config)
+    cfg.setdefault("coarsening", {})["matching_method"] = "greedy_cluster"
+    cfg["coarsening"]["max_cluster_size"] = 4
+    guard = cfg.setdefault("coarsening", {}).setdefault("cumulative_guard", {})
+    guard.update(
+        {
+            "enabled": True,
+            "probe_count": 32,
+            "max_cumulative_dee": 0.40,
+            "max_cumulative_sipe": 0.75,
+            "repair_bad_clusters": True,
+            "repair_strategy": "split_local_swap_accept",
+            "accept_only_if_cumulative_improves": True,
+            "accept_metric": "true_cumulative",
+            "objective": str(objective),
+        }
+    )
+    return cfg
+
+
 def _variant_config(config: dict, variant: str) -> dict:
     cfg = deepcopy(config)
     if variant == "base" or variant in {
@@ -64,16 +99,35 @@ def _variant_config(config: dict, variant: str) -> dict:
         "D3",
     }:
         return cfg
+    if variant in {
+        "M0-repeat",
+        "M0-conv0.35",
+        "M0-conv0.65",
+        "M0-relation-guard",
+    }:
+        cfg = _configure_m0_mainline(cfg)
+        if variant == "M0-conv0.35":
+            cfg["scoring"]["lambda_conv"] = 0.35
+        elif variant == "M0-conv0.65":
+            cfg["scoring"]["lambda_conv"] = 0.65
+        elif variant == "M0-relation-guard":
+            cfg.setdefault("scoring", {}).setdefault("relation_guard", {}).update(
+                {
+                    "enabled": True,
+                    "max_ree_increase": 0.02,
+                    "max_relation_profile_drift": 0.05,
+                }
+            )
+        return cfg
+    if variant in {"G3-fixed", "G3-task", "G3-relation"}:
+        objective = {
+            "G3-fixed": "spectral",
+            "G3-task": "task",
+            "G3-relation": "relation",
+        }[variant]
+        return _configure_g3_true_cumulative_repair(cfg, objective)
     if variant in {"M0", "M1", "M2", "M3", "M4", "M5"}:
-        cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "uniform"
-        cfg.setdefault("sketch", {})["method"] = "chebyshev_heat"
-        cfg.setdefault("sketch", {})["dim"] = 16
-        cfg.setdefault("metapath_sketch", {})["preset"] = "off"
-        cfg["metapath_sketch"]["enabled"] = False
-        cfg["metapath_sketch"]["operator_weight_total"] = 0.0
-        cfg["metapath_sketch"]["paths"] = []
-        cfg["metapath_sketch"]["auto_paths"] = False
-        cfg.setdefault("scoring", {})["lambda_conv"] = 0.5
+        cfg = _configure_m0_mainline(cfg)
         if variant == "M1":
             cfg["scoring"]["lambda_conv"] = 0.25
         if variant == "M2":
@@ -130,8 +184,10 @@ def _variant_config(config: dict, variant: str) -> dict:
             cfg["sketch"]["dim"] = 32
         if variant in {"S2", "S3"}:
             cfg.setdefault("candidates", {}).setdefault("quotas", {})
+            cfg["candidates"]["quotas"]["enforce_on"] = "selected_matches"
             cfg["candidates"]["quotas"]["bucket_min_fraction"] = 0.30
             cfg["candidates"]["quotas"]["twohop_max_fraction"] = 0.70
+            cfg["candidates"]["quotas"]["fallback_max_fraction"] = 0.02
         return cfg
     if variant in {"A0", "A2", "A4", "A5", "V0", "V1", "V2", "V3", "V4", "V5"}:
         cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "uniform"
