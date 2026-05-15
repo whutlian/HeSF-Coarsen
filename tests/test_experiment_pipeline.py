@@ -678,6 +678,65 @@ def test_next4_baseline_script_computes_target_matched_rows(tmp_path):
     assert wide[0]["baseline_graphzoom_style_target_hit"] == "True"
 
 
+def test_evaluate_refine_curve_uses_cached_task_eval(tmp_path):
+    from experiments.scripts.evaluate_refine_curve import main
+
+    run_dir = tmp_path / "runs" / "r1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "task_eval.json").write_text(
+        json.dumps(
+            {
+                "run_name": "r1",
+                "dataset": "ACM",
+                "variant": "H2",
+                "projected_original_macro_f1": 0.61,
+                "refined_original_macro_f1@0": 0.62,
+                "refined_original_macro_f1@1": 0.58,
+                "refined_original_macro_f1@3": 0.66,
+                "refined_original_macro_f1@5": 0.67,
+                "best_refined_macro_f1": 0.67,
+                "best_refined_epoch": 5,
+                "refine_auc_macro_f1": 0.64,
+                "full_graph_rgcn_lite_macro_f1": 0.7,
+            }
+        ),
+        encoding="utf-8",
+    )
+    summary = tmp_path / "summary.csv"
+    summary.write_text(
+        "run_name,run_dir,dataset,variant\n"
+        f"r1,{run_dir},ACM,H2\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--summary",
+            str(summary),
+            "--variants",
+            "H2",
+            "--refine-epochs",
+            "0",
+            "1",
+            "3",
+            "5",
+            "--output",
+            str(tmp_path / "out"),
+            "--graph-root",
+            str(tmp_path / "missing_graph_root"),
+        ]
+    )
+
+    rows = list(csv.DictReader((tmp_path / "out" / "task_refine_curve.csv").open()))
+    assert exit_code == 0
+    assert len(rows) == 4
+    assert {row["source"] for row in rows} == {"task_eval_cache"}
+    by_epoch = {row["refine_epochs"]: row for row in rows}
+    assert by_epoch["1"]["refined_original_macro_f1"] == "0.58"
+    assert by_epoch["5"]["best_refined_macro_f1"] == "0.67"
+    assert by_epoch["5"]["full_graph_macro_f1"] == "0.7"
+
+
 def test_compare_hgb_ablation_groups_metrics(tmp_path):
     from experiments.scripts.compare_hgb_ablation import compare_hgb_ablation
 

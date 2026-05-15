@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sys
 from pathlib import Path
 from typing import Any, Mapping
@@ -85,6 +86,54 @@ def _run_dir_for(row: Mapping[str, Any], runs_root: Path | None) -> Path | None:
     return None
 
 
+def _cached_task_eval(run_dir: Path) -> dict[str, Any] | None:
+    path = run_dir / "task_eval.json"
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _rows_from_task_payload(
+    summary_row: Mapping[str, Any],
+    run_dir: Path,
+    payload: Mapping[str, Any],
+    refine_epochs: list[int],
+    *,
+    source: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for epoch in refine_epochs:
+        rows.append(
+            {
+                "run_name": payload.get("run_name", summary_row.get("run_name", "")),
+                "run_dir": str(run_dir),
+                "dataset": payload.get("dataset", summary_row.get("dataset", "")),
+                "variant": payload.get("variant", summary_row.get("variant", "")),
+                "refine_epochs": int(epoch),
+                "projected_original_macro_f1": payload.get(
+                    "projected_original_macro_f1",
+                    summary_row.get("task_projected_macro_f1", ""),
+                ),
+                "refined_original_macro_f1": payload.get(
+                    f"refined_original_macro_f1@{epoch}",
+                    payload.get("refined_original_macro_f1", ""),
+                ),
+                "best_refined_macro_f1": payload.get("best_refined_macro_f1", ""),
+                "best_refined_epoch": payload.get("best_refined_epoch", ""),
+                "refine_auc_macro_f1": payload.get("refine_auc_macro_f1", ""),
+                "full_graph_macro_f1": payload.get("full_graph_rgcn_lite_macro_f1", ""),
+                "source": source,
+                "status": "success",
+            }
+        )
+    return rows
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     wanted_variants = None if args.variants is None else {str(value) for value in args.variants}
@@ -95,6 +144,18 @@ def main(argv: list[str] | None = None) -> int:
         run_dir = _run_dir_for(summary_row, args.runs_root)
         if run_dir is None:
             rows.extend(_derived_rows(summary_row, args.refine_epochs))
+            continue
+        cached = _cached_task_eval(run_dir)
+        if cached is not None:
+            rows.extend(
+                _rows_from_task_payload(
+                    summary_row,
+                    run_dir,
+                    cached,
+                    args.refine_epochs,
+                    source="task_eval_cache",
+                )
+            )
             continue
         try:
             result = evaluate_run(
@@ -116,18 +177,14 @@ def main(argv: list[str] | None = None) -> int:
             rows.extend(derived)
             continue
         for epoch in args.refine_epochs:
-            rows.append(
-                {
-                    "run_name": result.get("run_name", summary_row.get("run_name", "")),
-                    "run_dir": str(run_dir),
-                    "dataset": result.get("dataset", summary_row.get("dataset", "")),
-                    "variant": result.get("variant", summary_row.get("variant", "")),
-                    "refine_epochs": int(epoch),
-                    "projected_original_macro_f1": result.get("projected_original_macro_f1", ""),
-                    "refined_original_macro_f1": result.get(f"refined_original_macro_f1@{epoch}", result.get("refined_original_macro_f1", "")),
-                    "source": "evaluate_run",
-                    "status": "success",
-                }
+            rows.extend(
+                _rows_from_task_payload(
+                    summary_row,
+                    run_dir,
+                    result,
+                    [int(epoch)],
+                    source="evaluate_run",
+                )
             )
     write_csv(args.output / "task_refine_curve.csv", rows)
     return 0
