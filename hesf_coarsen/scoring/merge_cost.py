@@ -763,13 +763,37 @@ def _weighted_cost_from_terms(
     terms: dict[str, np.ndarray],
 ) -> np.ndarray:
     weighted_terms = _normalized_terms(context, terms)
-    return (
+    cost = (
         context.lambda_spec * weighted_terms["spec"]
         + context.lambda_rel * weighted_terms["rel"]
         + context.lambda_feat * weighted_terms["feat"]
         + context.lambda_conv * weighted_terms["conv"]
         + context.lambda_boundary * weighted_terms["boundary"]
     ).astype(np.float32, copy=False)
+    return _apply_relation_guard(context, weighted_terms, cost)
+
+
+def _apply_relation_guard(
+    context: PairScoringContext,
+    weighted_terms: dict[str, np.ndarray],
+    cost: np.ndarray,
+) -> np.ndarray:
+    guard = context.config.get("scoring", {}).get("relation_guard", {})
+    if not isinstance(guard, dict) or not bool(guard.get("enabled", False)):
+        return cost
+    rel = np.asarray(weighted_terms["rel"], dtype=np.float32)
+    if rel.size == 0:
+        return cost
+    finite = rel[np.isfinite(rel)]
+    if finite.size == 0:
+        return cost
+    max_increase = float(guard.get("max_ree_increase", 0.02))
+    penalty_weight = float(guard.get("penalty_weight", 10.0))
+    cutoff = float(np.min(finite) + max(max_increase, 0.0))
+    penalty = np.maximum(rel - np.float32(cutoff), np.float32(0.0))
+    if not np.any(penalty > 0.0):
+        return cost
+    return (cost + np.float32(penalty_weight) * penalty).astype(np.float32, copy=False)
 
 
 def _normalized_terms(

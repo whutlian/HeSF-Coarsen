@@ -204,6 +204,63 @@ def test_p95_normalization_uses_positive_scale_for_sparse_terms():
     assert scored[-1, 2] <= 1.01
 
 
+def test_relation_guard_penalizes_conv_preferred_high_relation_drift_pair():
+    graph = HeteroGraph(
+        num_nodes=4,
+        node_type=np.zeros(4, dtype=np.int32),
+        relations={},
+    )
+    pairs = np.array([[0, 1, 0.0], [2, 3, 0.0]], dtype=np.float64)
+    z = np.zeros((4, 1), dtype=np.float32)
+    profiles = np.array(
+        [
+            [1.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    conv = np.array(
+        [
+            [0.0],
+            [2.0],
+            [0.0],
+            [0.0],
+        ],
+        dtype=np.float32,
+    )
+    base_config = {
+        "scoring": {
+            "lambda_spec": 0.0,
+            "lambda_rel": 0.0,
+            "lambda_feat": 0.0,
+            "lambda_conv": 1.0,
+            "lambda_boundary": 0.0,
+            "relation_profile_distance": "jsd",
+            "normalization": "p95",
+        },
+        "acceleration": {"dense_backend": "numpy"},
+    }
+    guarded_config = {
+        **base_config,
+        "scoring": {
+            **base_config["scoring"],
+            "relation_guard": {
+                "enabled": True,
+                "max_ree_increase": 0.02,
+                "penalty_weight": 10.0,
+            },
+        },
+    }
+
+    unguarded = score_candidate_pairs(graph, pairs, z, profiles, conv, None, base_config)
+    guarded = score_candidate_pairs(graph, pairs, z, profiles, conv, None, guarded_config)
+
+    assert unguarded[1, 2] < unguarded[0, 2]
+    assert guarded[1, 2] > guarded[0, 2]
+
+
 def test_spec_term_uses_local_variation_volume_factor():
     graph = _same_type_graph_with_degrees()
     pairs = np.array([[0, 3, 0.0]], dtype=np.float64)

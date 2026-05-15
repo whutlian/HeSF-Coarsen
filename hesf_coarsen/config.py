@@ -150,6 +150,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "spec_volume_epsilon": 1e-12,
         "relation_profile_distance": "jsd",
         "relation_profile_epsilon": 1e-12,
+        "relation_guard": {
+            "enabled": False,
+            "max_ree_increase": 0.02,
+            "penalty_weight": 10.0,
+        },
         "conv_response_operator": "fused_operator",
         "boundary_mode": "node_risk",
         "boundary_hub_gamma": 0.05,

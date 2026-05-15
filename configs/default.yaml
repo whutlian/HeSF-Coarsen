@@ -122,6 +122,10 @@ scoring:
   spec_volume_epsilon: 1.0e-12
   relation_profile_distance: jsd
   relation_profile_epsilon: 1.0e-12
+  relation_guard:
+    enabled: false
+    max_ree_increase: 0.02
+    penalty_weight: 10.0
   conv_response_operator: fused_operator
   boundary_mode: node_risk
   boundary_hub_gamma: 0.05
