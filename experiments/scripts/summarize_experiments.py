@@ -168,6 +168,35 @@ def _score_share_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
     return aliases
 
 
+def _selected_source_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
+    matched_total = _as_float(row.get("matched_pairs"), 0.0) or 0.0
+
+    def count_for(source: str) -> float:
+        return _as_float(
+            _first(
+                row,
+                (
+                    f"selected_match_source_distribution_after_quota.{source}",
+                    f"matched_pairs_by_source.{source}",
+                ),
+                0.0,
+            ),
+            0.0,
+        ) or 0.0
+
+    bucket_count = count_for("bucket")
+    twohop_count = count_for("twohop") + count_for("capped_twohop")
+    fallback_count = count_for("fallback")
+    return {
+        "selected_bucket_fraction": "" if matched_total <= 0.0 else float(bucket_count / matched_total),
+        "selected_twohop_fraction": "" if matched_total <= 0.0 else float(twohop_count / matched_total),
+        "selected_fallback_fraction": "" if matched_total <= 0.0 else float(fallback_count / matched_total),
+        "quota_violation_bucket": row.get("quota_violation.bucket", ""),
+        "quota_violation_twohop": row.get("quota_violation.twohop", ""),
+        "quota_violation_fallback": row.get("quota_violation.fallback", ""),
+    }
+
+
 def _baseline_method_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
     aliases: dict[str, Any] = {}
     prefix = "cumulative_spectral.baseline_comparison."
@@ -178,6 +207,7 @@ def _baseline_method_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
             if key.startswith(prefix) and "." in key.removeprefix(prefix)
         }
     )
+    computed_task_baselines: list[dict[str, Any]] = []
     for method in methods:
         safe = method.replace("-", "_")
         base = f"{prefix}{method}."
@@ -230,7 +260,15 @@ def _baseline_method_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
             ),
             "",
         )
-        aliases[f"baseline_{safe}_task_refined_macro_f1"] = _first(
+        projected_macro = _first(
+            row,
+            (
+                f"{base}task_projected_macro_f1",
+                f"{base}task.projected_original_macro_f1",
+            ),
+            "",
+        )
+        refined_macro = _first(
             row,
             (
                 f"{base}task_refined_macro_f1",
@@ -238,6 +276,26 @@ def _baseline_method_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
             ),
             "",
         )
+        train_time = _first(row, (f"{base}task_train_time", f"{base}task.train_time"), "")
+        refine_time = _first(row, (f"{base}task_refine_time", f"{base}task.refine_time"), "")
+        total_time = _first(row, (f"{base}task_total_time", f"{base}task.total_time"), "")
+        aliases[f"baseline_{safe}_task_projected_macro_f1"] = projected_macro
+        aliases[f"baseline_{safe}_task_refined_macro_f1"] = refined_macro
+        aliases[f"baseline_{safe}_task_train_time"] = train_time
+        aliases[f"baseline_{safe}_task_refine_time"] = refine_time
+        aliases[f"baseline_{safe}_task_total_time"] = total_time
+        if str(row.get(f"{base}status", "")) == "computed" and (
+            projected_macro != "" or refined_macro != ""
+        ):
+            computed_task_baselines.append(
+                {
+                    "projected": projected_macro,
+                    "refined": refined_macro,
+                    "train_time": train_time,
+                    "refine_time": refine_time,
+                    "total_time": total_time,
+                }
+            )
         aliases[f"baseline_{safe}_runtime_total"] = _first(
             row,
             (
@@ -252,6 +310,20 @@ def _baseline_method_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
         aliases[f"baseline_{safe}_target_hit"] = row.get(f"{base}target_hit", "")
         aliases[f"baseline_{safe}_levels"] = row.get(f"{base}levels", "")
         aliases[f"baseline_{safe}_stopped_by"] = row.get(f"{base}stopped_by", "")
+    selected: Mapping[str, Any] | None = None
+    if computed_task_baselines:
+        with_refined = [
+            item for item in computed_task_baselines if _as_float(item.get("refined"), None) is not None
+        ]
+        selected = max(
+            with_refined,
+            key=lambda item: float(_as_float(item.get("refined"), 0.0) or 0.0),
+        ) if with_refined else computed_task_baselines[0]
+    aliases["baseline_projected_macro_f1"] = selected.get("projected", "") if selected else ""
+    aliases["baseline_refined_macro_f1"] = selected.get("refined", "") if selected else ""
+    aliases["baseline_train_time"] = selected.get("train_time", "") if selected else ""
+    aliases["baseline_refine_time"] = selected.get("refine_time", "") if selected else ""
+    aliases["baseline_total_time"] = selected.get("total_time", "") if selected else ""
     return aliases
 
 
@@ -494,6 +566,7 @@ def _final_cumulative_row(
         "true" if final["compute_device"] == "cpu" and max(peak_allocated, peak_reserved) <= 0.0 else "false"
     )
     _with_task_aliases(final)
+    final.update(_selected_source_aliases(last))
     final.update(_score_share_aliases(last))
     final.update(_baseline_method_aliases(last))
     return final

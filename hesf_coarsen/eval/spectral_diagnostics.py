@@ -9,6 +9,7 @@ import numpy as np
 from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph
 from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.eval.spectral import dirichlet_energy
+from hesf_coarsen.eval.task_gnn import evaluate_rgcn_task
 from hesf_coarsen.io.schema import HeteroGraph, RelationAdj
 from hesf_coarsen.ops.fused_operator import apply_fused_smoothing
 
@@ -396,6 +397,8 @@ def _baseline_comparison(
     baseline_target_ratio: float | None,
     baseline_target_tolerance: float,
     baseline_max_levels: int | None,
+    baseline_task_eval: bool,
+    baseline_task_eval_params: dict[str, Any] | None,
 ) -> dict[str, Any]:
     if isinstance(baseline_methods, str):
         methods = [method.strip() for method in baseline_methods.split(",") if method.strip()]
@@ -487,6 +490,28 @@ def _baseline_comparison(
             ],
             "runtime_total": float(perf_counter() - start),
         }
+        if (
+            baseline_target_ratio is not None
+            and bool(baseline_task_eval)
+            and bool(baseline_control.get("target_hit", False))
+        ):
+            task_params = dict(baseline_task_eval_params or {})
+            task_params.setdefault("seed", int(seed) + 104729 * offset)
+            task_metrics = evaluate_rgcn_task(
+                original,
+                baseline_coarse,
+                baseline_assignment.assignment,
+                **task_params,
+            ).metrics
+            comparison[method].update(
+                {
+                    "task_projected_macro_f1": task_metrics.get("projected_original_macro_f1", ""),
+                    "task_refined_macro_f1": task_metrics.get("refined_original_macro_f1", ""),
+                    "task_train_time": task_metrics.get("train_time", ""),
+                    "task_refine_time": task_metrics.get("refine_time", ""),
+                    "task_total_time": task_metrics.get("total_time", ""),
+                }
+            )
         if "exact_eigenvalue_sanity" in baseline_metrics:
             comparison[method]["exact_eigenvalue_sanity"] = baseline_metrics[
                 "exact_eigenvalue_sanity"
@@ -510,6 +535,8 @@ def compute_spectral_diagnostics(
     baseline_target_ratio: float | None = None,
     baseline_target_tolerance: float = 0.02,
     baseline_max_levels: int | None = None,
+    baseline_task_eval: bool = False,
+    baseline_task_eval_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compute sparse, sketch-based spectral diagnostics for one coarsening level."""
 
@@ -622,5 +649,7 @@ def compute_spectral_diagnostics(
         baseline_target_ratio,
         baseline_target_tolerance,
         baseline_max_levels,
+        baseline_task_eval,
+        baseline_task_eval_params,
     )
     return diagnostics

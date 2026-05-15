@@ -9,7 +9,7 @@ from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.coarsen.multilevel import run_multilevel_coarsening
 from hesf_coarsen.config import DEFAULT_CONFIG
 from hesf_coarsen.io.edge_list import generate_synthetic_graph, load_graph
-from hesf_coarsen.io.schema import HeteroGraph
+from hesf_coarsen.io.schema import HeteroGraph, RelationAdj
 
 
 def small_config(tmp_path):
@@ -196,6 +196,64 @@ def test_repair_bad_clusters_records_objective_and_accept_gate():
     assert "relation_profile_variance" in diagnostics["repair_objective"]
     assert "train_label_entropy" in diagnostics["repair_objective"]
     assert diagnostics["estimated_cumulative_dee_after"] <= diagnostics["estimated_cumulative_dee_before"]
+
+
+def test_repair_bad_clusters_uses_configured_objective_to_select_clusters():
+    graph = HeteroGraph(
+        num_nodes=6,
+        node_type=np.zeros(6, dtype=np.int32),
+        relations={
+            0: RelationAdj(
+                src=np.array([3, 3, 4], dtype=np.int64),
+                dst=np.array([4, 5, 5], dtype=np.int64),
+                weight=np.ones(3, dtype=np.float32),
+                src_type=0,
+                dst_type=0,
+                relation_id=0,
+            )
+        },
+        labels=np.array([0, 0, 0, 0, 1, 2], dtype=np.int32),
+    )
+    assignment = Assignment(
+        assignment=np.array([0, 0, 0, 1, 1, 1], dtype=np.int64),
+        supernode_type=np.array([0, 0], dtype=np.int32),
+    )
+    z = np.array(
+        [
+            [0.0, 0.0],
+            [4.0, 0.0],
+            [8.0, 0.0],
+            [0.0, 0.0],
+            [0.1, 0.0],
+            [0.2, 0.0],
+        ],
+        dtype=np.float32,
+    )
+
+    def repair(objective: str):
+        config = {
+            "coarsening": {
+                "cumulative_guard": {
+                    "enabled": True,
+                    "repair_bad_clusters": True,
+                    "repair_strategy": "split_local_swap_accept",
+                    "repair_objective": objective,
+                }
+            }
+        }
+        return multilevel_module._repair_bad_clusters(graph, assignment, z, config)[1]
+
+    energy_diag = repair("energy")
+    relation_diag = repair("relation")
+    task_diag = repair("task")
+
+    assert energy_diag["repair_objective_name"] == "energy"
+    assert relation_diag["repair_objective_name"] == "relation"
+    assert task_diag["repair_objective_name"] == "task"
+    assert energy_diag["repair_selected_clusters"] == [0]
+    assert relation_diag["repair_selected_clusters"] == [1]
+    assert task_diag["repair_selected_clusters"] == [1]
+    assert relation_diag["repair_trace_signature"] != energy_diag["repair_trace_signature"]
 
 
 def test_level_config_caps_matches_by_remaining_target_ratio():

@@ -338,6 +338,16 @@ def _score_contribution_share(summary: dict[str, dict]) -> dict[str, float]:
     return {name: float(value / total) for name, value in means.items()}
 
 
+def _repair_objective_name(guard: dict) -> str:
+    raw = guard.get("repair_objective", guard.get("objective", "current"))
+    name = str(raw or "current").lower().replace("-", "_")
+    if name in {"spectral", "fixed", "cumulative"}:
+        return "energy"
+    if name in {"energy", "relation", "task"}:
+        return name
+    return "current"
+
+
 def _repair_bad_clusters(
     graph: HeteroGraph,
     assignment: Assignment,
@@ -348,18 +358,22 @@ def _repair_bad_clusters(
     enabled = bool(guard.get("enabled", False))
     repair_enabled = bool(guard.get("repair_bad_clusters", False))
     strategy = str(guard.get("repair_strategy", "current")).lower().replace("-", "_")
+    objective_name = _repair_objective_name(guard)
     if not enabled or not repair_enabled or strategy == "off":
         return assignment, {
             "enabled": enabled,
             "repair_bad_clusters": repair_enabled,
             "repair_strategy": strategy,
+            "repair_objective_name": objective_name,
             "repair_accepted": False,
         }
 
     labels = None if graph.labels is None else np.asarray(graph.labels)
     relation_profiles = compute_relation_profiles(graph) if graph.relations else None
 
-    def cluster_metrics(candidate: Assignment) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, float]]:
+    def cluster_metrics(
+        candidate: Assignment,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, float]]:
         sizes = candidate.cluster_sizes()
         spreads = np.zeros(candidate.num_supernodes, dtype=np.float64)
         label_entropy = np.zeros(candidate.num_supernodes, dtype=np.float64)
@@ -393,9 +407,9 @@ def _repair_bad_clusters(
             if np.any(sizes > 1)
             else 0.0,
         }
-        return sizes, spreads, label_entropy, objective
+        return sizes, spreads, label_entropy, relation_variance, objective
 
-    sizes, spreads, label_entropy, before_objective = cluster_metrics(assignment)
+    sizes, spreads, label_entropy, relation_variance, before_objective = cluster_metrics(assignment)
     before_dee_proxy = float(
         before_objective["cluster_sketch_spread"] + before_objective["relation_profile_variance"]
     )
@@ -403,14 +417,33 @@ def _repair_bad_clusters(
     large = sizes > 2
     spread_cutoff = float(np.percentile(spreads[large], 75)) if np.any(large) else np.inf
     entropy_cutoff = float(guard.get("label_entropy_cutoff", 0.0))
-    bad = large & ((spreads >= spread_cutoff) | (label_entropy > entropy_cutoff))
+
+    def objective_mask(values: np.ndarray) -> np.ndarray:
+        if not np.any(large):
+            return np.zeros_like(large, dtype=bool)
+        active = values[large]
+        cutoff = float(np.percentile(active, 75))
+        return large & (values >= cutoff) & (values > 0.0)
+
+    if objective_name == "energy":
+        bad = objective_mask(spreads)
+    elif objective_name == "relation":
+        bad = objective_mask(relation_variance)
+    elif objective_name == "task":
+        bad = objective_mask(label_entropy)
+    else:
+        bad = large & ((spreads >= spread_cutoff) | (label_entropy > entropy_cutoff))
+    selected_clusters = np.flatnonzero(bad).astype(np.int64).tolist()
     if not np.any(bad):
         return assignment, {
             "enabled": True,
             "repair_bad_clusters": True,
             "repair_strategy": strategy,
+            "repair_objective_name": objective_name,
             "repair_accepted": False,
             "repaired_cluster_count": 0,
+            "repair_selected_clusters": [],
+            "repair_trace_signature": f"{objective_name}:none",
             "repair_objective": {
                 **before_objective,
                 "cumulative_energy_delta": 0.0,
@@ -439,10 +472,22 @@ def _repair_bad_clusters(
             emit(members)
             continue
         if strategy == "split_local_swap_accept":
-            center = Z[members].astype(np.float64, copy=False).mean(axis=0)
-            first_axis = Z[members, 0].astype(np.float64)
-            distance = np.sum((Z[members].astype(np.float64, copy=False) - center) ** 2, axis=1)
-            order = np.lexsort((members, distance, first_axis))
+            if objective_name == "relation" and relation_profiles is not None:
+                profile_block = relation_profiles[members].astype(np.float64, copy=False)
+                center = profile_block.mean(axis=0)
+                first_axis = profile_block[:, 0] if profile_block.shape[1] else members.astype(np.float64)
+                distance = np.sum((profile_block - center) ** 2, axis=1)
+                order = np.lexsort((members, distance, first_axis))
+            elif objective_name == "task" and labels is not None:
+                member_labels = labels[members].astype(np.int64, copy=False)
+                label_key = np.where(member_labels >= 0, member_labels, np.iinfo(np.int64).max)
+                first_axis = Z[members, 0].astype(np.float64)
+                order = np.lexsort((members, first_axis, label_key))
+            else:
+                center = Z[members].astype(np.float64, copy=False).mean(axis=0)
+                first_axis = Z[members, 0].astype(np.float64)
+                distance = np.sum((Z[members].astype(np.float64, copy=False) - center) ** 2, axis=1)
+                order = np.lexsort((members, distance, first_axis))
         else:
             order = np.lexsort((members, Z[members, 0].astype(np.float64)))
         ordered = members[order]
@@ -450,7 +495,9 @@ def _repair_bad_clusters(
             emit(ordered[start : start + 2])
     repaired = Assignment(new_assignment, np.asarray(new_types, dtype=np.int32))
     repaired_sizes = repaired.cluster_sizes()
-    _after_sizes, _after_spreads, _after_entropy, after_objective = cluster_metrics(repaired)
+    _after_sizes, _after_spreads, _after_entropy, _after_relation_variance, after_objective = cluster_metrics(
+        repaired
+    )
     after_dee_proxy = float(
         after_objective["cluster_sketch_spread"] + after_objective["relation_profile_variance"]
     )
@@ -458,22 +505,45 @@ def _repair_bad_clusters(
     cumulative_energy_delta = float(after_dee_proxy - before_dee_proxy)
     accept_only_if_improves = bool(guard.get("accept_only_if_cumulative_improves", False))
     accept_metric = str(guard.get("accept_metric", "proxy")).lower().replace("-", "_")
-    accepted = (after_dee_proxy < before_dee_proxy) or (after_sipe_proxy < before_sipe_proxy)
+    objective_metric = {
+        "energy": "cluster_sketch_spread",
+        "relation": "relation_profile_variance",
+        "task": "train_label_entropy",
+    }.get(objective_name)
+    before_score = (
+        float(before_objective.get(objective_metric, 0.0)) if objective_metric else before_dee_proxy
+    )
+    after_score = float(after_objective.get(objective_metric, 0.0)) if objective_metric else after_dee_proxy
+    accepted = after_score < before_score
+    if objective_name == "current":
+        accepted = (after_dee_proxy < before_dee_proxy) or (after_sipe_proxy < before_sipe_proxy)
     if accept_only_if_improves and accept_metric != "true_cumulative" and not accepted:
         repaired = assignment
         repaired_sizes = sizes
         after_dee_proxy = before_dee_proxy
         after_sipe_proxy = before_sipe_proxy
         cumulative_energy_delta = 0.0
+        after_score = before_score
     else:
         accepted = True
+    trace_signature = (
+        f"{objective_name}:"
+        f"{','.join(str(value) for value in selected_clusters)}:"
+        f"{int(np.sum(np.maximum(repaired_sizes - 1, 0)))}:"
+        f"{int(bool(accepted))}"
+    )
     return repaired, {
         "enabled": True,
         "repair_bad_clusters": True,
         "repair_strategy": strategy,
+        "repair_objective_name": objective_name,
         "repair_accepted": bool(accepted),
         "repaired_cluster_count": int(np.sum(bad)),
+        "repair_selected_clusters": selected_clusters,
+        "repair_trace_signature": trace_signature,
         "spread_cutoff": float(spread_cutoff),
+        "repair_objective_score_before": before_score,
+        "repair_objective_score_after": after_score,
         "repair_objective": {
             **before_objective,
             "cumulative_energy_delta": cumulative_energy_delta,
@@ -505,6 +575,7 @@ def _maybe_apply_true_cumulative_repair_gate(
 ) -> tuple[Assignment, dict]:
     guard = config.get("coarsening", {}).get("cumulative_guard", {})
     accept_metric = str(guard.get("accept_metric", "proxy")).lower().replace("-", "_")
+    objective_name = _repair_objective_name(guard)
     if (
         accept_metric != "true_cumulative"
         or not bool(guard.get("accept_only_if_cumulative_improves", False))
@@ -588,21 +659,31 @@ def _maybe_apply_true_cumulative_repair_gate(
     after_dee = float(after_metrics.get("dirichlet_energy_relative_error", 0.0))
     before_sipe = float(before_metrics.get("sketch_inner_product_relative_error", 0.0))
     after_sipe = float(after_metrics.get("sketch_inner_product_relative_error", 0.0))
-    accepted = (after_dee < before_dee) or (after_sipe < before_sipe)
+    before_ree = float(before_metrics.get("relation_energy_relative_error_max", 0.0))
+    after_ree = float(after_metrics.get("relation_energy_relative_error_max", 0.0))
+    before_task_macro = None
+    after_task_macro = None
+    if objective_name == "task":
+        before_task_macro = float(_task_diagnostics(original, before_coarse, before_cumulative).get("macro_f1", 0.0))
+        after_task_macro = float(_task_diagnostics(original, after_coarse, after_cumulative).get("macro_f1", 0.0))
+        accepted = after_task_macro >= before_task_macro
+    elif objective_name == "relation":
+        accepted = after_ree < before_ree
+    else:
+        accepted = (after_dee < before_dee) or (after_sipe < before_sipe)
     diagnostics.update(
         {
+            "repair_objective_name": objective_name,
             "true_cumulative_accept": bool(accepted),
             "repair_rejected_by_true_cumulative": bool(not accepted),
             "true_cumulative_dee_before": before_dee,
             "true_cumulative_dee_after": after_dee,
             "true_cumulative_sipe_before": before_sipe,
             "true_cumulative_sipe_after": after_sipe,
-            "true_cumulative_ree_max_before": float(
-                before_metrics.get("relation_energy_relative_error_max", 0.0)
-            ),
-            "true_cumulative_ree_max_after": float(
-                after_metrics.get("relation_energy_relative_error_max", 0.0)
-            ),
+            "true_cumulative_ree_max_before": before_ree,
+            "true_cumulative_ree_max_after": after_ree,
+            "true_cumulative_task_macro_f1_before": before_task_macro,
+            "true_cumulative_task_macro_f1_after": after_task_macro,
         }
     )
     if accepted:
@@ -943,6 +1024,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                     scored_block,
                     level_matching_config,
                     partition_id=partition_id,
+                    source_lookup=getattr(store, "source_for_pair", None),
                 )
         else:
             pairs = store.to_pairs()
@@ -1210,6 +1292,12 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                             "baseline_max_levels",
                             config.get("coarsening", {}).get("max_levels", 4),
                         )
+                    ),
+                    baseline_task_eval=bool(
+                        diagnostics_cfg.get("cumulative_spectral_baseline_task_eval", False)
+                    ),
+                    baseline_task_eval_params=dict(
+                        diagnostics_cfg.get("cumulative_spectral_baseline_task_eval_params", {})
                     ),
                 )
             runtime["spectral_diagnostics"] = perf_counter() - start_spectral

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -105,9 +105,11 @@ def evaluate_rgcn_task(
     hidden_dim: int = 32,
     epochs: int = 20,
     refine_epochs: int = 10,
+    refine_epochs_list: Iterable[int] | None = None,
     lr: float = 0.01,
     weight_decay: float = 5e-4,
     device: str = "auto",
+    full_graph_rgcn_lite: bool = False,
 ) -> TaskEvalResult:
     try:
         import torch
@@ -252,7 +254,7 @@ def evaluate_rgcn_task(
         optimizer = torch.optim.Adam(model.parameters(), lr=float(lr), weight_decay=float(weight_decay))
         loss_fn = nn.CrossEntropyLoss()
         model.train()
-        for _ in range(max(1, int(n_epochs))):
+        for _ in range(max(0, int(n_epochs))):
             optimizer.zero_grad(set_to_none=True)
             logits = model(data)
             loss = loss_fn(logits[idx], y[idx])
@@ -260,53 +262,128 @@ def evaluate_rgcn_task(
             optimizer.step()
         return float(perf_counter() - start)
 
+    def eval_model(model: Any, data: dict[str, Any]) -> np.ndarray:
+        model.eval()
+        with torch.no_grad():
+            logits = model(data)
+            return logits.argmax(dim=1).detach().cpu().numpy()
+
+    def train_refine_checkpoints(
+        model: Any,
+        data: dict[str, Any],
+        y: Any,
+        idx: Any,
+        checkpoints: list[int],
+    ) -> tuple[dict[int, dict[str, float]], float]:
+        checkpoint_set = set(checkpoints)
+        scores: dict[int, dict[str, float]] = {}
+        elapsed = 0.0
+        if 0 in checkpoint_set:
+            pred = eval_model(model, data)
+            f1 = f1_scores(labels[test_nodes], pred[test_nodes])
+            scores[0] = {
+                "micro_f1": f1["micro_f1"],
+                "macro_f1": f1["macro_f1"],
+                "refine_time": 0.0,
+            }
+        optimizer = torch.optim.Adam(model.parameters(), lr=float(lr), weight_decay=float(weight_decay))
+        loss_fn = nn.CrossEntropyLoss()
+        for epoch in range(1, max(checkpoints, default=0) + 1):
+            start = perf_counter()
+            model.train()
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(data)
+            loss = loss_fn(logits[idx], y[idx])
+            loss.backward()
+            optimizer.step()
+            elapsed += float(perf_counter() - start)
+            if epoch in checkpoint_set:
+                pred = eval_model(model, data)
+                f1 = f1_scores(labels[test_nodes], pred[test_nodes])
+                scores[epoch] = {
+                    "micro_f1": f1["micro_f1"],
+                    "macro_f1": f1["macro_f1"],
+                    "refine_time": float(elapsed),
+                }
+        return scores, float(elapsed)
+
     model = RGCNLite(coarse).to(dev)
     train_time = train_model(model, coarse_data, coarse_y, coarse_train, int(epochs))
-    model.eval()
-    with torch.no_grad():
-        coarse_logits = model(coarse_data)
-        coarse_pred = coarse_logits.argmax(dim=1).detach().cpu().numpy()
+    coarse_pred = eval_model(model, coarse_data)
     coarse_train_f1 = f1_scores(coarse_labels[coarse_train_nodes], coarse_pred[coarse_train_nodes])
     projected_pred = coarse_pred[original_to_coarse[test_nodes]]
     projected_f1 = f1_scores(labels[test_nodes], projected_pred)
 
     refine_model = RGCNLite(original).to(dev)
     refine_model.load_state_dict(model.state_dict(), strict=False)
-    refine_time = train_model(refine_model, original_data, original_y, original_train, int(refine_epochs))
-    refine_model.eval()
-    with torch.no_grad():
-        original_logits = refine_model(original_data)
-        original_pred = original_logits.argmax(dim=1).detach().cpu().numpy()
-    refined_f1 = f1_scores(labels[test_nodes], original_pred[test_nodes])
+    checkpoint_metrics: dict[int, dict[str, float]] = {}
+    if refine_epochs_list is None:
+        refine_time = train_model(refine_model, original_data, original_y, original_train, int(refine_epochs))
+        original_pred = eval_model(refine_model, original_data)
+        refined_f1 = f1_scores(labels[test_nodes], original_pred[test_nodes])
+    else:
+        checkpoints = sorted({max(0, int(value)) for value in refine_epochs_list})
+        if not checkpoints:
+            checkpoints = [0]
+        checkpoint_metrics, refine_time = train_refine_checkpoints(
+            refine_model,
+            original_data,
+            original_y,
+            original_train,
+            checkpoints,
+        )
+        primary_epoch = max(checkpoints)
+        refined_f1 = {
+            "micro_f1": checkpoint_metrics[primary_epoch]["micro_f1"],
+            "macro_f1": checkpoint_metrics[primary_epoch]["macro_f1"],
+        }
     primary_metric_name = "refined_original_macro_f1"
     primary_metric = refined_f1["macro_f1"]
 
-    return TaskEvalResult(
-        {
-            "model": "rgcn_lite",
-            "skipped": False,
-            "device": device_name,
-            "train_on": "coarse_train_labels_only",
-            "eval_on": "original_test_refined",
-            "projection_eval_on": "original_test_projected",
-            "refine_eval_on": "original_test_refined",
-            "num_classes": int(num_classes),
-            "train_labeled_nodes": int(len(train_nodes)),
-            "test_labeled_nodes": int(len(test_nodes)),
-            "coarse_train_nodes": int(len(coarse_train_nodes)),
-            **label_protocol,
-            "coarse_train_micro_f1": coarse_train_f1["micro_f1"],
-            "coarse_train_macro_f1": coarse_train_f1["macro_f1"],
-            "projected_original_micro_f1": projected_f1["micro_f1"],
-            "projected_original_macro_f1": projected_f1["macro_f1"],
-            "refined_original_micro_f1": refined_f1["micro_f1"],
-            "refined_original_macro_f1": refined_f1["macro_f1"],
-            "primary_task_metric_name": primary_metric_name,
-            "primary_task_metric": primary_metric,
-            "micro_f1": refined_f1["micro_f1"],
-            "macro_f1": refined_f1["macro_f1"],
-            "train_time": float(train_time),
-            "refine_time": float(refine_time),
-            "total_time": float(train_time + refine_time),
-        }
-    )
+    metrics = {
+        "model": "rgcn_lite",
+        "skipped": False,
+        "device": device_name,
+        "train_on": "coarse_train_labels_only",
+        "eval_on": "original_test_refined",
+        "projection_eval_on": "original_test_projected",
+        "refine_eval_on": "original_test_refined",
+        "num_classes": int(num_classes),
+        "train_labeled_nodes": int(len(train_nodes)),
+        "test_labeled_nodes": int(len(test_nodes)),
+        "coarse_train_nodes": int(len(coarse_train_nodes)),
+        **label_protocol,
+        "coarse_train_micro_f1": coarse_train_f1["micro_f1"],
+        "coarse_train_macro_f1": coarse_train_f1["macro_f1"],
+        "projected_original_micro_f1": projected_f1["micro_f1"],
+        "projected_original_macro_f1": projected_f1["macro_f1"],
+        "refined_original_micro_f1": refined_f1["micro_f1"],
+        "refined_original_macro_f1": refined_f1["macro_f1"],
+        "primary_task_metric_name": primary_metric_name,
+        "primary_task_metric": primary_metric,
+        "micro_f1": refined_f1["micro_f1"],
+        "macro_f1": refined_f1["macro_f1"],
+        "train_time": float(train_time),
+        "refine_time": float(refine_time),
+        "total_time": float(train_time + refine_time),
+    }
+    for checkpoint, values in sorted(checkpoint_metrics.items()):
+        suffix = f"@{checkpoint}"
+        metrics[f"refined_original_micro_f1{suffix}"] = values["micro_f1"]
+        metrics[f"refined_original_macro_f1{suffix}"] = values["macro_f1"]
+        metrics[f"refine_time{suffix}"] = values["refine_time"]
+
+    if full_graph_rgcn_lite:
+        full_model = RGCNLite(original).to(dev)
+        full_train_time = train_model(full_model, original_data, original_y, original_train, int(epochs))
+        full_pred = eval_model(full_model, original_data)
+        full_f1 = f1_scores(labels[test_nodes], full_pred[test_nodes])
+        metrics.update(
+            {
+                "full_graph_rgcn_lite_micro_f1": full_f1["micro_f1"],
+                "full_graph_rgcn_lite_macro_f1": full_f1["macro_f1"],
+                "full_graph_rgcn_lite_train_time": float(full_train_time),
+            }
+        )
+
+    return TaskEvalResult(metrics)

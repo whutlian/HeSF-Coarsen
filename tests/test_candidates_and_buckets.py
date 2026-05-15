@@ -164,6 +164,56 @@ def test_mutual_best_can_enforce_selected_match_source_quota():
     assert quota["quota_violation"]["bucket"] == 0.0
 
 
+def test_mutual_best_quota_can_supplement_non_mutual_bucket_candidates():
+    graph = HeteroGraph(
+        num_nodes=6,
+        node_type=np.zeros(6, dtype=np.int32),
+        relations={},
+    )
+    scored_pairs = np.array(
+        [
+            [0, 1, 0.01],
+            [2, 3, 0.02],
+            [4, 5, 0.03],
+            [0, 2, 0.20],
+            [1, 3, 0.21],
+        ],
+        dtype=np.float64,
+    )
+    sources = {
+        (0, 1): "capped_twohop",
+        (2, 3): "capped_twohop",
+        (4, 5): "capped_twohop",
+        (0, 2): "bucket",
+        (1, 3): "bucket",
+    }
+
+    def source_for_pair(i, j):
+        key = (i, j) if i < j else (j, i)
+        return sources.get(key)
+
+    config = {
+        "coarsening": {"matching_method": "mutual_best", "max_matched_pairs": 2},
+        "candidates": {
+            "quotas": {
+                "enforce_on": "selected_matches",
+                "bucket_min_fraction": 0.5,
+                "twohop_max_fraction": 0.5,
+            }
+        },
+    }
+    state = initialize_mutual_best_state(graph)
+    mutual_best_update_block(graph, state, scored_pairs, config, source_lookup=source_for_pair)
+    assignment = finalize_mutual_best(graph, state, config, source_lookup=source_for_pair)
+
+    selected = selected_pair_sources(assignment, source_for_pair)
+    assert selected == {"bucket": 1, "capped_twohop": 1}
+    quota = state.selected_quota_diagnostics
+    assert quota["selected_match_source_distribution_before_quota"]["capped_twohop"] == 2
+    assert quota["selected_match_source_distribution_after_quota"]["bucket"] == 1
+    assert quota["quota_violation"]["bucket"] == 0.0
+
+
 def test_multitable_bucket_config_can_increase_candidate_coverage(tmp_path):
     from hesf_coarsen.coarsen.multilevel import run_multilevel_coarsening
     from hesf_coarsen.io.edge_list import generate_synthetic_graph

@@ -199,6 +199,8 @@ class MutualBestState:
     best_cost: np.ndarray
     best_neighbor: np.ndarray
     best_source: np.ndarray | None = None
+    bucket_best_cost: np.ndarray | None = None
+    bucket_best_neighbor: np.ndarray | None = None
     selected_quota_diagnostics: dict | None = None
 
 
@@ -208,11 +210,14 @@ def initialize_mutual_best_state(graph: HeteroGraph) -> MutualBestState:
         best_cost=np.full(graph.num_nodes, np.inf, dtype=np.float64),
         best_neighbor=np.full(graph.num_nodes, missing_neighbor, dtype=np.int64),
         best_source=None,
+        bucket_best_cost=np.full(graph.num_nodes, np.inf, dtype=np.float64),
+        bucket_best_neighbor=np.full(graph.num_nodes, missing_neighbor, dtype=np.int64),
     )
 
 
-def _update_directed_best(
-    state: MutualBestState,
+def _update_best_arrays(
+    best_cost: np.ndarray,
+    best_neighbor: np.ndarray,
     nodes: np.ndarray,
     neighbors: np.ndarray,
     costs: np.ndarray,
@@ -223,15 +228,24 @@ def _update_directed_best(
     block_best_cost = np.full(len(unique_nodes), np.inf, dtype=np.float64)
     np.minimum.at(block_best_cost, inverse, costs)
 
-    improved = block_best_cost < state.best_cost[unique_nodes]
+    improved = block_best_cost < best_cost[unique_nodes]
     if np.any(improved):
         improved_nodes = unique_nodes[improved]
-        state.best_cost[improved_nodes] = block_best_cost[improved]
-        state.best_neighbor[improved_nodes] = np.iinfo(np.int64).max
+        best_cost[improved_nodes] = block_best_cost[improved]
+        best_neighbor[improved_nodes] = np.iinfo(np.int64).max
 
-    eligible = costs == state.best_cost[nodes]
+    eligible = costs == best_cost[nodes]
     if np.any(eligible):
-        np.minimum.at(state.best_neighbor, nodes[eligible], neighbors[eligible])
+        np.minimum.at(best_neighbor, nodes[eligible], neighbors[eligible])
+
+
+def _update_directed_best(
+    state: MutualBestState,
+    nodes: np.ndarray,
+    neighbors: np.ndarray,
+    costs: np.ndarray,
+) -> None:
+    _update_best_arrays(state.best_cost, state.best_neighbor, nodes, neighbors, costs)
 
 
 def mutual_best_update_block(
@@ -240,6 +254,7 @@ def mutual_best_update_block(
     scored_pairs: np.ndarray,
     config: dict,
     partition_id: np.ndarray | None = None,
+    source_lookup=None,
 ) -> None:
     if scored_pairs.size == 0:
         return
@@ -269,6 +284,30 @@ def mutual_best_update_block(
     costs = costs[valid]
     _update_directed_best(state, left, right, costs)
     _update_directed_best(state, right, left, costs)
+    if source_lookup is not None and state.bucket_best_cost is not None and state.bucket_best_neighbor is not None:
+        source_keys = np.asarray(
+            [
+                _quota_source_key(_source_name(source_lookup, int(i), int(j)))
+                for i, j in zip(left, right)
+            ],
+            dtype=object,
+        )
+        bucket_mask = source_keys == "bucket"
+        if np.any(bucket_mask):
+            _update_best_arrays(
+                state.bucket_best_cost,
+                state.bucket_best_neighbor,
+                left[bucket_mask],
+                right[bucket_mask],
+                costs[bucket_mask],
+            )
+            _update_best_arrays(
+                state.bucket_best_cost,
+                state.bucket_best_neighbor,
+                right[bucket_mask],
+                left[bucket_mask],
+                costs[bucket_mask],
+            )
 
 
 def selected_pair_sources(
@@ -387,16 +426,23 @@ def _apply_selected_match_quotas(
     )
     selected: list[int] = []
     selected_set: set[int] = set()
+    used_nodes = np.zeros(int(max(np.max(left), np.max(right))) + 1, dtype=bool)
     counts: dict[str, int] = {}
 
     def add_index(index: int, *, ignore_max: bool = False) -> bool:
         if index in selected_set or len(selected) >= limit:
+            return False
+        i = int(left[index])
+        j = int(right[index])
+        if used_nodes[i] or used_nodes[j]:
             return False
         source = str(source_keys[index])
         if not ignore_max and source in max_by_source and counts.get(source, 0) >= max_by_source[source]:
             return False
         selected.append(index)
         selected_set.add(index)
+        used_nodes[i] = True
+        used_nodes[j] = True
         counts[source] = counts.get(source, 0) + 1
         return True
 
@@ -422,6 +468,36 @@ def _apply_selected_match_quotas(
     after = _source_distribution(left, right, chosen, source_lookup)
     diagnostics = _quota_diagnostics(enforced=True, before=before, after=after, quotas=quotas)
     return left[chosen], right[chosen], diagnostics
+
+
+def _quota_supplemental_bucket_pairs(state: MutualBestState) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    missing_neighbor = np.iinfo(np.int64).max
+    empty_i = np.empty(0, dtype=np.int64)
+    empty_f = np.empty(0, dtype=np.float64)
+    if state.bucket_best_neighbor is None or state.bucket_best_cost is None:
+        return empty_i, empty_i, empty_f
+    nodes = np.flatnonzero(state.bucket_best_neighbor != missing_neighbor).astype(np.int64)
+    if len(nodes) == 0:
+        return empty_i, empty_i, empty_f
+    candidates: dict[tuple[int, int], float] = {}
+    for node in nodes:
+        neighbor = int(state.bucket_best_neighbor[int(node)])
+        if neighbor == missing_neighbor or neighbor == int(node):
+            continue
+        left = min(int(node), neighbor)
+        right = max(int(node), neighbor)
+        cost = float(state.bucket_best_cost[int(node)])
+        previous = candidates.get((left, right))
+        if previous is None or cost < previous:
+            candidates[(left, right)] = cost
+    if not candidates:
+        return empty_i, empty_i, empty_f
+    ordered = sorted(candidates.items(), key=lambda item: (item[1], item[0][0], item[0][1]))
+    return (
+        np.asarray([pair[0][0] for pair in ordered], dtype=np.int64),
+        np.asarray([pair[0][1] for pair in ordered], dtype=np.int64),
+        np.asarray([pair[1] for pair in ordered], dtype=np.float64),
+    )
 
 
 def finalize_mutual_best(
@@ -451,6 +527,14 @@ def finalize_mutual_best(
         return _singleton_assignment(graph)
     mutual_right = state.best_neighbor[mutual_left]
     mutual_cost = state.best_cost[mutual_left]
+    quotas = config.get("candidates", {}).get("quotas", {}) or {}
+    enforce_on = str(quotas.get("enforce_on", "candidate_retention")).lower()
+    if enforce_on in {"selected_matches", "selected-match", "selected"} and source_lookup is not None:
+        bucket_left, bucket_right, bucket_cost = _quota_supplemental_bucket_pairs(state)
+        if len(bucket_left):
+            mutual_left = np.concatenate([mutual_left, bucket_left])
+            mutual_right = np.concatenate([mutual_right, bucket_right])
+            mutual_cost = np.concatenate([mutual_cost, bucket_cost])
 
     mutual_left, mutual_right, quota_diagnostics = _apply_selected_match_quotas(
         mutual_left,

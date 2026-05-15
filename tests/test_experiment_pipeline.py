@@ -274,7 +274,21 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
                     "relation_energy_relative_error_max": 0.41,
                     "chebheat_sketch_inner_product_relative_error": 0.51,
                     "exact_eigenvalue_sanity": {"relative_error": 0.061},
+                    "task_projected_macro_f1": 0.62,
+                    "task_refined_macro_f1": 0.68,
+                    "task_train_time": 2.0,
+                    "task_refine_time": 0.5,
+                    "task_total_time": 2.5,
                     "runtime_total": 1.25,
+                },
+                "heavy_edge": {
+                    "status": "computed",
+                    "final_cumulative_ratio": 0.52,
+                    "task_projected_macro_f1": 0.60,
+                    "task_refined_macro_f1": 0.70,
+                    "task_train_time": 3.0,
+                    "task_refine_time": 0.7,
+                    "task_total_time": 3.7,
                 },
             },
         },
@@ -374,6 +388,21 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert final_rows[0]["baseline_random_cumulative_ree_max"] == "0.41"
     assert final_rows[0]["baseline_random_cumulative_sipe"] == "0.51"
     assert final_rows[0]["baseline_random_cumulative_sampled_eigen_error"] == "0.061"
+    assert final_rows[0]["baseline_random_task_projected_macro_f1"] == "0.62"
+    assert final_rows[0]["baseline_random_task_refined_macro_f1"] == "0.68"
+    assert final_rows[0]["baseline_random_task_train_time"] == "2.0"
+    assert final_rows[0]["baseline_random_task_refine_time"] == "0.5"
+    assert final_rows[0]["baseline_random_task_total_time"] == "2.5"
+    assert final_rows[0]["baseline_heavy_edge_task_projected_macro_f1"] == "0.6"
+    assert final_rows[0]["baseline_heavy_edge_task_refined_macro_f1"] == "0.7"
+    assert final_rows[0]["baseline_heavy_edge_task_train_time"] == "3.0"
+    assert final_rows[0]["baseline_heavy_edge_task_refine_time"] == "0.7"
+    assert final_rows[0]["baseline_heavy_edge_task_total_time"] == "3.7"
+    assert final_rows[0]["baseline_projected_macro_f1"] == "0.6"
+    assert final_rows[0]["baseline_refined_macro_f1"] == "0.7"
+    assert final_rows[0]["baseline_train_time"] == "3.0"
+    assert final_rows[0]["baseline_refine_time"] == "0.7"
+    assert final_rows[0]["baseline_total_time"] == "3.7"
     assert final_rows[0]["baseline_random_runtime_total"] == "1.25"
     assert final_rows[0]["task_projected_macro_f1"] == "0.65"
     assert final_rows[0]["task_refined_macro_f1"] == "0.72"
@@ -832,6 +861,101 @@ def test_stage_b_ablation_supports_pdf_next_round_variants(tmp_path):
     assert g3_relation["coarsening"]["cumulative_guard"]["objective"] == "relation"
 
 
+def test_stage_b_ablation_supports_matching_and_repair_objective_variants(tmp_path):
+    from experiments.scripts.run_hgb_stage_b_ablation import main
+    from experiments.scripts.run_hgb_task_eval import build_parser as build_task_eval_parser
+
+    p_output = tmp_path / "p"
+    p_exit = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(p_output),
+            "--target-ratios",
+            "0.5",
+            "--max-levels",
+            "4",
+            "--candidate-source",
+            "onehop_twohop_bucket",
+            "--candidate-K",
+            "8",
+            "--seeds",
+            "12345",
+            "--variants",
+            "P0",
+            "P1",
+            "P2",
+            "P3",
+            "--dry-run",
+        ]
+    )
+    p_configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in p_output.glob("stageB_*/config.yaml")
+    }
+    assert p_exit == 0
+    assert len(p_configs) == 4
+    p0 = next(cfg for name, cfg in p_configs.items() if "_P0_" in name)
+    p1 = next(cfg for name, cfg in p_configs.items() if "_P1_" in name)
+    p2 = next(cfg for name, cfg in p_configs.items() if "_P2_" in name)
+    p3 = next(cfg for name, cfg in p_configs.items() if "_P3_" in name)
+    assert p0["sketch"]["method"] == "chebyshev_heat"
+    assert p0["sketch"]["dim"] == 16
+    assert p0["fusion"]["relation_weighting"]["method"] == "uniform"
+    assert p0["metapath_sketch"]["enabled"] is False
+    assert p0["scoring"]["lambda_conv"] == 0.5
+    assert p0["coarsening"]["matching_method"] == "mutual_best"
+    assert p0["coarsening"]["max_cluster_size"] == 2
+    assert p1["coarsening"]["matching_method"] == "greedy_cluster"
+    assert p1["coarsening"]["max_cluster_size"] == 3
+    assert p2["coarsening"]["matching_method"] == "greedy_cluster"
+    assert p2["coarsening"]["max_cluster_size"] == 4
+    assert p3["coarsening"]["matching_method"] == "greedy_cluster"
+    assert p3["coarsening"]["max_cluster_size"] == 4
+    assert p3["scoring"]["lambda_conv"] == 0.35
+
+    g_output = tmp_path / "g"
+    g_exit = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(g_output),
+            "--target-ratios",
+            "0.25",
+            "--max-levels",
+            "4",
+            "--candidate-source",
+            "onehop_twohop_bucket",
+            "--candidate-K",
+            "8",
+            "--seeds",
+            "12345",
+            "--variants",
+            "G3-energy",
+            "G3-relation",
+            "G3-task",
+            "--dry-run",
+        ]
+    )
+    g_configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in g_output.glob("stageB_*/config.yaml")
+    }
+    assert g_exit == 0
+    assert len(g_configs) == 3
+    g3_energy = next(cfg for name, cfg in g_configs.items() if "_G3-energy_" in name)
+    g3_relation = next(cfg for name, cfg in g_configs.items() if "_G3-relation_" in name)
+    g3_task = next(cfg for name, cfg in g_configs.items() if "_G3-task_" in name)
+    assert g3_energy["coarsening"]["cumulative_guard"]["repair_objective"] == "energy"
+    assert g3_relation["coarsening"]["cumulative_guard"]["repair_objective"] == "relation"
+    assert g3_task["coarsening"]["cumulative_guard"]["repair_objective"] == "task"
+
+    parsed = build_task_eval_parser().parse_args(["--runs-root", "runs", "--refine-epochs-list", "0", "1", "3", "5"])
+    assert parsed.refine_epochs_list == [0, 1, 3, 5]
+
+
 def test_sanity_runner_outputs_summary_and_report(tmp_path):
     from experiments.scripts.run_sanity import run_sanity
 
@@ -974,6 +1098,60 @@ def test_spectral_diagnostics_target_matches_cumulative_baselines(tmp_path):
         assert baseline["target_abs_error"] <= 0.05
         assert baseline["target_hit"] is True
         assert baseline["levels"] >= 1
+
+
+def test_spectral_diagnostics_can_evaluate_target_matched_baseline_tasks(tmp_path, monkeypatch):
+    import hesf_coarsen.eval.spectral_diagnostics as spectral_diagnostics
+    from hesf_coarsen.eval.task_gnn import TaskEvalResult
+
+    graph = generate_synthetic_graph(num_users=12, num_items=8, num_tags=4, seed=1403)
+    graph.labels = np.arange(graph.num_nodes, dtype=np.int64) % 2
+    result = run_multilevel_coarsening(graph, _tiny_config(tmp_path / "run"))[0]
+    z = np.arange(graph.num_nodes * 3, dtype=np.float32).reshape(graph.num_nodes, 3) / 10.0
+    calls = []
+
+    def fake_evaluate_rgcn_task(original, coarse, original_to_coarse, **params):
+        calls.append((original, coarse, original_to_coarse, params))
+        return TaskEvalResult(
+            {
+                "projected_original_macro_f1": 0.61,
+                "refined_original_macro_f1": 0.67,
+                "train_time": 1.2,
+                "refine_time": 0.3,
+                "total_time": 1.5,
+            }
+        )
+
+    monkeypatch.setattr(spectral_diagnostics, "evaluate_rgcn_task", fake_evaluate_rgcn_task)
+
+    diagnostics = spectral_diagnostics.compute_spectral_diagnostics(
+        original=graph,
+        coarse=result.graph,
+        assignment=result.assignment,
+        seed=11,
+        num_signals=3,
+        smoothing_steps=1,
+        relation_weights={relation_id: 1.0 for relation_id in graph.relations},
+        Z=z,
+        baseline_methods=["random"],
+        baseline_max_nodes=64,
+        baseline_target_ratio=0.5,
+        baseline_target_tolerance=0.05,
+        baseline_max_levels=4,
+        baseline_task_eval=True,
+        baseline_task_eval_params={"epochs": 2, "refine_epochs": 1, "device": "cpu"},
+    )
+
+    baseline = diagnostics["baseline_comparison"]["random"]
+    assert len(calls) == 1
+    assert calls[0][3]["epochs"] == 2
+    assert calls[0][3]["refine_epochs"] == 1
+    assert calls[0][3]["device"] == "cpu"
+    assert baseline["task_projected_macro_f1"] == 0.61
+    assert baseline["task_refined_macro_f1"] == 0.67
+    assert baseline["task_train_time"] == 1.2
+    assert baseline["task_refine_time"] == 0.3
+    assert baseline["task_total_time"] == 1.5
 
 
 def test_synthetic_scale_estimate_has_expected_fields():

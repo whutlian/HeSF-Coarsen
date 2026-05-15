@@ -53,8 +53,10 @@ def evaluate_run(
     seed: int,
     epochs: int,
     refine_epochs: int,
+    refine_epochs_list: list[int] | None,
     hidden_dim: int,
     device: str,
+    full_graph_rgcn_lite: bool,
 ) -> dict[str, Any]:
     metadata_path = run_dir / "metadata.json"
     metadata = read_json(metadata_path) if metadata_path.exists() else {}
@@ -76,7 +78,9 @@ def evaluate_run(
         hidden_dim=int(hidden_dim),
         epochs=int(epochs),
         refine_epochs=int(refine_epochs),
+        refine_epochs_list=refine_epochs_list,
         device=device,
+        full_graph_rgcn_lite=bool(full_graph_rgcn_lite),
     ).metrics
     result.update(
         {
@@ -104,8 +108,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=12345)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--refine-epochs", type=int, default=10)
+    parser.add_argument("--refine-epochs-list", type=int, nargs="+", default=None)
     parser.add_argument("--hidden-dim", type=int, default=32)
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--full-graph-rgcn-lite",
+        "--include-full-graph-baseline",
+        action="store_true",
+        dest="full_graph_rgcn_lite",
+    )
     parser.add_argument("--limit", type=int)
     parser.add_argument("--progress", action="store_true")
     return parser
@@ -140,8 +151,10 @@ def main(argv: list[str] | None = None) -> int:
                 seed=args.seed,
                 epochs=args.epochs,
                 refine_epochs=args.refine_epochs,
+                refine_epochs_list=args.refine_epochs_list,
                 hidden_dim=args.hidden_dim,
                 device=args.device,
+                full_graph_rgcn_lite=args.full_graph_rgcn_lite,
             )
         except Exception as exc:
             row = {

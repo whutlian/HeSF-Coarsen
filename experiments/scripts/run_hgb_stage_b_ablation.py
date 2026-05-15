@@ -67,6 +67,9 @@ def _configure_m0_mainline(config: dict) -> dict:
 
 def _configure_g3_true_cumulative_repair(config: dict, objective: str) -> dict:
     cfg = deepcopy(config)
+    objective_name = str(objective).lower().replace("-", "_")
+    if objective_name in {"spectral", "fixed", "cumulative"}:
+        objective_name = "energy"
     cfg.setdefault("coarsening", {})["matching_method"] = "greedy_cluster"
     cfg["coarsening"]["max_cluster_size"] = 4
     guard = cfg.setdefault("coarsening", {}).setdefault("cumulative_guard", {})
@@ -80,7 +83,8 @@ def _configure_g3_true_cumulative_repair(config: dict, objective: str) -> dict:
             "repair_strategy": "split_local_swap_accept",
             "accept_only_if_cumulative_improves": True,
             "accept_metric": "true_cumulative",
-            "objective": str(objective),
+            "objective": objective_name,
+            "repair_objective": objective_name,
         }
     )
     return cfg
@@ -119,9 +123,19 @@ def _variant_config(config: dict, variant: str) -> dict:
                 }
             )
         return cfg
-    if variant in {"G3-fixed", "G3-task", "G3-relation"}:
+    if variant in {"P0", "P1", "P2", "P3"}:
+        cfg = _configure_m0_mainline(cfg)
+        cfg.setdefault("coarsening", {})["matching_method"] = (
+            "mutual_best" if variant == "P0" else "greedy_cluster"
+        )
+        cfg["coarsening"]["max_cluster_size"] = {"P0": 2, "P1": 3, "P2": 4, "P3": 4}[variant]
+        if variant == "P3":
+            cfg.setdefault("scoring", {})["lambda_conv"] = 0.35
+        return cfg
+    if variant in {"G3-fixed", "G3-energy", "G3-task", "G3-relation"}:
         objective = {
-            "G3-fixed": "spectral",
+            "G3-fixed": "energy",
+            "G3-energy": "energy",
             "G3-task": "task",
             "G3-relation": "relation",
         }[variant]
@@ -432,6 +446,11 @@ def generate_stage_b_configs(
     spectral_baseline_max_nodes: int | None = None,
     spectral_exact_eigenvalue_max_nodes: int | None = None,
     cumulative_spectral_exact_eigenvalue_max_nodes: int | None = None,
+    baseline_task_eval: bool = False,
+    baseline_task_epochs: int = 20,
+    baseline_task_refine_epochs: int = 3,
+    baseline_task_hidden_dim: int = 32,
+    baseline_task_device: str = "auto",
 ) -> Iterable[StageBAblationConfig]:
     sketch_methods = tuple(sketch_methods or ["chebyshev_heat"])
     relation_weighting_methods = tuple(relation_weighting_methods or [""])
@@ -506,6 +525,14 @@ def generate_stage_b_configs(
             "cumulative_spectral_baselines",
             ["random", "heavy_edge", "graphzoom_style", "convmatch_style"],
         )
+        if baseline_task_eval:
+            config["diagnostics"]["cumulative_spectral_baseline_task_eval"] = True
+            config["diagnostics"]["cumulative_spectral_baseline_task_eval_params"] = {
+                "epochs": int(baseline_task_epochs),
+                "refine_epochs": int(baseline_task_refine_epochs),
+                "hidden_dim": int(baseline_task_hidden_dim),
+                "device": str(baseline_task_device),
+            }
         if spectral_baseline_max_nodes is not None:
             config["diagnostics"]["spectral_baseline_max_nodes"] = int(spectral_baseline_max_nodes)
         if spectral_exact_eigenvalue_max_nodes is not None:
@@ -642,6 +669,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--spectral-baseline-max-nodes", type=int, default=None)
     parser.add_argument("--spectral-exact-eigenvalue-max-nodes", type=int, default=None)
     parser.add_argument("--cumulative-spectral-exact-eigenvalue-max-nodes", type=int, default=None)
+    parser.add_argument("--baseline-task-eval", action="store_true")
+    parser.add_argument("--baseline-task-epochs", type=int, default=20)
+    parser.add_argument("--baseline-task-refine-epochs", type=int, default=3)
+    parser.add_argument("--baseline-task-hidden-dim", type=int, default=32)
+    parser.add_argument("--baseline-task-device", default="auto")
     parser.add_argument("--experiment-block", default="stage_b_ablation")
     parser.add_argument("--seeds", type=int, nargs="+", default=[12345])
     parser.add_argument(
@@ -741,6 +773,11 @@ def main(argv: list[str] | None = None) -> int:
         spectral_baseline_max_nodes=args.spectral_baseline_max_nodes,
         spectral_exact_eigenvalue_max_nodes=args.spectral_exact_eigenvalue_max_nodes,
         cumulative_spectral_exact_eigenvalue_max_nodes=args.cumulative_spectral_exact_eigenvalue_max_nodes,
+        baseline_task_eval=args.baseline_task_eval,
+        baseline_task_epochs=args.baseline_task_epochs,
+        baseline_task_refine_epochs=args.baseline_task_refine_epochs,
+        baseline_task_hidden_dim=args.baseline_task_hidden_dim,
+        baseline_task_device=args.baseline_task_device,
     ):
         graph_dir = (
             (args.graph_root / item.dataset.lower())
