@@ -5,9 +5,11 @@ import numpy as np
 
 from hesf_coarsen.coarsen import aggregate_edges
 from hesf_coarsen.coarsen import multilevel as multilevel_module
+from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.coarsen.multilevel import run_multilevel_coarsening
 from hesf_coarsen.config import DEFAULT_CONFIG
 from hesf_coarsen.io.edge_list import generate_synthetic_graph, load_graph
+from hesf_coarsen.io.schema import HeteroGraph
 
 
 def small_config(tmp_path):
@@ -151,6 +153,49 @@ def test_multilevel_pipeline_records_cluster_reduction_diagnostics(tmp_path):
     assert diagnostics["cluster_size_histogram"]
     assert diagnostics["cluster_size_mean"] >= 1.0
     assert "cluster_label_entropy" in diagnostics
+
+
+def test_repair_bad_clusters_records_objective_and_accept_gate():
+    graph = HeteroGraph(
+        num_nodes=4,
+        node_type=np.zeros(4, dtype=np.int32),
+        relations={},
+        labels=np.array([0, 0, 1, 1], dtype=np.int32),
+    )
+    assignment = Assignment(
+        assignment=np.zeros(graph.num_nodes, dtype=np.int64),
+        supernode_type=np.array([0], dtype=np.int32),
+    )
+    z = np.array(
+        [
+            [0.0, 0.0],
+            [0.1, 0.0],
+            [3.0, 0.0],
+            [3.1, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    config = {
+        "coarsening": {
+            "cumulative_guard": {
+                "enabled": True,
+                "repair_bad_clusters": True,
+                "repair_strategy": "split_local_swap_accept",
+                "accept_only_if_cumulative_improves": True,
+            }
+        }
+    }
+
+    repaired, diagnostics = multilevel_module._repair_bad_clusters(graph, assignment, z, config)
+
+    assert repaired.num_supernodes > assignment.num_supernodes
+    assert diagnostics["repair_accepted"] is True
+    assert diagnostics["repair_strategy"] == "split_local_swap_accept"
+    assert diagnostics["repair_objective"]["cluster_sketch_spread"] > 0.0
+    assert "cumulative_energy_delta" in diagnostics["repair_objective"]
+    assert "relation_profile_variance" in diagnostics["repair_objective"]
+    assert "train_label_entropy" in diagnostics["repair_objective"]
+    assert diagnostics["estimated_cumulative_dee_after"] <= diagnostics["estimated_cumulative_dee_before"]
 
 
 def test_level_config_caps_matches_by_remaining_target_ratio():

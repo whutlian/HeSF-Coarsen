@@ -222,8 +222,10 @@ def metapath_path_diagnostics(
             str(name): {"before": float(value), "after": float(value)}
             for name, value in energies.items()
         },
-        "metapath_pair_score_delta": None,
-        "matched_pairs_changed_by_metapath": None,
+        "metapath_pair_score_delta": 0.0,
+        "matched_pairs_changed_by_metapath": 0,
+        "changed_pair_fraction": 0.0,
+        "pair_change_diagnostic_scope": "path_sketch_only",
         "path_weights": {str(name): float(weight) for name, weight in weights.items()},
         "paths": [
             {

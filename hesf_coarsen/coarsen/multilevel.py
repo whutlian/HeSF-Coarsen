@@ -345,34 +345,80 @@ def _repair_bad_clusters(
     config: dict,
 ) -> tuple[Assignment, dict]:
     guard = config.get("coarsening", {}).get("cumulative_guard", {})
-    if not bool(guard.get("enabled", False)) or not bool(guard.get("repair_bad_clusters", False)):
-        return assignment, {"enabled": bool(guard.get("enabled", False)), "repair_bad_clusters": False}
-    labels = graph.labels
-    sizes = assignment.cluster_sizes()
-    spreads = np.zeros(assignment.num_supernodes, dtype=np.float64)
-    label_entropy = np.zeros(assignment.num_supernodes, dtype=np.float64)
-    for supernode in range(assignment.num_supernodes):
-        members = np.flatnonzero(assignment.assignment == supernode)
-        if len(members) <= 1:
-            continue
-        block = Z[members].astype(np.float64, copy=False)
-        center = block.mean(axis=0, keepdims=True)
-        spreads[supernode] = float(np.mean(np.sum((block - center) ** 2, axis=1)))
-        if labels is not None:
-            cluster_labels = np.asarray(labels)[members]
-            cluster_labels = cluster_labels[cluster_labels >= 0]
-            if len(cluster_labels):
-                _values, counts = np.unique(cluster_labels, return_counts=True)
-                probs = counts.astype(np.float64) / max(float(counts.sum()), 1.0)
-                label_entropy[supernode] = float(-np.sum(probs * np.log(np.maximum(probs, 1.0e-12))))
+    enabled = bool(guard.get("enabled", False))
+    repair_enabled = bool(guard.get("repair_bad_clusters", False))
+    strategy = str(guard.get("repair_strategy", "current")).lower().replace("-", "_")
+    if not enabled or not repair_enabled or strategy == "off":
+        return assignment, {
+            "enabled": enabled,
+            "repair_bad_clusters": repair_enabled,
+            "repair_strategy": strategy,
+            "repair_accepted": False,
+        }
+
+    labels = None if graph.labels is None else np.asarray(graph.labels)
+    relation_profiles = compute_relation_profiles(graph) if graph.relations else None
+
+    def cluster_metrics(candidate: Assignment) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, float]]:
+        sizes = candidate.cluster_sizes()
+        spreads = np.zeros(candidate.num_supernodes, dtype=np.float64)
+        label_entropy = np.zeros(candidate.num_supernodes, dtype=np.float64)
+        relation_variance = np.zeros(candidate.num_supernodes, dtype=np.float64)
+        for supernode in range(candidate.num_supernodes):
+            members = np.flatnonzero(candidate.assignment == supernode)
+            if len(members) <= 1:
+                continue
+            block = Z[members].astype(np.float64, copy=False)
+            center = block.mean(axis=0, keepdims=True)
+            spreads[supernode] = float(np.mean(np.sum((block - center) ** 2, axis=1)))
+            if labels is not None:
+                cluster_labels = labels[members]
+                cluster_labels = cluster_labels[cluster_labels >= 0]
+                if len(cluster_labels):
+                    _values, counts = np.unique(cluster_labels, return_counts=True)
+                    probs = counts.astype(np.float64) / max(float(counts.sum()), 1.0)
+                    label_entropy[supernode] = float(
+                        -np.sum(probs * np.log(np.maximum(probs, 1.0e-12)))
+                    )
+            if relation_profiles is not None:
+                profile_block = relation_profiles[members].astype(np.float64, copy=False)
+                if profile_block.size:
+                    relation_variance[supernode] = float(np.mean(np.var(profile_block, axis=0)))
+        objective = {
+            "cluster_sketch_spread": float(np.mean(spreads[sizes > 1])) if np.any(sizes > 1) else 0.0,
+            "relation_profile_variance": float(np.mean(relation_variance[sizes > 1]))
+            if np.any(sizes > 1)
+            else 0.0,
+            "train_label_entropy": float(np.mean(label_entropy[sizes > 1]))
+            if np.any(sizes > 1)
+            else 0.0,
+        }
+        return sizes, spreads, label_entropy, objective
+
+    sizes, spreads, label_entropy, before_objective = cluster_metrics(assignment)
+    before_dee_proxy = float(
+        before_objective["cluster_sketch_spread"] + before_objective["relation_profile_variance"]
+    )
+    before_sipe_proxy = float(before_objective["cluster_sketch_spread"])
     large = sizes > 2
     spread_cutoff = float(np.percentile(spreads[large], 75)) if np.any(large) else np.inf
-    bad = large & ((spreads >= spread_cutoff) | (label_entropy > 0.0))
+    entropy_cutoff = float(guard.get("label_entropy_cutoff", 0.0))
+    bad = large & ((spreads >= spread_cutoff) | (label_entropy > entropy_cutoff))
     if not np.any(bad):
         return assignment, {
             "enabled": True,
             "repair_bad_clusters": True,
+            "repair_strategy": strategy,
+            "repair_accepted": False,
             "repaired_cluster_count": 0,
+            "repair_objective": {
+                **before_objective,
+                "cumulative_energy_delta": 0.0,
+            },
+            "estimated_cumulative_dee_before": before_dee_proxy,
+            "estimated_cumulative_dee_after": before_dee_proxy,
+            "estimated_cumulative_sipe_before": before_sipe_proxy,
+            "estimated_cumulative_sipe_after": before_sipe_proxy,
             "node_reduction_before": int(np.sum(np.maximum(sizes - 1, 0))),
             "node_reduction_after": int(np.sum(np.maximum(sizes - 1, 0))),
         }
@@ -392,17 +438,50 @@ def _repair_bad_clusters(
         if not bad[supernode]:
             emit(members)
             continue
-        order = np.lexsort((members, Z[members, 0].astype(np.float64)))
+        if strategy == "split_local_swap_accept":
+            center = Z[members].astype(np.float64, copy=False).mean(axis=0)
+            first_axis = Z[members, 0].astype(np.float64)
+            distance = np.sum((Z[members].astype(np.float64, copy=False) - center) ** 2, axis=1)
+            order = np.lexsort((members, distance, first_axis))
+        else:
+            order = np.lexsort((members, Z[members, 0].astype(np.float64)))
         ordered = members[order]
         for start in range(0, len(ordered), 2):
             emit(ordered[start : start + 2])
     repaired = Assignment(new_assignment, np.asarray(new_types, dtype=np.int32))
     repaired_sizes = repaired.cluster_sizes()
+    _after_sizes, _after_spreads, _after_entropy, after_objective = cluster_metrics(repaired)
+    after_dee_proxy = float(
+        after_objective["cluster_sketch_spread"] + after_objective["relation_profile_variance"]
+    )
+    after_sipe_proxy = float(after_objective["cluster_sketch_spread"])
+    cumulative_energy_delta = float(after_dee_proxy - before_dee_proxy)
+    accept_only_if_improves = bool(guard.get("accept_only_if_cumulative_improves", False))
+    accepted = (after_dee_proxy < before_dee_proxy) or (after_sipe_proxy < before_sipe_proxy)
+    if accept_only_if_improves and not accepted:
+        repaired = assignment
+        repaired_sizes = sizes
+        after_dee_proxy = before_dee_proxy
+        after_sipe_proxy = before_sipe_proxy
+        cumulative_energy_delta = 0.0
+    else:
+        accepted = True
     return repaired, {
         "enabled": True,
         "repair_bad_clusters": True,
+        "repair_strategy": strategy,
+        "repair_accepted": bool(accepted),
         "repaired_cluster_count": int(np.sum(bad)),
         "spread_cutoff": float(spread_cutoff),
+        "repair_objective": {
+            **before_objective,
+            "cumulative_energy_delta": cumulative_energy_delta,
+        },
+        "repair_objective_after": after_objective,
+        "estimated_cumulative_dee_before": before_dee_proxy,
+        "estimated_cumulative_dee_after": after_dee_proxy,
+        "estimated_cumulative_sipe_before": before_sipe_proxy,
+        "estimated_cumulative_sipe_after": after_sipe_proxy,
         "node_reduction_before": int(np.sum(np.maximum(sizes - 1, 0))),
         "node_reduction_after": int(np.sum(np.maximum(repaired_sizes - 1, 0))),
     }

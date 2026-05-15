@@ -13,13 +13,13 @@ def test_default_config_uses_canonical_sketch_schema():
 
     assert config["sketch"]["method"] == "chebyshev_heat"
     assert config["sketch"]["chebyshev_scaling"] == "estimate_norm"
-    assert config["metapath_sketch"]["enabled"] is True
-    assert config["metapath_sketch"]["preset"] == "canonical"
+    assert config["metapath_sketch"]["enabled"] is False
+    assert config["metapath_sketch"]["preset"] == "off"
     assert config["metapath_sketch"]["auto_paths"] is False
-    assert config["metapath_sketch"]["operator_weight_total"] == 0.1
-    assert config["metapath_sketch"]["weighting"]["method"] == "inverse_energy"
+    assert config["metapath_sketch"]["operator_weight_total"] == 0.0
+    assert config["metapath_sketch"]["weighting"]["method"] == "uniform"
     assert isinstance(config["fusion"]["relation_weighting"], dict)
-    assert config["fusion"]["relation_weighting"]["method"] == "inverse_energy"
+    assert config["fusion"]["relation_weighting"]["method"] == "uniform"
     assert config["fusion"]["symmetric_relation_scale"] == 0.5
     assert config["fusion"]["estimate_operator_norm"] is True
     assert config["fusion"]["chebyshev_rescale_if_needed"] is True

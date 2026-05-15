@@ -260,6 +260,23 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
             "fused_sketch_energy_relative_error": 0.33,
             "relation_energy_relative_error_max": 0.44,
             "chebheat_sketch_inner_product_relative_error": 0.55,
+            "exact_eigenvalue_sanity": {
+                "status": "sampled_subgraph",
+                "mode": "sampled_dense_eigvalsh",
+                "relative_error": 0.066,
+            },
+            "baseline_comparison": {
+                "random": {
+                    "status": "computed",
+                    "final_cumulative_ratio": 0.52,
+                    "dirichlet_energy_relative_error": 0.21,
+                    "fused_sketch_energy_relative_error": 0.31,
+                    "relation_energy_relative_error_max": 0.41,
+                    "chebheat_sketch_inner_product_relative_error": 0.51,
+                    "exact_eigenvalue_sanity": {"relative_error": 0.061},
+                    "runtime_total": 1.25,
+                },
+            },
         },
         "large_graph_envelope": {
             "process_rss_bytes": 2 * 1024**3,
@@ -350,6 +367,14 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert final_rows[0]["cumulative_fse_unweighted"] == "0.33"
     assert final_rows[0]["cumulative_ree_max"] == "0.44"
     assert final_rows[0]["cumulative_sipe"] == "0.55"
+    assert final_rows[0]["cumulative_sampled_eigen_error"] == "0.066"
+    assert final_rows[0]["baseline_random_final_cumulative_ratio"] == "0.52"
+    assert final_rows[0]["baseline_random_cumulative_dee"] == "0.21"
+    assert final_rows[0]["baseline_random_cumulative_fse_unweighted"] == "0.31"
+    assert final_rows[0]["baseline_random_cumulative_ree_max"] == "0.41"
+    assert final_rows[0]["baseline_random_cumulative_sipe"] == "0.51"
+    assert final_rows[0]["baseline_random_cumulative_sampled_eigen_error"] == "0.061"
+    assert final_rows[0]["baseline_random_runtime_total"] == "1.25"
     assert final_rows[0]["task_projected_macro_f1"] == "0.65"
     assert final_rows[0]["task_refined_macro_f1"] == "0.72"
     assert final_rows[0]["task_coarse_train_macro_f1"] == "0.75"
@@ -397,6 +422,9 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     if importlib.util.find_spec("matplotlib") is not None:
         assert (tmp_path / "summary" / "figures" / "target_ratio_hit_rate.png").exists()
         assert (tmp_path / "summary" / "figures" / "score_contribution_share.png").exists()
+        assert (tmp_path / "summary" / "figures" / "cumulative_vs_final_gap.png").exists()
+        assert (tmp_path / "summary" / "figures" / "source_distribution_by_variant.png").exists()
+        assert (tmp_path / "summary" / "figures" / "task_vs_cumulative_dee.png").exists()
     assert "Unique runs: 1" in report
     assert "Level rows: 2" in report
     assert "cumulative DEE" in report
@@ -408,6 +436,8 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert "task_primary_metric" in report
     assert "peak_vram_reserved_gb" in report
     assert "spectral_baseline_computed_count" in report
+    assert "final-level baseline" in report
+    assert "cumulative baseline" in report
 
 
 def test_compare_hgb_ablation_groups_metrics(tmp_path):
@@ -592,6 +622,154 @@ def test_stage_b_ablation_supports_next_measurement_variants_and_cli(tmp_path):
     assert "_greedy_cluster_c4_" in c2_repair_name
     assert c2_repair["coarsening"]["cumulative_guard"]["repair_bad_clusters"] is True
     assert c2_repair["diagnostics"]["spectral_baseline_max_nodes"] == 50000
+
+
+def test_stage_b_ablation_supports_m_g_s_next_stage_matrices(tmp_path):
+    from experiments.scripts.run_hgb_stage_b_ablation import main
+
+    m_output = tmp_path / "m"
+    m_exit = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(m_output),
+            "--target-ratios",
+            "0.5",
+            "--max-levels",
+            "4",
+            "--candidate-source",
+            "onehop_twohop_bucket",
+            "--candidate-K",
+            "8",
+            "--sketch-order",
+            "3",
+            "--seeds",
+            "12345",
+            "--variants",
+            "M0",
+            "M1",
+            "M2",
+            "M3",
+            "M4",
+            "M5",
+            "--dry-run",
+        ]
+    )
+    m_configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in m_output.glob("stageB_*/config.yaml")
+    }
+    assert m_exit == 0
+    assert len(m_configs) == 6
+    m0 = next(cfg for name, cfg in m_configs.items() if "_M0_" in name)
+    m1 = next(cfg for name, cfg in m_configs.items() if "_M1_" in name)
+    m2 = next(cfg for name, cfg in m_configs.items() if "_M2_" in name)
+    m3 = next(cfg for name, cfg in m_configs.items() if "_M3_" in name)
+    m4 = next(cfg for name, cfg in m_configs.items() if "_M4_" in name)
+    m5 = next(cfg for name, cfg in m_configs.items() if "_M5_" in name)
+    assert m0["sketch"]["method"] == "chebyshev_heat"
+    assert m0["sketch"]["dim"] == 16
+    assert m0["fusion"]["relation_weighting"]["method"] == "uniform"
+    assert m0["metapath_sketch"]["enabled"] is False
+    assert m0["scoring"]["lambda_conv"] == 0.5
+    assert m1["scoring"]["lambda_conv"] == 0.25
+    assert m2["scoring"]["lambda_conv"] == 0.75
+    assert m3["fusion"]["relation_weighting"]["method"] == "capped_inverse_sqrt_energy"
+    assert m4["sketch"]["method"] == "lazy"
+    assert m4["sketch"]["dim"] == 32
+    assert m5["metapath_sketch"]["enabled"] is True
+    assert m5["metapath_sketch"]["preset"] == "canonical"
+    assert m5["metapath_sketch"]["operator_weight_total"] == 0.1
+
+    g_output = tmp_path / "g"
+    g_exit = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(g_output),
+            "--target-ratios",
+            "0.25",
+            "--max-levels",
+            "4",
+            "--candidate-source",
+            "onehop_twohop_bucket",
+            "--candidate-K",
+            "8",
+            "--seeds",
+            "12345",
+            "--variants",
+            "G0",
+            "G1",
+            "G2",
+            "G3",
+            "G4",
+            "--dry-run",
+        ]
+    )
+    g_configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in g_output.glob("stageB_*/config.yaml")
+    }
+    assert g_exit == 0
+    assert len(g_configs) == 5
+    g0 = next(cfg for name, cfg in g_configs.items() if "_G0_" in name)
+    g1 = next(cfg for name, cfg in g_configs.items() if "_G1_" in name)
+    g2 = next(cfg for name, cfg in g_configs.items() if "_G2_" in name)
+    g3 = next(cfg for name, cfg in g_configs.items() if "_G3_" in name)
+    g4 = next(cfg for name, cfg in g_configs.items() if "_G4_" in name)
+    assert g0["coarsening"]["matching_method"] == "greedy_cluster"
+    assert g0["coarsening"]["max_cluster_size"] == 4
+    assert g0["coarsening"]["cumulative_guard"]["repair_bad_clusters"] is False
+    assert g1["coarsening"]["cumulative_guard"]["repair_strategy"] == "current"
+    assert g2["coarsening"]["cumulative_guard"]["repair_strategy"] == "split_high_spread"
+    assert g3["coarsening"]["cumulative_guard"]["repair_strategy"] == "split_local_swap_accept"
+    assert g3["coarsening"]["cumulative_guard"]["accept_only_if_cumulative_improves"] is True
+    assert g4["coarsening"]["max_cluster_size"] == 3
+
+    s_output = tmp_path / "s"
+    s_exit = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(s_output),
+            "--target-ratios",
+            "0.5",
+            "--max-levels",
+            "4",
+            "--candidate-source",
+            "onehop_twohop_bucket",
+            "--candidate-K",
+            "8",
+            "--seeds",
+            "12345",
+            "--variants",
+            "S0",
+            "S1",
+            "S2",
+            "S3",
+            "--dry-run",
+        ]
+    )
+    s_configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in s_output.glob("stageB_*/config.yaml")
+    }
+    assert s_exit == 0
+    assert len(s_configs) == 4
+    s0 = next(cfg for name, cfg in s_configs.items() if "_S0_" in name)
+    s1 = next(cfg for name, cfg in s_configs.items() if "_S1_" in name)
+    s2 = next(cfg for name, cfg in s_configs.items() if "_S2_" in name)
+    s3 = next(cfg for name, cfg in s_configs.items() if "_S3_" in name)
+    assert s0["sketch"]["method"] == "chebyshev_heat"
+    assert s1["sketch"]["method"] == "lazy"
+    assert s1["sketch"]["dim"] == 32
+    assert s2["candidates"]["quotas"]["bucket_min_fraction"] == 0.3
+    assert s2["candidates"]["quotas"]["twohop_max_fraction"] == 0.7
+    assert s3["candidates"]["quotas"]["bucket_min_fraction"] == 0.3
+    assert s3["candidates"]["quotas"]["twohop_max_fraction"] == 0.7
 
 
 def test_sanity_runner_outputs_summary_and_report(tmp_path):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Any
 
 import numpy as np
@@ -324,6 +325,7 @@ def _baseline_comparison(
     smoothing_steps: int,
     baseline_methods: str | list[str] | tuple[str, ...] | None,
     baseline_max_nodes: int | None,
+    exact_eigenvalue_max_nodes: int | None,
 ) -> dict[str, Any]:
     if isinstance(baseline_methods, str):
         methods = [method.strip() for method in baseline_methods.split(",") if method.strip()]
@@ -344,6 +346,7 @@ def _baseline_comparison(
     max_pairs = int(np.sum(actual_assignment.cluster_sizes() == 2))
     comparison: dict[str, Any] = {}
     for offset, method in enumerate(methods):
+        start = perf_counter()
         baseline_assignment = _baseline_assignment(
             original,
             method,
@@ -364,22 +367,37 @@ def _baseline_comparison(
             relation_weights=relation_weights,
             Z=Z,
             baseline_methods=None,
-            exact_eigenvalue_max_nodes=None,
+            exact_eigenvalue_max_nodes=exact_eigenvalue_max_nodes,
         )
         comparison[method] = {
             "status": "computed",
             "coarse_nodes": int(baseline_coarse.num_nodes),
+            "final_cumulative_ratio": float(baseline_coarse.num_nodes / max(original.num_nodes, 1)),
             "matched_pairs": baseline_matched_pairs,
             "dirichlet_energy_relative_error": baseline_metrics[
                 "dirichlet_energy_relative_error"
             ],
+            "sketch_dirichlet_energy_relative_error": baseline_metrics[
+                "sketch_dirichlet_energy_relative_error"
+            ],
             "relation_weighted_fused_energy_relative_error": baseline_metrics[
                 "relation_weighted_fused_energy_relative_error"
+            ],
+            "fused_sketch_energy_relative_error": baseline_metrics[
+                "fused_sketch_energy_relative_error"
+            ],
+            "relation_energy_relative_error_max": baseline_metrics[
+                "relation_energy_relative_error_max"
             ],
             "chebheat_sketch_inner_product_relative_error": baseline_metrics[
                 "chebheat_sketch_inner_product_relative_error"
             ],
+            "runtime_total": float(perf_counter() - start),
         }
+        if "exact_eigenvalue_sanity" in baseline_metrics:
+            comparison[method]["exact_eigenvalue_sanity"] = baseline_metrics[
+                "exact_eigenvalue_sanity"
+            ]
     return comparison
 
 
@@ -504,5 +522,6 @@ def compute_spectral_diagnostics(
         smoothing_steps,
         baseline_methods,
         baseline_max_nodes,
+        exact_eigenvalue_max_nodes,
     )
     return diagnostics

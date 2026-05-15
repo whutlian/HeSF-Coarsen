@@ -38,6 +38,8 @@ def test_relation_weight_methods_are_normalized_and_non_negative():
         "inverse_energy",
         "clipped_inverse_energy",
         "inverse_sqrt_energy",
+        "capped_inverse_sqrt",
+        "capped_inverse_sqrt_energy",
         "smoothed_inverse_energy",
     ]:
         result = compute_relation_weights(
@@ -98,6 +100,33 @@ def test_clipped_inverse_energy_limits_dominant_relation_weight():
     assert max(result.weights.values()) < max(inverse.weights.values())
     assert result.diagnostics["relation_weighting_method"] == "clipped_inverse_energy"
     assert result.diagnostics["weight_clip_max"] == 0.6
+
+
+def test_capped_inverse_sqrt_energy_is_clipped_sqrt_variant():
+    graph = _smooth_noisy_graph()
+    basis = np.array([[0.0], [0.0], [10.0], [-10.0]], dtype=np.float32)
+
+    result = compute_relation_weights(
+        graph,
+        {
+            "fusion": {
+                "relation_weighting": {
+                    "method": "capped_inverse_sqrt",
+                    "eta": 0.0,
+                    "epsilon": 1e-3,
+                    "weight_clip_min": 0.25,
+                    "weight_clip_max": 0.75,
+                }
+            }
+        },
+        basis=basis,
+    )
+
+    assert np.isclose(sum(result.weights.values()), 1.0)
+    assert result.diagnostics["relation_weighting_method"] == "capped_inverse_sqrt_energy"
+    assert result.diagnostics["relation_weighting_base_method"] == "inverse_sqrt_energy"
+    assert result.diagnostics["weight_clip_min"] == 0.25
+    assert result.diagnostics["weight_clip_max"] == 0.75
 
 
 def test_inverse_energy_relation_weight_prefers_smooth_relation():

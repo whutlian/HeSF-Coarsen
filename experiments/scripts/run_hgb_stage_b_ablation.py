@@ -62,12 +62,76 @@ def _variant_config(config: dict, variant: str) -> dict:
         "D1",
         "D2",
         "D3",
-        "M0",
-        "M1",
-        "M2",
-        "M3",
-        "M4",
     }:
+        return cfg
+    if variant in {"M0", "M1", "M2", "M3", "M4", "M5"}:
+        cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "uniform"
+        cfg.setdefault("sketch", {})["method"] = "chebyshev_heat"
+        cfg.setdefault("sketch", {})["dim"] = 16
+        cfg.setdefault("metapath_sketch", {})["preset"] = "off"
+        cfg["metapath_sketch"]["enabled"] = False
+        cfg["metapath_sketch"]["operator_weight_total"] = 0.0
+        cfg["metapath_sketch"]["paths"] = []
+        cfg["metapath_sketch"]["auto_paths"] = False
+        cfg.setdefault("scoring", {})["lambda_conv"] = 0.5
+        if variant == "M1":
+            cfg["scoring"]["lambda_conv"] = 0.25
+        if variant == "M2":
+            cfg["scoring"]["lambda_conv"] = 0.75
+        if variant == "M3":
+            cfg["fusion"]["relation_weighting"]["method"] = "capped_inverse_sqrt_energy"
+            cfg["fusion"]["relation_weighting"]["gamma"] = 0.5
+            cfg["fusion"]["relation_weighting"].setdefault("weight_clip_min", 0.05)
+            cfg["fusion"]["relation_weighting"].setdefault("weight_clip_max", 0.25)
+        if variant == "M4":
+            cfg["sketch"]["method"] = "lazy"
+            cfg["sketch"]["dim"] = 32
+        if variant == "M5":
+            cfg["metapath_sketch"]["enabled"] = True
+            cfg["metapath_sketch"]["preset"] = "canonical"
+            cfg["metapath_sketch"]["operator_weight_total"] = 0.1
+        return cfg
+    if variant in {"G0", "G1", "G2", "G3", "G4"}:
+        cfg.setdefault("coarsening", {})["matching_method"] = "greedy_cluster"
+        cfg["coarsening"]["max_cluster_size"] = 3 if variant == "G4" else 4
+        cfg.setdefault("coarsening", {}).setdefault("cumulative_guard", {})
+        guard = cfg["coarsening"]["cumulative_guard"]
+        guard.update(
+            {
+                "enabled": variant in {"G1", "G2", "G3"},
+                "probe_count": 32,
+                "max_cumulative_dee": 0.40,
+                "max_cumulative_sipe": 0.75,
+                "repair_bad_clusters": variant in {"G1", "G2", "G3"},
+                "accept_only_if_cumulative_improves": variant == "G3",
+            }
+        )
+        if variant == "G0":
+            guard["repair_strategy"] = "off"
+        elif variant == "G1":
+            guard["repair_strategy"] = "current"
+        elif variant == "G2":
+            guard["repair_strategy"] = "split_high_spread"
+        elif variant == "G3":
+            guard["repair_strategy"] = "split_local_swap_accept"
+        else:
+            guard["repair_strategy"] = "off"
+        return cfg
+    if variant in {"S0", "S1", "S2", "S3"}:
+        cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "uniform"
+        cfg.setdefault("metapath_sketch", {})["enabled"] = False
+        cfg["metapath_sketch"]["preset"] = "off"
+        cfg["metapath_sketch"]["operator_weight_total"] = 0.0
+        cfg.setdefault("scoring", {})["lambda_conv"] = 0.5
+        cfg.setdefault("sketch", {})["method"] = "chebyshev_heat"
+        cfg["sketch"]["dim"] = 16
+        if variant in {"S1", "S3"}:
+            cfg["sketch"]["method"] = "lazy"
+            cfg["sketch"]["dim"] = 32
+        if variant in {"S2", "S3"}:
+            cfg.setdefault("candidates", {}).setdefault("quotas", {})
+            cfg["candidates"]["quotas"]["bucket_min_fraction"] = 0.30
+            cfg["candidates"]["quotas"]["twohop_max_fraction"] = 0.70
         return cfg
     if variant in {"A0", "A2", "A4", "A5", "V0", "V1", "V2", "V3", "V4", "V5"}:
         cfg.setdefault("fusion", {}).setdefault("relation_weighting", {})["method"] = "uniform"
@@ -263,6 +327,7 @@ def _unique_run_key(
     relation_weighting_method: str,
     metapath_preset: str,
     metapath_operator_weight_total: float,
+    lambda_conv: float,
 ) -> str:
     parts = [
         experiment_block,
@@ -280,6 +345,7 @@ def _unique_run_key(
         f"c={int(max_cluster_size)}",
         f"rw={relation_weighting_method}",
         f"mp={metapath_preset}:{float(metapath_operator_weight_total):.6g}",
+        f"lc={float(lambda_conv):.6g}",
     ]
     text = "|".join(parts)
     digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
@@ -380,6 +446,10 @@ def generate_stage_b_configs(
             lambda_boundary=0.2,
         )
         config["diagnostics"] = dict(config["diagnostics"], enable_large_graph_envelope=True)
+        config["diagnostics"].setdefault(
+            "cumulative_spectral_baselines",
+            ["random", "heavy_edge", "graphzoom_style", "convmatch_style"],
+        )
         if spectral_baseline_max_nodes is not None:
             config["diagnostics"]["spectral_baseline_max_nodes"] = int(spectral_baseline_max_nodes)
         if spectral_exact_eigenvalue_max_nodes is not None:
@@ -403,6 +473,7 @@ def generate_stage_b_configs(
         effective_relation_weighting = str(
             config.get("fusion", {}).get("relation_weighting", {}).get("method", "")
         )
+        effective_lambda_conv = float(config.get("scoring", {}).get("lambda_conv", 0.0))
         effective_sketch_dim = int(config.get("sketch", {}).get("dim", sketch_dim))
         effective_sketch_method = str(config.get("sketch", {}).get("method", sketch_method))
         inferred_metapath_preset = str(
@@ -437,7 +508,8 @@ def generate_stage_b_configs(
             f"stageB_{dataset}_{variant}_r{ratio_token}_L{effective_max_levels}_"
             f"d{int(effective_sketch_dim)}_K{int(candidate_k)}_{source}_{method_token}_"
             f"{match_token}_c{effective_max_cluster_size}_{rw_token}_mp{mp_token}"
-            f"{str(effective_metapath_total).replace('.', 'p')}_seed{int(seed)}"
+            f"{str(effective_metapath_total).replace('.', 'p')}_"
+            f"lc{str(effective_lambda_conv).replace('.', 'p')}_seed{int(seed)}"
         )
         unique_key = _unique_run_key(
             experiment_block=experiment_block,
@@ -456,6 +528,7 @@ def generate_stage_b_configs(
             relation_weighting_method=effective_relation_weighting,
             metapath_preset=effective_metapath_preset,
             metapath_operator_weight_total=effective_metapath_total,
+            lambda_conv=effective_lambda_conv,
         )
         yield StageBAblationConfig(
             run_name=run_name,

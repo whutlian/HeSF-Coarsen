@@ -220,12 +220,15 @@ def compute_relation_weights(
     method = str(weight_cfg.get("method", "uniform")).lower()
     if method in {"reliability", "reliability_weighted"}:
         method = "inverse_energy"
+    if method in {"capped_inverse_sqrt", "clipped_inverse_sqrt", "capped_inverse_sqrt_energy"}:
+        method = "capped_inverse_sqrt_energy"
     supported = {
         "uniform",
         "volume",
         "inverse_energy",
         "clipped_inverse_energy",
         "inverse_sqrt_energy",
+        "capped_inverse_sqrt_energy",
         "smoothed_inverse_energy",
         "feature_smoothness",
     }
@@ -235,7 +238,7 @@ def compute_relation_weights(
     relation_ids = sorted(graph.relations)
     epsilon = float(weight_cfg.get("epsilon", 1e-8))
     eta = float(weight_cfg.get("eta", 0.5))
-    default_gamma = 0.5 if method == "inverse_sqrt_energy" else 1.0
+    default_gamma = 0.5 if method in {"inverse_sqrt_energy", "capped_inverse_sqrt_energy"} else 1.0
     gamma = float(weight_cfg.get("gamma", default_gamma))
     sample_edges = weight_cfg.get("sample_edges_per_relation", None)
     sample_edges = None if sample_edges in (None, "") else int(sample_edges)
@@ -248,6 +251,7 @@ def compute_relation_weights(
         "inverse_energy",
         "clipped_inverse_energy",
         "inverse_sqrt_energy",
+        "capped_inverse_sqrt_energy",
         "smoothed_inverse_energy",
         "feature_smoothness",
     }:
@@ -319,9 +323,10 @@ def compute_relation_weights(
     weights = weights if method == "smoothed_inverse_energy" else _normalize(raw)
     clip_min = None
     clip_max = None
-    if method == "clipped_inverse_energy":
+    if method in {"clipped_inverse_energy", "capped_inverse_sqrt_energy"}:
         clip_min = float(weight_cfg.get("weight_clip_min", weight_cfg.get("clip_min", 0.0)))
-        clip_max = float(weight_cfg.get("weight_clip_max", weight_cfg.get("clip_max", 0.5)))
+        default_clip_max = 0.75 if method == "capped_inverse_sqrt_energy" else 0.5
+        clip_max = float(weight_cfg.get("weight_clip_max", weight_cfg.get("clip_max", default_clip_max)))
         clipped = {
             relation_id: float(np.clip(value, clip_min, clip_max))
             for relation_id, value in weights.items()
@@ -361,6 +366,8 @@ def compute_relation_weights(
                 ),
             }
         )
+    if method == "capped_inverse_sqrt_energy":
+        diagnostics["relation_weighting_base_method"] = "inverse_sqrt_energy"
     if basis_source is not None:
         diagnostics["energy_basis_source"] = basis_source
         diagnostics["energy_basis_object"] = "Z_X"

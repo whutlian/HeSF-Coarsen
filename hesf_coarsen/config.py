@@ -73,7 +73,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "chebyshev_rescale_if_needed": True,
         "reverse_relation_policy": "include_all",
         "relation_weighting": {
-            "method": "inverse_energy",
+            "method": "uniform",
             "eta": 0.5,
             "gamma": 1.0,
             "epsilon": 1e-8,
@@ -83,12 +83,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
     },
     "metapath_sketch": {
-        "enabled": True,
+        "enabled": False,
         "dim": 8,
-        "preset": "canonical",
-        "operator_weight_total": 0.1,
+        "preset": "off",
+        "operator_weight_total": 0.0,
         "weighting": {
-            "method": "inverse_energy",
+            "method": "uniform",
             "eta": 0.5,
             "gamma": 1.0,
             "epsilon": 1e-8,

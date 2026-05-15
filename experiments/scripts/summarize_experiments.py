@@ -168,6 +168,87 @@ def _score_share_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
     return aliases
 
 
+def _baseline_method_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
+    aliases: dict[str, Any] = {}
+    prefix = "cumulative_spectral.baseline_comparison."
+    methods = sorted(
+        {
+            key.removeprefix(prefix).split(".", 1)[0]
+            for key in row
+            if key.startswith(prefix) and "." in key.removeprefix(prefix)
+        }
+    )
+    for method in methods:
+        safe = method.replace("-", "_")
+        base = f"{prefix}{method}."
+        aliases[f"baseline_{safe}_final_cumulative_ratio"] = _first(
+            row,
+            (
+                f"{base}final_cumulative_ratio",
+                f"{base}cumulative_ratio",
+                f"{base}compression_ratio",
+            ),
+            "",
+        )
+        aliases[f"baseline_{safe}_cumulative_dee"] = _first(
+            row,
+            (
+                f"{base}sketch_dirichlet_energy_relative_error",
+                f"{base}dirichlet_energy_relative_error",
+            ),
+            "",
+        )
+        aliases[f"baseline_{safe}_cumulative_fwe_weighted"] = row.get(
+            f"{base}relation_weighted_fused_energy_relative_error",
+            "",
+        )
+        aliases[f"baseline_{safe}_cumulative_fse_unweighted"] = _first(
+            row,
+            (
+                f"{base}fused_sketch_energy_relative_error",
+                f"{base}chebheat_sketch_inner_product_relative_error",
+            ),
+            "",
+        )
+        aliases[f"baseline_{safe}_cumulative_ree_max"] = row.get(
+            f"{base}relation_energy_relative_error_max",
+            "",
+        )
+        aliases[f"baseline_{safe}_cumulative_sipe"] = _first(
+            row,
+            (
+                f"{base}chebheat_sketch_inner_product_relative_error",
+                f"{base}sketch_inner_product_relative_error",
+            ),
+            "",
+        )
+        aliases[f"baseline_{safe}_cumulative_sampled_eigen_error"] = _first(
+            row,
+            (
+                f"{base}exact_eigenvalue_sanity.relative_error",
+                f"{base}sampled_eigen_error",
+            ),
+            "",
+        )
+        aliases[f"baseline_{safe}_task_refined_macro_f1"] = _first(
+            row,
+            (
+                f"{base}task_refined_macro_f1",
+                f"{base}task.refined_original_macro_f1",
+            ),
+            "",
+        )
+        aliases[f"baseline_{safe}_runtime_total"] = _first(
+            row,
+            (
+                f"{base}runtime_total",
+                f"{base}runtime_total_run",
+            ),
+            "",
+        )
+    return aliases
+
+
 def _quality_row(base: Mapping[str, Any], row: Mapping[str, Any], *, row_type: str) -> dict[str, Any]:
     return {
         "run_name": base["run_name"],
@@ -351,6 +432,15 @@ def _final_cumulative_row(
             "cumulative_fse_unweighted": cumulative_fse_unweighted,
             "cumulative_ree_max": cumulative_ree_max,
             "cumulative_sipe": cumulative_sipe,
+            "cumulative_sampled_eigen_error": _first(
+                last,
+                (
+                    "cumulative_spectral.exact_eigenvalue_sanity.relative_error",
+                    "cumulative_spectral.sampled_eigen_error",
+                    "spectral.cumulative_sampled_eigen_error",
+                ),
+                "",
+            ),
             "task_micro_f1": last.get("task.micro_f1", ""),
             "task_macro_f1": last.get("task.macro_f1", ""),
             "runtime_total_run": _runtime_total(ordered),
@@ -399,6 +489,7 @@ def _final_cumulative_row(
     )
     _with_task_aliases(final)
     final.update(_score_share_aliases(last))
+    final.update(_baseline_method_aliases(last))
     return final
 
 
@@ -757,13 +848,97 @@ def _maybe_write_figures(
         plt.title("Score Contribution Share")
         savefig("score_contribution_share.png")
 
+    gap_rows = [
+        row
+        for row in final_rows
+        if _as_float(row.get("cumulative_dee"), None) is not None
+        and _as_float(row.get("final_DEE"), None) is not None
+    ]
+    if gap_rows:
+        labels = [str(row.get("variant") or row.get("run_name", "")) for row in gap_rows]
+        values = [
+            float(_as_float(row.get("cumulative_dee"), 0.0) or 0.0)
+            - float(_as_float(row.get("final_DEE"), 0.0) or 0.0)
+            for row in gap_rows
+        ]
+        plt.figure(figsize=(max(6, len(labels) * 0.8), 3.5))
+        plt.bar(labels, values, color="#72B7B2")
+        plt.axhline(0.0, color="black", linewidth=0.8)
+        plt.ylabel("cumulative DEE - final DEE")
+        plt.xticks(rotation=35, ha="right")
+        plt.title("Cumulative vs Final Gap")
+        savefig("cumulative_vs_final_gap.png")
+
+    source_distribution: dict[str, dict[str, float]] = {}
+    for row in final_rows:
+        variant = str(row.get("variant") or row.get("run_name", ""))
+        if not variant:
+            continue
+        matched_total = _as_float(row.get("matched_pairs"), None)
+        for key, value in row.items():
+            if not key.startswith("matched_pairs_by_source."):
+                continue
+            source = key.removeprefix("matched_pairs_by_source.")
+            count = _as_float(value, None)
+            if count is None:
+                continue
+            denom = float(matched_total) if matched_total not in (None, 0.0) else 1.0
+            source_distribution.setdefault(variant, {}).setdefault(source, 0.0)
+            source_distribution[variant][source] += float(count / denom)
+    if source_distribution:
+        labels = sorted(source_distribution)
+        sources = sorted({source for values in source_distribution.values() for source in values})
+        bottoms = [0.0] * len(labels)
+        plt.figure(figsize=(max(6, len(labels) * 0.8), 4))
+        palette = ["#4C78A8", "#F58518", "#54A24B", "#B279A2", "#E45756", "#72B7B2"]
+        for index, source in enumerate(sources):
+            values = [source_distribution[label].get(source, 0.0) for label in labels]
+            plt.bar(labels, values, bottom=bottoms, label=source, color=palette[index % len(palette)])
+            bottoms = [left + value for left, value in zip(bottoms, values)]
+        plt.ylabel("selected source fraction")
+        plt.xticks(rotation=35, ha="right")
+        plt.legend(ncols=min(4, len(sources)), fontsize=8)
+        plt.title("Source Distribution by Variant")
+        savefig("source_distribution_by_variant.png")
+
+    task_scatter = [
+        row
+        for row in final_rows
+        if _as_float(row.get("cumulative_dee"), None) is not None
+        and _as_float(row.get("task_refined_macro_f1") or row.get("task_projected_macro_f1"), None)
+        is not None
+    ]
+    if task_scatter:
+        xs = [float(_as_float(row.get("cumulative_dee"), 0.0) or 0.0) for row in task_scatter]
+        ys = [
+            float(
+                _as_float(
+                    row.get("task_refined_macro_f1") or row.get("task_projected_macro_f1"),
+                    0.0,
+                )
+                or 0.0
+            )
+            for row in task_scatter
+        ]
+        labels = [str(row.get("variant") or row.get("run_name", "")) for row in task_scatter]
+        plt.figure(figsize=(6, 4))
+        plt.scatter(xs, ys, color="#4C78A8")
+        for label, x, y in zip(labels, xs, ys):
+            plt.annotate(label, (x, y), textcoords="offset points", xytext=(5, 4), fontsize=8)
+        plt.xlabel("cumulative DEE")
+        plt.ylabel("task macro-F1")
+        plt.title("Task vs Cumulative DEE")
+        savefig("task_vs_cumulative_dee.png")
+
     dim_groups: dict[str, list[dict[str, Any]]] = {}
     for row in final_rows:
         dim = str(row.get("sketch_dim") or row.get("config.sketch.dim") or "")
+        method = str(row.get("sketch_method") or row.get("config.sketch.method") or "")
         if dim:
-            dim_groups.setdefault(dim, []).append(row)
+            label = f"{method or 'sketch'}-d{dim}"
+            dim_groups.setdefault(label, []).append(row)
     if len(dim_groups) > 1:
-        labels = sorted(dim_groups, key=lambda item: int(float(item)))
+        labels = sorted(dim_groups)
         coverage = [
             float(_mean_numeric(dim_groups[label], "candidate_coverage") or 0.0)
             for label in labels
@@ -777,7 +952,7 @@ def _maybe_write_figures(
         ax2 = ax1.twinx()
         ax2.plot(x, dee, marker="s", color="#F58518", label="DEE")
         ax2.set_ylabel("DEE")
-        ax1.set_xlabel("sketch dim")
+        ax1.set_xlabel("sketch method / dim")
         fig.legend(loc="upper center", ncols=2, fontsize=8)
         plt.title("Sketch Dim Candidate Coverage")
         savefig("dim_candidate_coverage.png")
@@ -989,6 +1164,9 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
         "## Spectral Diagnostics",
         "",
         "Sketch-based diagnostics are optional and are recorded when present in run artifacts.",
+        "",
+        "final-level baseline diagnostics compare each method against the current level only.",
+        "cumulative baseline diagnostics compare the composed assignment from the original graph to the final coarse graph.",
         "",
         "## Bottleneck Analysis",
         "",

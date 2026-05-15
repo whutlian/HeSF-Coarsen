@@ -294,6 +294,17 @@ def test_default_lowpass_sketch_uses_relation_weighted_chebyshev_heat():
             "seed": 25,
         },
     )
+    config["metapath_sketch"] = dict(
+        config["metapath_sketch"],
+        enabled=True,
+        preset="canonical",
+        operator_weight_total=0.1,
+        weighting={
+            "method": "inverse_energy",
+            "sample_edges_per_relation": 16,
+            "seed": 25,
+        },
+    )
 
     Z = compute_lowpass_sketch(graph, config)
 
