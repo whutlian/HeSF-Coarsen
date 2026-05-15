@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -9,6 +9,7 @@ import numpy as np
 class Assignment:
     assignment: np.ndarray
     supernode_type: np.ndarray
+    diagnostics: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.assignment = np.asarray(self.assignment, dtype=np.int64)

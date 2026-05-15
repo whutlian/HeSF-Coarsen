@@ -85,11 +85,15 @@ def run_greedy_cluster_matching(
     max_cluster_size = max(2, int(coarsen_cfg.get("max_cluster_size", 4)))
     max_matched_pairs = coarsen_cfg.get("max_matched_pairs")
     max_merges = None if max_matched_pairs is None else max(0, int(max_matched_pairs))
+    terminal_state = _terminal_guard_state(graph, config, partition_id)
     if max_merges == 0:
-        return _singleton_assignment(graph)
+        assignment = _singleton_assignment(graph)
+        assignment.diagnostics["terminal_guard"] = terminal_state["diagnostics"]
+        return assignment
 
     parent = np.arange(graph.num_nodes, dtype=np.int64)
     size = np.ones(graph.num_nodes, dtype=np.int32)
+    protected_count = terminal_state["protected"].astype(np.int32, copy=True)
 
     def find(node: int) -> int:
         root = int(node)
@@ -133,12 +137,25 @@ def run_greedy_cluster_matching(
             continue
         if same_type_only and graph.node_type[root_i] != graph.node_type[root_j]:
             continue
-        if int(size[root_i]) + int(size[root_j]) > max_cluster_size:
+        combined_size = int(size[root_i]) + int(size[root_j])
+        if combined_size > max_cluster_size:
+            continue
+        if _terminal_guard_blocks_merge(
+            graph,
+            terminal_state,
+            protected_count,
+            root_i,
+            root_j,
+            i,
+            j,
+            combined_size,
+        ):
             continue
         if size[root_i] < size[root_j] or (size[root_i] == size[root_j] and root_j < root_i):
             root_i, root_j = root_j, root_i
         parent[root_j] = root_i
         size[root_i] += size[root_j]
+        protected_count[root_i] += protected_count[root_j]
         merges += 1
 
     root_to_super: dict[int, int] = {}
@@ -153,10 +170,115 @@ def run_greedy_cluster_matching(
             super_types.append(int(graph.node_type[node]))
         assignment[node] = super_id
 
+    terminal_diag = terminal_state["diagnostics"]
+    terminal_diag["merge_blocked_fraction"] = float(
+        terminal_diag["merge_blocked_count"]
+        / max(terminal_diag["merge_blocked_count"] + merges, 1)
+    )
+    terminal_diag["cluster_size_reduction_due_to_guard"] = int(
+        terminal_diag["merge_blocked_count"]
+    )
     return Assignment(
         assignment=assignment,
         supernode_type=np.asarray(super_types, dtype=np.int32),
+        diagnostics={"terminal_guard": terminal_diag},
     )
+
+
+def _node_degree(graph: HeteroGraph) -> np.ndarray:
+    degree = np.zeros(graph.num_nodes, dtype=np.float64)
+    for rel in graph.relations.values():
+        np.add.at(degree, rel.src, rel.weight.astype(np.float64, copy=False))
+        np.add.at(degree, rel.dst, rel.weight.astype(np.float64, copy=False))
+    return degree
+
+
+def _terminal_guard_state(
+    graph: HeteroGraph,
+    config: dict,
+    partition_id: np.ndarray | None,
+) -> dict:
+    guard = config.get("coarsening", {}).get("terminal_guard", {}) or {}
+    enabled = bool(guard.get("enabled", False))
+    reasons = {
+        "hub": np.zeros(graph.num_nodes, dtype=bool),
+        "rare_relation": np.zeros(graph.num_nodes, dtype=bool),
+        "boundary": np.zeros(graph.num_nodes, dtype=bool),
+        "label_entropy": np.zeros(graph.num_nodes, dtype=bool),
+    }
+    if enabled and bool(guard.get("protect_hubs", False)):
+        degree = _node_degree(graph)
+        if len(degree):
+            cutoff = float(np.percentile(degree, float(guard.get("hub_degree_percentile", 95))))
+            reasons["hub"] = degree >= cutoff
+    if enabled and bool(guard.get("protect_rare_relation_carriers", False)):
+        rare_min = max(0, int(guard.get("rare_relation_min_count", 1)))
+        rare = np.zeros(graph.num_nodes, dtype=bool)
+        for rel in graph.relations.values():
+            if rel.num_edges <= rare_min:
+                rare[rel.src] = True
+                rare[rel.dst] = True
+        reasons["rare_relation"] = rare
+    if enabled and bool(guard.get("protect_boundary_nodes", False)) and partition_id is not None:
+        boundary = np.zeros(graph.num_nodes, dtype=bool)
+        for rel in graph.relations.values():
+            mask = partition_id[rel.src] != partition_id[rel.dst]
+            if np.any(mask):
+                boundary[rel.src[mask]] = True
+                boundary[rel.dst[mask]] = True
+        reasons["boundary"] = boundary
+    protected = np.zeros(graph.num_nodes, dtype=bool)
+    for mask in reasons.values():
+        protected |= mask
+    diagnostics = {
+        "enabled": enabled,
+        "protected_node_count": int(np.sum(protected)),
+        "protected_node_fraction": float(np.mean(protected) if len(protected) else 0.0),
+        "protected_by_reason": {
+            name: int(np.sum(mask)) for name, mask in reasons.items()
+        },
+        "merge_blocked_count": 0,
+        "merge_blocked_fraction": 0.0,
+        "cluster_size_reduction_due_to_guard": 0,
+    }
+    return {
+        "enabled": enabled,
+        "config": guard,
+        "protected": protected,
+        "diagnostics": diagnostics,
+    }
+
+
+def _terminal_guard_blocks_merge(
+    graph: HeteroGraph,
+    terminal_state: dict,
+    protected_count: np.ndarray,
+    root_i: int,
+    root_j: int,
+    i: int,
+    j: int,
+    combined_size: int,
+) -> bool:
+    if not bool(terminal_state.get("enabled", False)):
+        return False
+    guard = terminal_state["config"]
+    blocked = False
+    max_terminal_size = max(1, int(guard.get("max_terminal_cluster_size", 2)))
+    if int(protected_count[root_i]) + int(protected_count[root_j]) > 0:
+        blocked = combined_size > max_terminal_size
+    if (
+        not blocked
+        and bool(guard.get("protect_train_label_conflict_nodes", False))
+        and graph.labels is not None
+    ):
+        labels = np.asarray(graph.labels).reshape(-1)
+        left = labels[int(i)]
+        right = labels[int(j)]
+        blocked = bool(left >= 0 and right >= 0 and left != right)
+    if blocked:
+        diagnostics = terminal_state["diagnostics"]
+        diagnostics["merge_blocked_count"] = int(diagnostics["merge_blocked_count"]) + 1
+    return blocked
 
 
 def _singleton_assignment(graph: HeteroGraph) -> Assignment:
@@ -368,6 +490,11 @@ def _quota_diagnostics(
         (after.get("capped_twohop", 0) + after.get("twohop", 0)) / total
     )
     fallback_fraction = float(after.get("fallback", 0) / total)
+    before_total = max(int(sum(before.values())), 1)
+    before_twohop = before.get("capped_twohop", 0) + before.get("twohop", 0)
+    bucket_required = int(ceil(total * bucket_min - 1.0e-12))
+    bucket_available = int(before.get("bucket", 0))
+    bucket_selected = int(after.get("bucket", 0))
     violation = {
         "bucket": float(max(0.0, bucket_min - bucket_fraction)),
         "twohop": 0.0
@@ -381,6 +508,22 @@ def _quota_diagnostics(
         "enforced": bool(enforced),
         "selected_match_source_distribution_before_quota": before,
         "selected_match_source_distribution_after_quota": after,
+        "selected_source_fraction_before_quota": {
+            "bucket": float(before.get("bucket", 0) / before_total),
+            "twohop": float(before_twohop / before_total),
+            "fallback": float(before.get("fallback", 0) / before_total),
+        },
+        "selected_source_fraction_after_quota": {
+            "bucket": bucket_fraction,
+            "twohop": twohop_fraction,
+            "fallback": fallback_fraction,
+        },
+        "quota": {
+            "bucket_required": bucket_required,
+            "bucket_available": bucket_available,
+            "bucket_selected": bucket_selected,
+            "bucket_shortage": int(max(0, bucket_required - bucket_available)),
+        },
         "quota_violation": violation,
     }
 

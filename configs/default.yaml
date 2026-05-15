@@ -17,17 +17,28 @@ resume:
   enabled: false
   allow_legacy_checkpoints: false
 coarsening:
-  target_ratio: 0.1
+  target_ratio: 0.5
   max_levels: 6
   per_level_ratio: 0.55
   same_type_only: true
   same_partition_only: true
-  matching_method: mutual_best
+  matching_method: greedy_cluster
+  max_cluster_size: 4
   feature_aggregation: mean
   feature_aggregation_pagerank_iterations: 20
   feature_aggregation_pagerank_damping: 0.85
   aggregation_chunk_size: 1000000
   aggregation_reducer: sort
+  terminal_guard:
+    enabled: false
+    protect_hubs: false
+    protect_rare_relation_carriers: false
+    protect_boundary_nodes: false
+    protect_train_label_conflict_nodes: false
+    hub_degree_percentile: 95
+    rare_relation_min_count: 1
+    label_entropy_threshold: 0.0
+    max_terminal_cluster_size: 2
   cumulative_guard:
     enabled: false
     probe_count: 32
@@ -35,7 +46,7 @@ coarsening:
     max_cumulative_sipe: 0.70
     repair_bad_clusters: false
 sketch:
-  dim: 32
+  dim: 16
   order: 5
   num_scales: 2
   dtype: float16
@@ -82,6 +93,7 @@ metapath_sketch:
   row_normalize: true
   paths: []
 candidates:
+  source: onehop_twohop_bucket
   store_backend: heap
   use_chunked_generation: false
   mmap_dir:
@@ -90,7 +102,7 @@ candidates:
   middle_chunk_size: 100000
   node_chunk_size: 1000000
   pair_block_size: 65536
-  total_budget_K: 16
+  total_budget_K: 8
   twohop_budget_K2: 8
   middle_degree_cap_policy: p99
   per_middle_pair_cap: 64
@@ -116,8 +128,10 @@ scoring:
   lambda_spec: 1.0
   lambda_rel: 0.2
   lambda_feat: 0.1
-  lambda_conv: 0.3
+  lambda_conv: 0.5
   lambda_boundary: 0.1
+  normalization: p95
+  normalization_scope: level
   spec_volume_weighting: true
   spec_volume_epsilon: 1.0e-12
   relation_profile_distance: jsd

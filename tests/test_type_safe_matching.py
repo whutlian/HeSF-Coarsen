@@ -28,8 +28,8 @@ def paired(assignment, i, j):
     return int(assignment.assignment[i]) == int(assignment.assignment[j])
 
 
-def test_default_matching_method_is_mutual_best():
-    assert DEFAULT_CONFIG["coarsening"]["matching_method"] == "mutual_best"
+def test_default_matching_method_is_greedy_cluster():
+    assert DEFAULT_CONFIG["coarsening"]["matching_method"] == "greedy_cluster"
 
 
 def test_matching_module_avoids_python_tolist_conversion():
@@ -59,7 +59,7 @@ def test_mutual_best_matching_only_merges_reciprocal_best_pairs():
     assert not paired(assignment, 2, 3)
 
 
-def test_run_matching_uses_mutual_best_by_default():
+def test_run_matching_uses_greedy_cluster_by_default():
     graph = same_type_graph(4)
     scored_pairs = np.array(
         [
@@ -72,9 +72,9 @@ def test_run_matching_uses_mutual_best_by_default():
 
     assignment = run_matching(graph, scored_pairs, DEFAULT_CONFIG)
 
+    assert max(assignment.cluster_sizes()) <= DEFAULT_CONFIG["coarsening"]["max_cluster_size"]
     assert paired(assignment, 1, 2)
-    assert not paired(assignment, 0, 1)
-    assert not paired(assignment, 2, 3)
+    assert paired(assignment, 2, 3)
 
 
 def test_mutual_best_matching_caps_matches_by_lowest_cost():
@@ -147,6 +147,52 @@ def test_greedy_cluster_matching_respects_max_cluster_size():
 
     sizes = sorted(assignment.cluster_sizes().tolist())
     assert sizes == [2, 3]
+
+
+def test_greedy_cluster_matching_never_merges_cross_type_pairs_by_default():
+    graph = HeteroGraph(
+        num_nodes=4,
+        node_type=np.array([0, 1, 0, 1], dtype=np.int32),
+        relations={},
+    )
+    scored_pairs = np.array(
+        [
+            [0, 1, -10.0],
+            [2, 3, -9.0],
+            [0, 2, 1.0],
+        ],
+        dtype=np.float64,
+    )
+
+    assignment = run_greedy_cluster_matching(graph, scored_pairs, DEFAULT_CONFIG)
+
+    assert assignment.assignment[0] != assignment.assignment[1]
+    assert assignment.assignment[2] != assignment.assignment[3]
+    assert assignment.assignment[0] == assignment.assignment[2]
+
+
+def test_greedy_cluster_matching_respects_same_partition_by_default():
+    graph = same_type_graph(4)
+    scored_pairs = np.array(
+        [
+            [0, 1, -10.0],
+            [0, 2, 0.1],
+            [1, 3, 0.2],
+        ],
+        dtype=np.float64,
+    )
+    partition_id = np.array([0, 1, 0, 1], dtype=np.int32)
+
+    assignment = run_greedy_cluster_matching(
+        graph,
+        scored_pairs,
+        DEFAULT_CONFIG,
+        partition_id=partition_id,
+    )
+
+    assert assignment.assignment[0] != assignment.assignment[1]
+    assert assignment.assignment[0] == assignment.assignment[2]
+    assert assignment.assignment[1] == assignment.assignment[3]
 
 
 def test_streaming_mutual_best_matches_batch_matching_across_blocks():

@@ -35,6 +35,56 @@ def test_default_config_uses_canonical_sketch_schema():
     assert "include_metapath_filters" not in DEFAULT_CONFIG["fusion"]
 
 
+def test_default_config_promotes_hesf_lvc_mainline():
+    config = load_config()
+
+    assert config["coarsening"]["target_ratio"] == 0.5
+    assert config["coarsening"]["matching_method"] == "greedy_cluster"
+    assert config["coarsening"]["max_cluster_size"] == 4
+    assert config["coarsening"]["same_type_only"] is True
+    assert config["coarsening"]["same_partition_only"] is True
+    assert config["sketch"]["method"] == "chebyshev_heat"
+    assert config["sketch"]["dim"] == 16
+    assert config["sketch"]["order"] == 5
+    assert config["sketch"]["dtype"] == "float16"
+    assert config["sketch"]["row_normalize"] is True
+    assert config["fusion"]["relation_weighting"]["method"] == "uniform"
+    assert config["metapath_sketch"]["enabled"] is False
+    assert config["metapath_sketch"]["operator_weight_total"] == 0.0
+    assert config["scoring"]["normalization"] == "p95"
+    assert config["scoring"]["normalization_scope"] == "level"
+    assert config["scoring"]["lambda_spec"] == 1.0
+    assert config["scoring"]["lambda_conv"] == 0.5
+    assert config["candidates"]["source"] == "onehop_twohop_bucket"
+    assert config["candidates"]["total_budget_K"] == 8
+
+
+def test_explicit_legacy_override_can_still_select_mutual_best(tmp_path):
+    override = tmp_path / "legacy.yaml"
+    override.write_text(
+        """
+coarsening:
+  matching_method: mutual_best
+  max_cluster_size: 2
+fusion:
+  relation_weighting:
+    method: inverse_sqrt_energy
+metapath_sketch:
+  enabled: true
+  operator_weight_total: 0.1
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(override)
+
+    assert config["coarsening"]["matching_method"] == "mutual_best"
+    assert config["coarsening"]["max_cluster_size"] == 2
+    assert config["fusion"]["relation_weighting"]["method"] == "inverse_sqrt_energy"
+    assert config["metapath_sketch"]["enabled"] is True
+    assert config["metapath_sketch"]["operator_weight_total"] == 0.1
+
+
 def test_shipped_configs_do_not_use_legacy_schema_names():
     assert CONFIG_PATHS
     for path in CONFIG_PATHS:

@@ -71,7 +71,11 @@ def test_experiment_scripts_support_help():
         "run_hgb_sweep.py",
         "run_hgb_stage_b_ablation.py",
         "run_hgb_task_eval.py",
+        "run_hgb_next4_mainline.py",
+        "run_hgb_next4_baselines.py",
+        "evaluate_refine_curve.py",
         "summarize_stage_b.py",
+        "summarize_next4.py",
         "compare_stage_b.py",
         "compare_hgb_ablation.py",
         "run_ogbn_mag_subset.py",
@@ -332,6 +336,14 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
                 "projected_original_macro_f1": 0.65,
                 "refined_original_micro_f1": 0.77,
                 "refined_original_macro_f1": 0.72,
+                "refined_original_macro_f1@0": 0.66,
+                "refined_original_macro_f1@1": 0.64,
+                "refined_original_macro_f1@3": 0.71,
+                "refined_original_macro_f1@5": 0.72,
+                "best_refined_macro_f1": 0.72,
+                "best_refined_epoch": 5,
+                "refine_auc_macro_f1": 0.686,
+                "refine_time_by_epoch": {"0": 0.0, "1": 0.1, "3": 0.4, "5": 0.8},
                 "primary_task_metric_name": "refined_original_macro_f1",
                 "primary_task_metric": 0.72,
                 "eval_on": "original_test_refined",
@@ -356,7 +368,9 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert len(final_rows) == 1
     assert (tmp_path / "summary" / "run_final_summary.csv").exists()
     assert (tmp_path / "summary" / "all_levels.csv").exists()
+    assert (tmp_path / "summary" / "baseline_summary.csv").exists()
     assert (tmp_path / "summary" / "compare_by_variant.csv").exists()
+    assert (tmp_path / "summary" / "compare_by_dataset_variant.csv").exists()
     assert (tmp_path / "summary" / "compare_by_source.csv").exists()
     assert (tmp_path / "summary" / "compare_by_dim.csv").exists()
     assert final_rows[0]["run_count_unique"] == "1"
@@ -406,6 +420,13 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert final_rows[0]["baseline_random_runtime_total"] == "1.25"
     assert final_rows[0]["task_projected_macro_f1"] == "0.65"
     assert final_rows[0]["task_refined_macro_f1"] == "0.72"
+    assert final_rows[0]["task_refined_macro_f1@0"] == "0.66"
+    assert final_rows[0]["task_refined_macro_f1@1"] == "0.64"
+    assert final_rows[0]["task_refined_macro_f1@3"] == "0.71"
+    assert final_rows[0]["task_refined_macro_f1@5"] == "0.72"
+    assert final_rows[0]["task_best_refined_macro_f1"] == "0.72"
+    assert final_rows[0]["task_best_refined_epoch"] == "5"
+    assert final_rows[0]["task_refine_auc_macro_f1"] == "0.686"
     assert final_rows[0]["task_coarse_train_macro_f1"] == "0.75"
     assert final_rows[0]["task_primary_metric_name"] == "refined_original_macro_f1"
     assert final_rows[0]["task_primary_macro_f1"] == "0.72"
@@ -435,6 +456,8 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert bucket_source["selected_count"] == "2.0"
     assert task_rows[0]["task_projected_macro_f1"] == "0.65"
     assert task_rows[0]["task_refined_macro_f1"] == "0.72"
+    assert task_rows[0]["task_best_refined_macro_f1"] == "0.72"
+    assert task_rows[0]["task_refine_auc_macro_f1"] == "0.686"
     assert task_rows[0]["task_primary_macro_f1"] == "0.72"
     assert resource_run_rows[0]["peak_rss_gb"] == "2.0"
     assert resource_run_rows[0]["peak_cpu_memory_gb"] == "2.0"
@@ -466,6 +489,193 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert "spectral_baseline_computed_count" in report
     assert "final-level baseline" in report
     assert "cumulative baseline" in report
+    assert "HeSF-LVC" in report
+    assert "meta-path is optional / disabled" in report
+
+
+def test_next4_mainline_dry_run_generates_required_variants(tmp_path):
+    from experiments.scripts.run_hgb_next4_mainline import main
+
+    exit_code = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(tmp_path),
+            "--variants",
+            "H0",
+            "H1",
+            "H2",
+            "H3",
+            "H4",
+            "H5",
+            "H6",
+            "--target-ratio",
+            "0.5",
+            "--seeds",
+            "12345",
+            "--dry-run",
+        ]
+    )
+
+    configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in tmp_path.glob("next4_*/config.yaml")
+    }
+    assert exit_code == 0
+    assert len(configs) == 7
+    h0 = next(cfg for name, cfg in configs.items() if "_H0_" in name)
+    h2 = next(cfg for name, cfg in configs.items() if "_H2_" in name)
+    h3 = next(cfg for name, cfg in configs.items() if "_H3_" in name)
+    h4 = next(cfg for name, cfg in configs.items() if "_H4_" in name)
+    h6 = next(cfg for name, cfg in configs.items() if "_H6_" in name)
+    assert h0["coarsening"]["matching_method"] == "mutual_best"
+    assert h0["coarsening"]["max_cluster_size"] == 2
+    assert h2["coarsening"]["matching_method"] == "greedy_cluster"
+    assert h2["coarsening"]["max_cluster_size"] == 4
+    assert h2["sketch"]["dim"] == 16
+    assert h2["fusion"]["relation_weighting"]["method"] == "uniform"
+    assert h2["metapath_sketch"]["enabled"] is False
+    assert h2["scoring"]["lambda_conv"] == 0.5
+    assert h3["scoring"]["lambda_conv"] == 0.35
+    assert h4["scoring"]["lambda_conv"] == 0.0
+    assert h6["scoring"]["lambda_spec"] == 0.0
+
+
+def test_next4_mainline_dry_run_generates_terminal_guard_variants(tmp_path):
+    from experiments.scripts.run_hgb_next4_mainline import main
+
+    exit_code = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(tmp_path),
+            "--variants",
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "--target-ratio",
+            "0.25",
+            "--seeds",
+            "12345",
+            "--dry-run",
+        ]
+    )
+
+    configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in tmp_path.glob("next4_*/config.yaml")
+    }
+    assert exit_code == 0
+    assert len(configs) == 5
+    a0 = next(cfg for name, cfg in configs.items() if "_A0_" in name)
+    a1 = next(cfg for name, cfg in configs.items() if "_A1_" in name)
+    a2 = next(cfg for name, cfg in configs.items() if "_A2_" in name)
+    a3 = next(cfg for name, cfg in configs.items() if "_A3_" in name)
+    a4 = next(cfg for name, cfg in configs.items() if "_A4_" in name)
+    assert a0["coarsening"]["target_ratio"] == 0.25
+    assert a0["coarsening"]["matching_method"] == "greedy_cluster"
+    assert a0["coarsening"]["max_cluster_size"] == 4
+    assert a0["coarsening"]["terminal_guard"]["enabled"] is False
+    assert a1["coarsening"]["terminal_guard"]["protect_hubs"] is True
+    assert a2["coarsening"]["terminal_guard"]["protect_rare_relation_carriers"] is True
+    assert a3["coarsening"]["terminal_guard"]["protect_train_label_conflict_nodes"] is True
+    assert a4["coarsening"]["terminal_guard"]["protect_hubs"] is True
+    assert a4["coarsening"]["terminal_guard"]["protect_rare_relation_carriers"] is True
+    assert a4["coarsening"]["terminal_guard"]["protect_boundary_nodes"] is True
+    assert a4["coarsening"]["terminal_guard"]["protect_train_label_conflict_nodes"] is True
+
+
+def test_next4_baseline_summary_marks_failed_target_control(tmp_path):
+    from experiments.scripts.run_hgb_next4_baselines import main
+
+    summary = tmp_path / "final_summary.csv"
+    summary.write_text(
+        "\n".join(
+            [
+                "run_name,dataset,variant,target_ratio,baseline_random_target_hit,baseline_random_target_abs_error,baseline_random_final_cumulative_ratio,baseline_random_cumulative_dee,baseline_random_projected_macro_f1,baseline_random_refined_macro_f1@0,baseline_random_refined_macro_f1@1,baseline_random_refined_macro_f1@3,baseline_random_refined_macro_f1@5,baseline_heavy_edge_target_hit,baseline_heavy_edge_target_abs_error,baseline_heavy_edge_final_cumulative_ratio",
+                "r1,ACM,H2,0.5,true,0.01,0.51,0.2,0.6,0.61,0.62,0.63,0.64,false,0.44,0.94",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--summary",
+            str(summary),
+            "--variants",
+            "H2",
+            "--baselines",
+            "random",
+            "heavy_edge",
+            "--output",
+            str(tmp_path / "out"),
+        ]
+    )
+
+    rows = list(csv.DictReader((tmp_path / "out" / "baseline_summary.csv").open()))
+    report = (tmp_path / "out" / "report.md").read_text(encoding="utf-8")
+    assert exit_code == 0
+    assert rows[0]["baseline"] == "random"
+    assert rows[0]["baseline_target_hit"] == "true"
+    assert rows[1]["baseline"] == "heavy_edge"
+    assert rows[1]["comparison_status"] == "failed target control"
+    assert "failed target control" in report
+
+
+def test_next4_baseline_script_computes_target_matched_rows(tmp_path):
+    from experiments.scripts.run_hgb_next4_baselines import main
+
+    graph = generate_synthetic_graph(num_users=16, num_items=10, num_tags=6, seed=1701)
+    save_graph(graph, tmp_path / "data" / "acm_hesf")
+    summary = tmp_path / "final_summary.csv"
+    summary.write_text(
+        "\n".join(
+            [
+                "run_name,dataset,variant,seed,target_ratio",
+                "r1,ACM,H2,12345,0.5",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--summary",
+            str(summary),
+            "--variants",
+            "H2",
+            "--baselines",
+            "random",
+            "graphzoom_style",
+            "convmatch_style",
+            "--graph-root",
+            str(tmp_path / "data"),
+            "--output",
+            str(tmp_path / "out"),
+            "--spectral-exact-eigenvalue-max-nodes",
+            "64",
+        ]
+    )
+
+    rows = list(csv.DictReader((tmp_path / "out" / "baseline_summary.csv").open()))
+    wide = list(csv.DictReader((tmp_path / "out" / "final_summary_with_baselines.csv").open()))
+    assert exit_code == 0
+    assert {row["baseline"] for row in rows} == {"random", "graphzoom_style", "convmatch_style"}
+    for row in rows:
+        assert row["comparison_status"] == "included"
+        assert row["baseline_target_hit"] == "True"
+        assert float(row["baseline_target_abs_error"]) <= 0.02
+        assert row["baseline_cumulative_dee"] != ""
+        assert row["baseline_cumulative_sipe"] != ""
+    assert wide[0]["baseline_random_target_hit"] == "True"
+    assert wide[0]["baseline_graphzoom_style_target_hit"] == "True"
 
 
 def test_compare_hgb_ablation_groups_metrics(tmp_path):
@@ -1116,6 +1326,14 @@ def test_spectral_diagnostics_can_evaluate_target_matched_baseline_tasks(tmp_pat
             {
                 "projected_original_macro_f1": 0.61,
                 "refined_original_macro_f1": 0.67,
+                "refined_original_macro_f1@0": 0.62,
+                "refined_original_macro_f1@1": 0.63,
+                "refined_original_macro_f1@3": 0.66,
+                "refined_original_macro_f1@5": 0.67,
+                "best_refined_macro_f1": 0.67,
+                "best_refined_epoch": 5,
+                "refine_auc_macro_f1": 0.65,
+                "refine_time_by_epoch": {"0": 0.0, "1": 0.1, "3": 0.25, "5": 0.3},
                 "train_time": 1.2,
                 "refine_time": 0.3,
                 "total_time": 1.5,
@@ -1149,6 +1367,13 @@ def test_spectral_diagnostics_can_evaluate_target_matched_baseline_tasks(tmp_pat
     assert calls[0][3]["device"] == "cpu"
     assert baseline["task_projected_macro_f1"] == 0.61
     assert baseline["task_refined_macro_f1"] == 0.67
+    assert baseline["task_refined_macro_f1@0"] == 0.62
+    assert baseline["task_refined_macro_f1@1"] == 0.63
+    assert baseline["task_refined_macro_f1@3"] == 0.66
+    assert baseline["task_refined_macro_f1@5"] == 0.67
+    assert baseline["task_best_refined_macro_f1"] == 0.67
+    assert baseline["task_best_refined_epoch"] == 5
+    assert baseline["task_refine_auc_macro_f1"] == 0.65
     assert baseline["task_train_time"] == 1.2
     assert baseline["task_refine_time"] == 0.3
     assert baseline["task_total_time"] == 1.5

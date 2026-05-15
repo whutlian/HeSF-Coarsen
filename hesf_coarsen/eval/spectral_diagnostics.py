@@ -503,14 +503,32 @@ def _baseline_comparison(
                 baseline_assignment.assignment,
                 **task_params,
             ).metrics
+            task_payload = {
+                "task_projected_macro_f1": task_metrics.get("projected_original_macro_f1", ""),
+                "task_refined_macro_f1": task_metrics.get("refined_original_macro_f1", ""),
+                "task_train_time": task_metrics.get("train_time", ""),
+                "task_refine_time": task_metrics.get("refine_time", ""),
+                "task_total_time": task_metrics.get("total_time", ""),
+                "task_best_refined_macro_f1": task_metrics.get("best_refined_macro_f1", ""),
+                "task_best_refined_epoch": task_metrics.get("best_refined_epoch", ""),
+                "task_refine_auc_macro_f1": task_metrics.get("refine_auc_macro_f1", ""),
+                "task_refine_time_by_epoch": task_metrics.get("refine_time_by_epoch", ""),
+            }
+            for epoch in (0, 1, 3, 5):
+                task_payload[f"task_refined_macro_f1@{epoch}"] = task_metrics.get(
+                    f"refined_original_macro_f1@{epoch}",
+                    "",
+                )
+                task_payload[f"task_refined_micro_f1@{epoch}"] = task_metrics.get(
+                    f"refined_original_micro_f1@{epoch}",
+                    "",
+                )
+                task_payload[f"task_refine_time@{epoch}"] = task_metrics.get(
+                    f"refine_time@{epoch}",
+                    "",
+                )
             comparison[method].update(
-                {
-                    "task_projected_macro_f1": task_metrics.get("projected_original_macro_f1", ""),
-                    "task_refined_macro_f1": task_metrics.get("refined_original_macro_f1", ""),
-                    "task_train_time": task_metrics.get("train_time", ""),
-                    "task_refine_time": task_metrics.get("refine_time", ""),
-                    "task_total_time": task_metrics.get("total_time", ""),
-                }
+                task_payload
             )
         if "exact_eigenvalue_sanity" in baseline_metrics:
             comparison[method]["exact_eigenvalue_sanity"] = baseline_metrics[

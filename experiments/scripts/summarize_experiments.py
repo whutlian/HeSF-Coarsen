@@ -77,6 +77,35 @@ def _runtime_total(level_rows: list[dict[str, Any]]) -> float:
     return float(total)
 
 
+def _runtime_stage_total(level_rows: list[dict[str, Any]], key: str) -> float:
+    return float(sum(float(row.get(f"runtime_by_stage.{key}", 0) or 0) for row in level_rows))
+
+
+def _baseline_runtime_total(row: Mapping[str, Any]) -> float | str:
+    total = 0.0
+    found = False
+    for key, value in row.items():
+        if key.startswith("cumulative_spectral.baseline_comparison.") and key.endswith(".runtime_total"):
+            number = _as_float(value, None)
+            if number is not None:
+                total += float(number)
+                found = True
+    return float(total) if found else ""
+
+
+def _candidate_pairs_total(level_rows: list[dict[str, Any]]) -> int:
+    return int(sum(int(float(row.get("candidate_count_total", 0) or 0)) for row in level_rows))
+
+
+def _edge_count_total(level_rows: list[dict[str, Any]]) -> int:
+    total = 0
+    for row in level_rows:
+        for key, value in row.items():
+            if key.startswith("original_edge_count_by_relation."):
+                total += int(float(value or 0))
+    return int(total)
+
+
 def _peak_rss_gb(level_rows: list[dict[str, Any]], metadata: Mapping[str, Any]) -> float | str:
     metadata_peak = _as_float(metadata.get("peak_rss_gb"), None)
     peaks = []
@@ -138,12 +167,33 @@ def _with_task_aliases(row: dict[str, Any]) -> None:
     if primary_metric == "":
         primary_metric = refined_macro if primary_name == "refined_original_macro_f1" else projected_macro
     primary_macro = refined_macro if primary_name == "refined_original_macro_f1" else primary_metric
+    checkpoint_aliases: dict[str, Any] = {}
+    for epoch in (0, 1, 3, 5):
+        checkpoint_aliases[f"task_refined_micro_f1@{epoch}"] = _task_value(
+            row,
+            f"refined_original_micro_f1@{epoch}",
+        )
+        checkpoint_aliases[f"task_refined_macro_f1@{epoch}"] = _task_value(
+            row,
+            f"refined_original_macro_f1@{epoch}",
+        )
+        checkpoint_aliases[f"task_refine_time@{epoch}"] = _task_value(
+            row,
+            f"refine_time@{epoch}",
+        )
     row.update(
         {
             "task_projected_micro_f1": projected_micro,
             "task_projected_macro_f1": projected_macro,
             "task_refined_micro_f1": refined_micro,
             "task_refined_macro_f1": refined_macro,
+            **checkpoint_aliases,
+            "task_best_refined_macro_f1": _task_value(row, "best_refined_macro_f1"),
+            "task_best_refined_epoch": _task_value(row, "best_refined_epoch"),
+            "task_refine_auc_macro_f1": _task_value(row, "refine_auc_macro_f1"),
+            "task_refine_time_by_epoch": _task_value(row, "refine_time_by_epoch"),
+            "task_full_graph_macro_f1": _task_value(row, "full_graph_rgcn_lite_macro_f1"),
+            "task_full_graph_micro_f1": _task_value(row, "full_graph_rgcn_lite_micro_f1"),
             "task_coarse_train_micro_f1": coarse_micro,
             "task_coarse_train_macro_f1": coarse_macro,
             "task_primary_metric_name": primary_name,
@@ -281,6 +331,40 @@ def _baseline_method_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
         total_time = _first(row, (f"{base}task_total_time", f"{base}task.total_time"), "")
         aliases[f"baseline_{safe}_task_projected_macro_f1"] = projected_macro
         aliases[f"baseline_{safe}_task_refined_macro_f1"] = refined_macro
+        for epoch in (0, 1, 3, 5):
+            aliases[f"baseline_{safe}_refined_macro_f1@{epoch}"] = _first(
+                row,
+                (
+                    f"{base}task_refined_macro_f1@{epoch}",
+                    f"{base}task_refined_original_macro_f1@{epoch}",
+                    f"{base}task.refined_original_macro_f1@{epoch}",
+                ),
+                "",
+            )
+        aliases[f"baseline_{safe}_task_best_refined_macro_f1"] = _first(
+            row,
+            (
+                f"{base}task_best_refined_macro_f1",
+                f"{base}task.best_refined_macro_f1",
+            ),
+            "",
+        )
+        aliases[f"baseline_{safe}_task_best_refined_epoch"] = _first(
+            row,
+            (
+                f"{base}task_best_refined_epoch",
+                f"{base}task.best_refined_epoch",
+            ),
+            "",
+        )
+        aliases[f"baseline_{safe}_task_refine_auc_macro_f1"] = _first(
+            row,
+            (
+                f"{base}task_refine_auc_macro_f1",
+                f"{base}task.refine_auc_macro_f1",
+            ),
+            "",
+        )
         aliases[f"baseline_{safe}_task_train_time"] = train_time
         aliases[f"baseline_{safe}_task_refine_time"] = refine_time
         aliases[f"baseline_{safe}_task_total_time"] = total_time
@@ -368,6 +452,11 @@ def _quality_row(base: Mapping[str, Any], row: Mapping[str, Any], *, row_type: s
         "final_SIPE": row.get("final_SIPE", ""),
         "task_projected_macro_f1": row.get("task_projected_macro_f1", row.get("task.projected_original_macro_f1", "")),
         "task_refined_macro_f1": row.get("task_refined_macro_f1", row.get("task.refined_original_macro_f1", "")),
+        "task_refined_macro_f1@0": row.get("task_refined_macro_f1@0", ""),
+        "task_refined_macro_f1@1": row.get("task_refined_macro_f1@1", ""),
+        "task_refined_macro_f1@3": row.get("task_refined_macro_f1@3", ""),
+        "task_refined_macro_f1@5": row.get("task_refined_macro_f1@5", ""),
+        "task_best_refined_macro_f1": row.get("task_best_refined_macro_f1", ""),
         "task_primary_macro_f1": row.get("task_primary_macro_f1", ""),
         "task_micro_f1": row.get("task_micro_f1", row.get("task.micro_f1", "")),
         "task_macro_f1": row.get("task_macro_f1", row.get("task.macro_f1", "")),
@@ -522,10 +611,32 @@ def _final_cumulative_row(
             "task_micro_f1": last.get("task.micro_f1", ""),
             "task_macro_f1": last.get("task.macro_f1", ""),
             "runtime_total_run": _runtime_total(ordered),
+            "runtime_by_stage.sketch": _runtime_stage_total(ordered, "sketch"),
+            "runtime_by_stage.candidates": _runtime_stage_total(ordered, "candidates"),
+            "runtime_by_stage.scoring": _runtime_stage_total(ordered, "scoring"),
+            "runtime_by_stage.matching_and_aggregation": _runtime_stage_total(
+                ordered,
+                "matching_and_aggregation",
+            ),
+            "runtime_by_stage.cumulative_diagnostics": _runtime_stage_total(
+                ordered,
+                "spectral_diagnostics",
+            ),
+            "runtime_by_stage.task_train": _first(last, ("task.train_time", "task_train_time"), ""),
+            "runtime_by_stage.task_refine": _first(last, ("task.refine_time", "task_refine_time"), ""),
+            "runtime_by_stage.baselines": _baseline_runtime_total(last),
             "peak_rss_gb": _peak_rss_gb(ordered, metadata),
             "peak_vram_allocated_gb": _peak_vram_gb(ordered, metadata, kind="allocated"),
             "peak_vram_reserved_gb": _peak_vram_gb(ordered, metadata, kind="reserved"),
         }
+    )
+    scoring_runtime = _as_float(final.get("runtime_by_stage.scoring"), 0.0) or 0.0
+    aggregation_runtime = _as_float(final.get("runtime_by_stage.matching_and_aggregation"), 0.0) or 0.0
+    final["candidate_pairs_scored_per_sec"] = (
+        float(_candidate_pairs_total(ordered) / scoring_runtime) if scoring_runtime > 0 else ""
+    )
+    final["edges_aggregated_per_sec"] = (
+        float(_edge_count_total(ordered) / aggregation_runtime) if aggregation_runtime > 0 else ""
     )
     final["peak_vram_gb"] = final["peak_vram_allocated_gb"]
     final["peak_cpu_memory_gb"] = final["peak_rss_gb"]
@@ -680,6 +791,16 @@ def _task_summary_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             "task_projected_macro_f1": row.get("task_projected_macro_f1", ""),
             "task_refined_micro_f1": row.get("task_refined_micro_f1", ""),
             "task_refined_macro_f1": row.get("task_refined_macro_f1", ""),
+            "task_refined_macro_f1@0": row.get("task_refined_macro_f1@0", ""),
+            "task_refined_macro_f1@1": row.get("task_refined_macro_f1@1", ""),
+            "task_refined_macro_f1@3": row.get("task_refined_macro_f1@3", ""),
+            "task_refined_macro_f1@5": row.get("task_refined_macro_f1@5", ""),
+            "task_best_refined_macro_f1": row.get("task_best_refined_macro_f1", ""),
+            "task_best_refined_epoch": row.get("task_best_refined_epoch", ""),
+            "task_refine_auc_macro_f1": row.get("task_refine_auc_macro_f1", ""),
+            "task_refine_time_by_epoch": row.get("task_refine_time_by_epoch", ""),
+            "task_full_graph_micro_f1": row.get("task_full_graph_micro_f1", ""),
+            "task_full_graph_macro_f1": row.get("task_full_graph_macro_f1", ""),
             "task_coarse_train_micro_f1": row.get("task_coarse_train_micro_f1", ""),
             "task_coarse_train_macro_f1": row.get("task_coarse_train_macro_f1", ""),
             "task_micro_f1": row.get("task_micro_f1", row.get("task.micro_f1", "")),
@@ -692,6 +813,9 @@ def _task_summary_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             "projected_original_macro_f1": row.get("task_projected_macro_f1", row.get("task.projected_original_macro_f1", "")),
             "refined_original_micro_f1": row.get("task_refined_micro_f1", row.get("task.refined_original_micro_f1", "")),
             "refined_original_macro_f1": row.get("task_refined_macro_f1", row.get("task.refined_original_macro_f1", "")),
+            "best_refined_macro_f1": row.get("task_best_refined_macro_f1", ""),
+            "best_refined_epoch": row.get("task_best_refined_epoch", ""),
+            "refine_auc_macro_f1": row.get("task_refine_auc_macro_f1", ""),
             "train_time": row.get("task.train_time", ""),
             "refine_time": row.get("task.refine_time", ""),
             "total_time": row.get("task.total_time", ""),
@@ -705,6 +829,22 @@ def _run_resource_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
         {
             **_run_identity(row),
             "runtime_total_run": row.get("runtime_total_run", ""),
+            "runtime_by_stage.sketch": row.get("runtime_by_stage.sketch", ""),
+            "runtime_by_stage.candidates": row.get("runtime_by_stage.candidates", ""),
+            "runtime_by_stage.scoring": row.get("runtime_by_stage.scoring", ""),
+            "runtime_by_stage.matching_and_aggregation": row.get(
+                "runtime_by_stage.matching_and_aggregation",
+                "",
+            ),
+            "runtime_by_stage.cumulative_diagnostics": row.get(
+                "runtime_by_stage.cumulative_diagnostics",
+                "",
+            ),
+            "runtime_by_stage.task_train": row.get("runtime_by_stage.task_train", ""),
+            "runtime_by_stage.task_refine": row.get("runtime_by_stage.task_refine", ""),
+            "runtime_by_stage.baselines": row.get("runtime_by_stage.baselines", ""),
+            "candidate_pairs_scored_per_sec": row.get("candidate_pairs_scored_per_sec", ""),
+            "edges_aggregated_per_sec": row.get("edges_aggregated_per_sec", ""),
             "peak_rss_gb": row.get("peak_rss_gb", ""),
             "peak_cpu_memory_gb": row.get("peak_cpu_memory_gb", row.get("peak_rss_gb", "")),
             "peak_vram_gb": row.get("peak_vram_gb", ""),
@@ -737,6 +877,50 @@ def _run_resource_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
         }
         for row in final_rows
     ]
+
+
+def _baseline_summary_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    baseline_names = sorted(
+        {
+            key.removeprefix("baseline_").split("_target_hit", 1)[0]
+            for row in final_rows
+            for key in row
+            if key.startswith("baseline_") and key.endswith("_target_hit")
+        }
+    )
+    for row in final_rows:
+        for baseline in baseline_names:
+            prefix = f"baseline_{baseline}_"
+            target_hit = row.get(f"{prefix}target_hit", "")
+            item = {
+                **_run_identity(row),
+                "baseline": baseline,
+                "baseline_target_hit": target_hit,
+                "baseline_target_abs_error": row.get(f"{prefix}target_abs_error", ""),
+                "baseline_final_cumulative_ratio": row.get(f"{prefix}final_cumulative_ratio", ""),
+                "baseline_cumulative_dee": row.get(f"{prefix}cumulative_dee", ""),
+                "baseline_cumulative_fwe_weighted": row.get(f"{prefix}cumulative_fwe_weighted", ""),
+                "baseline_cumulative_fse_unweighted": row.get(f"{prefix}cumulative_fse_unweighted", ""),
+                "baseline_cumulative_ree_max": row.get(f"{prefix}cumulative_ree_max", ""),
+                "baseline_cumulative_sipe": row.get(f"{prefix}cumulative_sipe", ""),
+                "baseline_cumulative_sampled_eigen_error": row.get(
+                    f"{prefix}cumulative_sampled_eigen_error",
+                    "",
+                ),
+                "baseline_projected_macro_f1": row.get(f"{prefix}task_projected_macro_f1", ""),
+                "baseline_refined_macro_f1": row.get(f"{prefix}task_refined_macro_f1", ""),
+                "baseline_refined_macro_f1@0": row.get(f"{prefix}refined_macro_f1@0", ""),
+                "baseline_refined_macro_f1@1": row.get(f"{prefix}refined_macro_f1@1", ""),
+                "baseline_refined_macro_f1@3": row.get(f"{prefix}refined_macro_f1@3", ""),
+                "baseline_refined_macro_f1@5": row.get(f"{prefix}refined_macro_f1@5", ""),
+                "baseline_runtime_total": row.get(f"{prefix}runtime_total", ""),
+                "comparison_status": "included"
+                if str(target_hit).lower() == "true"
+                else "failed target control",
+            }
+            rows.append(item)
+    return rows
 
 
 def _target_check_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1113,14 +1297,21 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
     write_csv(output / "all_levels.csv", level_rows_all)
     write_csv(output / "final_summary.csv", final_rows)
     write_csv(output / "run_final_summary.csv", final_rows)
-    write_csv(output / "resource_summary.csv", resource_rows)
-    write_csv(output / "resource_summary_runlevel.csv", _run_resource_rows(final_rows))
+    run_resource_rows = _run_resource_rows(final_rows)
+    write_csv(output / "resource_summary.csv", run_resource_rows)
+    write_csv(output / "resource_summary_runlevel.csv", run_resource_rows)
+    write_csv(output / "resource_summary_levels.csv", resource_rows)
     write_csv(output / "quality_summary.csv", quality_rows)
     write_csv(output / "score_term_scale.csv", _score_term_scale_rows(final_rows))
+    write_csv(output / "baseline_summary.csv", _baseline_summary_rows(final_rows))
     write_csv(output / "candidate_source_pareto.csv", _candidate_source_pareto_rows(final_rows))
     write_csv(output / "task_summary.csv", _task_summary_rows(final_rows))
     write_csv(output / "target_check.csv", target_rows)
     write_csv(output / "compare_by_variant.csv", _compare_rows(final_rows, ["dataset", "variant"]))
+    write_csv(
+        output / "compare_by_dataset_variant.csv",
+        _compare_rows(final_rows, ["dataset", "variant"]),
+    )
     write_csv(output / "compare_by_source.csv", _compare_rows(final_rows, ["dataset", "candidate_source"]))
     write_csv(
         output / "compare_by_dim.csv",
@@ -1154,6 +1345,16 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
                 "peak RAM",
             ],
         ),
+        "",
+        "## Next4 Method Notes",
+        "",
+        "HeSF-LVC is the main method: heterogeneous fused low-pass sketch + type-compatible small-cluster local variation coarsening + convolution-aware scoring.",
+        "Primary spectral metrics are cumulative metrics; final-level metrics are diagnostics only.",
+        "meta-path is optional / disabled in the main method unless a future run proves changed matches and metric gains.",
+        "Non-uniform relation weighting is optional; uniform relation fusion is the default claim.",
+        "mutual_best is retained as an ablation baseline, not the default kernel.",
+        "0.25 aggressive mode is a stress setting, not high-quality spectral coarsening.",
+        "GPU/system claims require measured GPU paths; CPU-only runs must not be described as GPU validated.",
         "",
         "## Completed Runs",
         "",
@@ -1220,11 +1421,11 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
         "",
         "## Runtime Breakdown",
         "",
-        "Standard stage fields map to `runtime_by_stage.sketch`, `runtime_by_stage.candidates`, `runtime_by_stage.scoring`, `runtime_by_stage.matching_and_aggregation`, and derived totals.",
+        "Standard stage fields map to `runtime_by_stage.sketch`, `runtime_by_stage.candidates`, `runtime_by_stage.scoring`, `runtime_by_stage.matching_and_aggregation`, `runtime_by_stage.cumulative_diagnostics`, task train/refine, and baseline totals.",
         "",
         "## Memory And Disk Footprint",
         "",
-        "See `resource_summary.csv` for artifact disk usage and runtime totals.",
+        "See `resource_summary.csv` for run-level resource fields and `resource_summary_levels.csv` for per-level artifact disk usage.",
         "",
         "## Figures",
         "",

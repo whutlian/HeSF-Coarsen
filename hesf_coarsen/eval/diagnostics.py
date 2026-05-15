@@ -51,6 +51,133 @@ def _cluster_size_histogram(sizes: np.ndarray) -> dict[str, int]:
     return {str(int(value)): int(count) for value, count in zip(values, counts)}
 
 
+def _safe_percentile(values: np.ndarray, percentile: float) -> float:
+    values = np.asarray(values, dtype=np.float64)
+    if values.size == 0:
+        return 0.0
+    return float(np.percentile(values, float(percentile)))
+
+
+def _cluster_size_histogram_by_type(assignment: Assignment) -> dict[str, dict[str, int]]:
+    hist: dict[str, dict[str, int]] = {}
+    sizes = assignment.cluster_sizes()
+    for supernode, size in enumerate(sizes):
+        type_key = str(int(assignment.supernode_type[supernode]))
+        bucket = hist.setdefault(type_key, {})
+        size_key = str(int(size))
+        bucket[size_key] = int(bucket.get(size_key, 0) + 1)
+    return hist
+
+
+def _node_reduction_by_type(original: HeteroGraph, coarse: HeteroGraph) -> dict[str, int]:
+    before = _node_counts(original)
+    after = _node_counts(coarse)
+    return {
+        type_id: int(before.get(type_id, 0) - after.get(type_id, 0))
+        for type_id in sorted(set(before) | set(after), key=lambda item: int(item))
+    }
+
+
+def _cluster_spread_values(
+    values: np.ndarray | None,
+    assignment: Assignment,
+    *,
+    mode: str = "spread",
+) -> np.ndarray:
+    if values is None:
+        return np.zeros(assignment.num_supernodes, dtype=np.float64)
+    matrix = np.asarray(values, dtype=np.float64)
+    if matrix.ndim == 1:
+        matrix = matrix[:, None]
+    out = np.zeros(assignment.num_supernodes, dtype=np.float64)
+    for supernode in range(assignment.num_supernodes):
+        members = np.flatnonzero(assignment.assignment == supernode)
+        if len(members) <= 1:
+            continue
+        block = matrix[members]
+        if mode == "variance":
+            out[supernode] = float(np.mean(np.var(block, axis=0)))
+        else:
+            center = block.mean(axis=0, keepdims=True)
+            out[supernode] = float(np.mean(np.sum((block - center) ** 2, axis=1)))
+    return out
+
+
+def _cluster_label_entropy_values(labels: np.ndarray | None, assignment: Assignment) -> np.ndarray:
+    values = np.zeros(assignment.num_supernodes, dtype=np.float64)
+    if labels is None:
+        return values
+    labels = np.asarray(labels).reshape(-1)
+    for supernode in range(assignment.num_supernodes):
+        members = np.flatnonzero(assignment.assignment == supernode)
+        cluster_labels = labels[members]
+        cluster_labels = cluster_labels[cluster_labels >= 0]
+        if len(cluster_labels) == 0:
+            continue
+        _label_values, counts = np.unique(cluster_labels, return_counts=True)
+        probs = counts.astype(np.float64) / max(float(counts.sum()), 1.0)
+        values[supernode] = float(-np.sum(probs * np.log(np.maximum(probs, 1.0e-12))))
+    return values
+
+
+def _bad_cluster_mask(
+    original: HeteroGraph,
+    assignment: Assignment,
+    config: dict[str, Any] | None,
+) -> np.ndarray:
+    config = config or {}
+    max_cluster_size = config.get("coarsening", {}).get("max_cluster_size")
+    sizes = assignment.cluster_sizes()
+    bad = np.zeros(assignment.num_supernodes, dtype=bool)
+    if max_cluster_size is not None:
+        bad |= sizes > int(max_cluster_size)
+    for supernode in range(assignment.num_supernodes):
+        members = np.flatnonzero(assignment.assignment == supernode)
+        if len(members) == 0:
+            bad[supernode] = True
+            continue
+        if len(np.unique(original.node_type[members])) > 1:
+            bad[supernode] = True
+    return bad
+
+
+def compute_cluster_quality_diagnostics(
+    original: HeteroGraph,
+    coarse: HeteroGraph,
+    assignment: Assignment,
+    *,
+    Z: np.ndarray | None = None,
+    relation_profiles: np.ndarray | None = None,
+    conv_response: np.ndarray | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    sizes = assignment.cluster_sizes()
+    sketch_spread = _cluster_spread_values(Z, assignment, mode="spread")
+    relation_variance = _cluster_spread_values(relation_profiles, assignment, mode="variance")
+    conv_spread = _cluster_spread_values(conv_response, assignment, mode="spread")
+    label_entropy = _cluster_label_entropy_values(original.labels, assignment)
+    bad = _bad_cluster_mask(original, assignment, config)
+    return {
+        "cluster_size_p50": _safe_percentile(sizes, 50),
+        "cluster_size_histogram_by_type": _cluster_size_histogram_by_type(assignment),
+        "node_reduction_by_type": _node_reduction_by_type(original, coarse),
+        "cluster_sketch_spread_mean": float(sketch_spread.mean() if len(sketch_spread) else 0.0),
+        "cluster_sketch_spread_p95": _safe_percentile(sketch_spread, 95),
+        "cluster_relation_profile_variance_mean": float(
+            relation_variance.mean() if len(relation_variance) else 0.0
+        ),
+        "cluster_relation_profile_variance_p95": _safe_percentile(relation_variance, 95),
+        "cluster_conv_response_spread_mean": float(conv_spread.mean() if len(conv_spread) else 0.0),
+        "cluster_conv_response_spread_p95": _safe_percentile(conv_spread, 95),
+        "cluster_label_entropy_train_only_mean": float(
+            label_entropy.mean() if len(label_entropy) else 0.0
+        ),
+        "cluster_label_entropy_train_only_p95": _safe_percentile(label_entropy, 95),
+        "bad_cluster_count": int(np.sum(bad)),
+        "bad_cluster_fraction": float(np.mean(bad) if len(bad) else 0.0),
+    }
+
+
 def _cluster_label_entropy(labels: np.ndarray | None, assignment: Assignment) -> float:
     if labels is None:
         return 0.0
@@ -234,6 +361,9 @@ def compute_diagnostics(
     runtime_by_stage: dict[str, float] | None = None,
     config: dict[str, Any] | None = None,
     artifact_dirs: dict[str, str | Path] | None = None,
+    Z: np.ndarray | None = None,
+    relation_profiles: np.ndarray | None = None,
+    conv_response: np.ndarray | None = None,
 ) -> dict[str, Any]:
     sizes = assignment.cluster_sizes()
     original_weights = _relation_weights(original)
@@ -270,6 +400,7 @@ def compute_diagnostics(
         ),
         "cluster_size_histogram": _cluster_size_histogram(sizes),
         "cluster_size_mean": float(sizes.mean() if len(sizes) else 0.0),
+        "cluster_size_p50": float(np.percentile(sizes, 50)) if len(sizes) else 0.0,
         "cluster_size_p95": float(np.percentile(sizes, 95)) if len(sizes) else 0.0,
         "cluster_size_p99": float(np.percentile(sizes, 99)) if len(sizes) else 0.0,
         "non_singleton_cluster_count": int(np.sum(sizes > 1)),
@@ -281,6 +412,17 @@ def compute_diagnostics(
         "relation_weight_abs_error": weight_error,
         "runtime_by_stage": runtime_by_stage or {},
     }
+    diagnostics.update(
+        compute_cluster_quality_diagnostics(
+            original,
+            coarse,
+            assignment,
+            Z=Z,
+            relation_profiles=relation_profiles,
+            conv_response=conv_response,
+            config=config,
+        )
+    )
     if (config or {}).get("diagnostics", {}).get("enable_large_graph_envelope", False):
         diagnostics["large_graph_envelope"] = compute_large_graph_envelope(
             original,

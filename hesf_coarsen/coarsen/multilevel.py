@@ -264,6 +264,9 @@ def _resolved_config_diagnostics(config: dict) -> dict:
             "max_levels": coarsening.get("max_levels"),
             "matching_method": coarsening.get("matching_method"),
             "max_cluster_size": coarsening.get("max_cluster_size"),
+            "same_type_only": coarsening.get("same_type_only"),
+            "same_partition_only": coarsening.get("same_partition_only"),
+            "terminal_guard": coarsening.get("terminal_guard"),
             "cumulative_guard": coarsening.get("cumulative_guard"),
         },
         "sketch": {
@@ -1177,6 +1180,9 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 }.items()
                 if path is not None
             },
+            Z=Z.astype(np.float32, copy=False),
+            relation_profiles=relation_profiles,
+            conv_response=conv,
         )
         diagnostics["sketch"] = {
             key: value
@@ -1193,6 +1199,25 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         diagnostics["score_contributions"] = score_contribution_summary
         diagnostics["score_contribution_share"] = _score_contribution_share(score_contribution_summary)
         diagnostics["cumulative_guard"] = cumulative_guard_diag
+        diagnostics["terminal_guard"] = dict(
+            getattr(assignment, "diagnostics", {}).get(
+                "terminal_guard",
+                {
+                    "enabled": False,
+                    "protected_node_count": 0,
+                    "protected_node_fraction": 0.0,
+                    "protected_by_reason": {
+                        "hub": 0,
+                        "rare_relation": 0,
+                        "boundary": 0,
+                        "label_entropy": 0,
+                    },
+                    "merge_blocked_count": 0,
+                    "merge_blocked_fraction": 0.0,
+                    "cluster_size_reduction_due_to_guard": 0,
+                },
+            )
+        )
         diagnostics["target_control"] = _target_control_diagnostics(
             config,
             original_nodes=original_nodes,
@@ -1213,6 +1238,15 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 "selected_match_source_distribution_after_quota",
                 {},
             )
+            diagnostics["selected_source_fraction_before_quota"] = quota_diag.get(
+                "selected_source_fraction_before_quota",
+                {},
+            )
+            diagnostics["selected_source_fraction_after_quota"] = quota_diag.get(
+                "selected_source_fraction_after_quota",
+                {},
+            )
+            diagnostics["quota"] = quota_diag.get("quota", {})
             diagnostics["quota_violation"] = quota_diag.get("quota_violation", {})
         diagnostics["fallback_selected_fraction"] = float(
             matched_pairs_by_source.get("fallback", 0)

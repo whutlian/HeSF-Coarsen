@@ -54,7 +54,7 @@ def test_multilevel_pipeline_runs_and_writes_diagnostics(tmp_path):
     assert validate_loaded.num_nodes == results[0].graph.num_nodes
 
 
-def test_multilevel_pipeline_streams_default_mutual_best_without_to_pairs(tmp_path, monkeypatch):
+def test_multilevel_pipeline_streams_explicit_mutual_best_without_to_pairs(tmp_path, monkeypatch):
     graph = generate_synthetic_graph(
         num_users=8,
         num_items=5,
@@ -62,11 +62,12 @@ def test_multilevel_pipeline_streams_default_mutual_best_without_to_pairs(tmp_pa
         seed=123,
     )
     config = small_config(tmp_path)
+    config["coarsening"] = dict(config["coarsening"], matching_method="mutual_best")
     config["diagnostics"] = dict(config["diagnostics"], enable_spectral=False)
     config["candidates"] = dict(config["candidates"], pair_block_size=2)
 
     def fail_to_pairs(*_args, **_kwargs):
-        raise AssertionError("default mutual-best pipeline should stream pair blocks")
+        raise AssertionError("explicit mutual-best pipeline should stream pair blocks")
 
     monkeypatch.setattr(multilevel_module.BoundedCandidateStore, "to_pairs", fail_to_pairs)
     monkeypatch.setattr(multilevel_module.ArrayCandidateStore, "to_pairs", fail_to_pairs)
@@ -153,6 +154,107 @@ def test_multilevel_pipeline_records_cluster_reduction_diagnostics(tmp_path):
     assert diagnostics["cluster_size_histogram"]
     assert diagnostics["cluster_size_mean"] >= 1.0
     assert "cluster_label_entropy" in diagnostics
+
+
+def test_multilevel_pipeline_writes_full_cluster_diagnostics_without_nan(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=12,
+        num_items=8,
+        num_tags=4,
+        seed=128,
+    )
+    config = small_config(tmp_path)
+    config["diagnostics"] = dict(config["diagnostics"], enable_spectral=False)
+    config["coarsening"] = dict(
+        config["coarsening"],
+        target_ratio=0.5,
+        matching_method="greedy_cluster",
+        max_cluster_size=4,
+    )
+
+    diagnostics = run_multilevel_coarsening(graph, config)[0].diagnostics
+
+    required = [
+        "cluster_count",
+        "cluster_size_mean",
+        "cluster_size_p50",
+        "cluster_size_p95",
+        "cluster_size_p99",
+        "cluster_size_histogram",
+        "cluster_size_histogram_by_type",
+        "node_reduction",
+        "node_reduction_by_type",
+        "cluster_sketch_spread_mean",
+        "cluster_sketch_spread_p95",
+        "cluster_relation_profile_variance_mean",
+        "cluster_relation_profile_variance_p95",
+        "cluster_conv_response_spread_mean",
+        "cluster_conv_response_spread_p95",
+        "cluster_label_entropy_train_only_mean",
+        "cluster_label_entropy_train_only_p95",
+        "bad_cluster_count",
+        "bad_cluster_fraction",
+    ]
+    for key in required:
+        assert key in diagnostics
+    for key in required:
+        value = diagnostics[key]
+        if isinstance(value, (int, float)):
+            assert np.isfinite(value), key
+    assert diagnostics["bad_cluster_count"] == 0
+
+
+def test_terminal_guard_blocks_large_protected_clusters_and_reports_diagnostics():
+    graph = HeteroGraph(
+        num_nodes=5,
+        node_type=np.zeros(5, dtype=np.int32),
+        relations={
+            0: RelationAdj(
+                src=np.array([0, 0, 0, 0], dtype=np.int64),
+                dst=np.array([1, 2, 3, 4], dtype=np.int64),
+                weight=np.ones(4, dtype=np.float32),
+                src_type=0,
+                dst_type=0,
+                relation_id=0,
+            )
+        },
+    )
+    scored_pairs = np.array(
+        [
+            [0, 1, 0.0],
+            [0, 2, 0.1],
+            [0, 3, 0.2],
+            [0, 4, 0.3],
+        ],
+        dtype=np.float64,
+    )
+
+    from hesf_coarsen.matching.greedy import run_greedy_cluster_matching
+
+    assignment = run_greedy_cluster_matching(
+        graph,
+        scored_pairs,
+        {
+            "coarsening": {
+                "matching_method": "greedy_cluster",
+                "same_type_only": True,
+                "same_partition_only": False,
+                "max_cluster_size": 4,
+                "terminal_guard": {
+                    "enabled": True,
+                    "protect_hubs": True,
+                    "hub_degree_percentile": 50,
+                    "max_terminal_cluster_size": 2,
+                },
+            }
+        },
+    )
+
+    assert max(assignment.cluster_sizes()) <= 2
+    terminal = assignment.diagnostics["terminal_guard"]
+    assert terminal["protected_node_count"] > 0
+    assert terminal["protected_by_reason"]["hub"] > 0
+    assert terminal["merge_blocked_count"] > 0
 
 
 def test_repair_bad_clusters_records_objective_and_accept_gate():

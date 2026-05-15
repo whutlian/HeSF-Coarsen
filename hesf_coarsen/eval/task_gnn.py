@@ -96,6 +96,39 @@ def train_only_coarse_labels(
     return coarse_labels, diagnostics
 
 
+def refine_curve_summary(checkpoint_metrics: dict[int, dict[str, float]]) -> dict[str, Any]:
+    if not checkpoint_metrics:
+        return {
+            "best_refined_macro_f1": 0.0,
+            "best_refined_epoch": 0,
+            "refine_auc_macro_f1": 0.0,
+            "refine_time_by_epoch": {},
+        }
+    ordered = sorted((int(epoch), values) for epoch, values in checkpoint_metrics.items())
+    best_epoch, best_values = max(
+        ordered,
+        key=lambda item: (float(item[1].get("macro_f1", 0.0)), -int(item[0])),
+    )
+    epochs = np.asarray([epoch for epoch, _values in ordered], dtype=np.float64)
+    macro = np.asarray(
+        [float(values.get("macro_f1", 0.0)) for _epoch, values in ordered],
+        dtype=np.float64,
+    )
+    if len(epochs) == 1 or float(epochs[-1] - epochs[0]) <= 0.0:
+        auc = float(macro[-1])
+    else:
+        auc = float(np.trapezoid(macro, epochs) / max(float(epochs[-1] - epochs[0]), 1.0e-12))
+    return {
+        "best_refined_macro_f1": float(best_values.get("macro_f1", 0.0)),
+        "best_refined_epoch": int(best_epoch),
+        "refine_auc_macro_f1": auc,
+        "refine_time_by_epoch": {
+            str(int(epoch)): float(values.get("refine_time", 0.0))
+            for epoch, values in ordered
+        },
+    }
+
+
 def evaluate_rgcn_task(
     original: HeteroGraph,
     coarse: HeteroGraph,
@@ -321,6 +354,13 @@ def evaluate_rgcn_task(
         refine_time = train_model(refine_model, original_data, original_y, original_train, int(refine_epochs))
         original_pred = eval_model(refine_model, original_data)
         refined_f1 = f1_scores(labels[test_nodes], original_pred[test_nodes])
+        checkpoint_metrics = {
+            int(refine_epochs): {
+                "micro_f1": refined_f1["micro_f1"],
+                "macro_f1": refined_f1["macro_f1"],
+                "refine_time": float(refine_time),
+            }
+        }
     else:
         checkpoints = sorted({max(0, int(value)) for value in refine_epochs_list})
         if not checkpoints:
@@ -363,10 +403,11 @@ def evaluate_rgcn_task(
         "primary_task_metric": primary_metric,
         "micro_f1": refined_f1["micro_f1"],
         "macro_f1": refined_f1["macro_f1"],
-        "train_time": float(train_time),
-        "refine_time": float(refine_time),
-        "total_time": float(train_time + refine_time),
-    }
+            "train_time": float(train_time),
+            "refine_time": float(refine_time),
+            "total_time": float(train_time + refine_time),
+            **refine_curve_summary(checkpoint_metrics),
+        }
     for checkpoint, values in sorted(checkpoint_metrics.items()):
         suffix = f"@{checkpoint}"
         metrics[f"refined_original_micro_f1{suffix}"] = values["micro_f1"]

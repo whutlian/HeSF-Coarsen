@@ -338,6 +338,7 @@ def compute_relation_weights(
     diagnostics: dict[str, Any] = {
         "relation_weighting_method": method,
         "relation_weights": {str(k): float(v) for k, v in weights.items()},
+        "relation_weight_by_relation": {str(k): float(v) for k, v in weights.items()},
         "relation_weight_stats": {
             "sum": float(sum(stats_values)),
             "min": min_weight_value,
@@ -349,6 +350,10 @@ def compute_relation_weights(
             float(max_weight_value / max(min_weight_value, 1.0e-12))
             if stats_values
             else 0.0
+        ),
+        "relation_weight_target_hit_warning": bool(
+            stats_values
+            and float(max_weight_value / max(min_weight_value, 1.0e-12)) > 3.0
         ),
         "relation_energy_estimates": {str(k): float(v) for k, v in energies.items()},
         "relation_volume_estimates": {str(k): float(v) for k, v in volumes.items()},
