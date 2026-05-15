@@ -113,6 +113,31 @@ class BoundedCandidateStore:
     def source_counts(self) -> dict[str, int]:
         return dict(Counter(source for _score, source in self._pairs.values()))
 
+    def source_node_coverage(self) -> dict[str, float]:
+        nodes_by_source: dict[str, set[int]] = {}
+        for (i, j), (_score, source) in self._pairs.items():
+            nodes = nodes_by_source.setdefault(source, set())
+            nodes.add(int(i))
+            nodes.add(int(j))
+        total_nodes = max(len(self.node_type), 1)
+        return {
+            source: float(len(nodes) / total_nodes)
+            for source, nodes in sorted(nodes_by_source.items())
+        }
+
+    def buffer_nbytes(self) -> dict[str, int]:
+        pair_bytes = len(self._pairs) * (
+            2 * np.dtype(np.int64).itemsize
+            + np.dtype(np.float32).itemsize
+            + np.dtype(np.int16).itemsize
+        )
+        per_node_bytes = len(self._per_node) * np.dtype(np.int32).itemsize
+        return {
+            "estimated_pair_bytes": int(pair_bytes),
+            "estimated_per_node_bytes": int(per_node_bytes),
+            "estimated_total_bytes": int(pair_bytes + per_node_bytes),
+        }
+
     def source_for_pair(self, i: int, j: int) -> str | None:
         item = self._pairs.get(self._key(int(i), int(j)))
         return None if item is None else str(item[1])

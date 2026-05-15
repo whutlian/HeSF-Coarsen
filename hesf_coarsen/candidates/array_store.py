@@ -243,6 +243,34 @@ class ArrayCandidateStore:
                 counts[name] = counts.get(name, 0) + 1
         return counts
 
+    def source_node_coverage(self) -> dict[str, float]:
+        nodes_by_source: dict[str, set[int]] = {}
+        for node in range(len(self.node_type)):
+            used = int(self._counts[node])
+            for slot in range(used):
+                other = int(self.candidate_ids[node, slot])
+                if other < 0:
+                    continue
+                name = self._source_name(int(self.candidate_sources[node, slot]))
+                nodes = nodes_by_source.setdefault(name, set())
+                nodes.add(int(node))
+                nodes.add(other)
+        total_nodes = max(len(self.node_type), 1)
+        return {
+            source: float(len(nodes) / total_nodes)
+            for source, nodes in sorted(nodes_by_source.items())
+        }
+
+    def buffer_nbytes(self) -> dict[str, int]:
+        payload = {
+            "candidate_ids_bytes": int(self.candidate_ids.nbytes),
+            "candidate_scores_bytes": int(self.candidate_scores.nbytes),
+            "candidate_sources_bytes": int(self.candidate_sources.nbytes),
+            "candidate_counts_bytes": int(self._counts.nbytes),
+        }
+        payload["estimated_total_bytes"] = int(sum(payload.values()))
+        return payload
+
     def source_for_pair(self, i: int, j: int) -> str | None:
         i = int(i)
         j = int(j)

@@ -66,3 +66,38 @@ def test_multilevel_diagnostics_include_large_graph_envelope(tmp_path):
     assert envelope["edge_sample_size"] == 3
     assert envelope["graph_array_bytes"] > 0
     assert envelope["runtime_total_seconds"] >= envelope["runtime_by_stage"]["sketch"]
+
+
+def test_multilevel_diagnostics_include_candidate_generation_breakdown(tmp_path):
+    graph = generate_synthetic_graph(num_users=12, num_items=7, num_tags=4, seed=1003)
+    config = dict(DEFAULT_CONFIG)
+    config["coarsening"] = dict(
+        DEFAULT_CONFIG["coarsening"],
+        target_ratio=0.75,
+        max_levels=1,
+        per_level_ratio=0.75,
+    )
+    config["sketch"] = dict(DEFAULT_CONFIG["sketch"], dim=8, order=2, dtype="float32")
+    config["candidates"] = dict(
+        DEFAULT_CONFIG["candidates"],
+        total_budget_K=4,
+        enable_bucket=True,
+        enable_capped_twohop=True,
+        enable_fallback=True,
+    )
+    config["diagnostics"] = dict(DEFAULT_CONFIG["diagnostics"], enable_spectral=False)
+    config["output"] = {"dir": str(tmp_path)}
+
+    run_multilevel_coarsening(graph, config)
+
+    diagnostics_path = tmp_path / "level_1" / "diagnostics.json"
+    with diagnostics_path.open("r", encoding="utf-8") as handle:
+        diagnostics = json.load(handle)
+    assert diagnostics["candidate_generation_time"] >= 0.0
+    assert diagnostics["candidate_pairs_per_sec"] >= 0.0
+    assert diagnostics["candidate_substage_times"]["onehop"] >= 0.0
+    assert diagnostics["candidate_substage_times"]["twohop_expansion"] >= 0.0
+    assert diagnostics["candidate_substage_times"]["bucket_emit"] >= 0.0
+    assert diagnostics["candidate_source_coverage"]["bucket"] >= 0.0
+    assert diagnostics["partition_imbalance"]["partition_count"] >= 1
+    assert diagnostics["memory_by_candidate_buffers"]["estimated_total_bytes"] > 0

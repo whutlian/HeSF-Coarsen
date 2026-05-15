@@ -81,6 +81,10 @@ def _runtime_stage_total(level_rows: list[dict[str, Any]], key: str) -> float:
     return float(sum(float(row.get(f"runtime_by_stage.{key}", 0) or 0) for row in level_rows))
 
 
+def _sum_float_key(level_rows: list[dict[str, Any]], key: str) -> float:
+    return float(sum(float(row.get(key, 0) or 0) for row in level_rows))
+
+
 def _baseline_runtime_total(row: Mapping[str, Any]) -> float | str:
     total = 0.0
     found = False
@@ -192,8 +196,26 @@ def _with_task_aliases(row: dict[str, Any]) -> None:
             "task_best_refined_epoch": _task_value(row, "best_refined_epoch"),
             "task_refine_auc_macro_f1": _task_value(row, "refine_auc_macro_f1"),
             "task_refine_time_by_epoch": _task_value(row, "refine_time_by_epoch"),
-            "task_full_graph_macro_f1": _task_value(row, "full_graph_rgcn_lite_macro_f1"),
-            "task_full_graph_micro_f1": _task_value(row, "full_graph_rgcn_lite_micro_f1"),
+            "task_full_graph_macro_f1": (
+                _task_value(row, "full_graph_rgcn_lite_tuned_macro_f1")
+                or _task_value(row, "full_graph_rgcn_lite_default_macro_f1")
+                or _task_value(row, "full_graph_rgcn_lite_macro_f1")
+            ),
+            "task_full_graph_micro_f1": (
+                _task_value(row, "full_graph_rgcn_lite_tuned_micro_f1")
+                or _task_value(row, "full_graph_rgcn_lite_default_micro_f1")
+                or _task_value(row, "full_graph_rgcn_lite_micro_f1")
+            ),
+            "task_full_graph_rgcn_lite_default_macro_f1": (
+                _task_value(row, "full_graph_rgcn_lite_default_macro_f1")
+                or _task_value(row, "full_graph_rgcn_lite_macro_f1")
+            ),
+            "task_full_graph_rgcn_lite_tuned_macro_f1": _task_value(
+                row,
+                "full_graph_rgcn_lite_tuned_macro_f1",
+            ),
+            "task_full_graph_han_small_macro_f1": _task_value(row, "full_graph_han_small_macro_f1"),
+            "task_full_graph_hgt_small_macro_f1": _task_value(row, "full_graph_hgt_small_macro_f1"),
             "task_coarse_train_micro_f1": coarse_micro,
             "task_coarse_train_macro_f1": coarse_macro,
             "task_primary_metric_name": primary_name,
@@ -632,6 +654,34 @@ def _final_cumulative_row(
     )
     scoring_runtime = _as_float(final.get("runtime_by_stage.scoring"), 0.0) or 0.0
     aggregation_runtime = _as_float(final.get("runtime_by_stage.matching_and_aggregation"), 0.0) or 0.0
+    candidate_generation_time = _sum_float_key(ordered, "candidate_generation_time")
+    candidate_retained_pair_count = int(_sum_float_key(ordered, "candidate_retained_pair_count"))
+    final["candidate_generation_time"] = candidate_generation_time
+    final["candidate_retained_pair_count"] = candidate_retained_pair_count
+    final["candidate_pairs_per_sec"] = (
+        float(candidate_retained_pair_count / candidate_generation_time)
+        if candidate_generation_time > 0.0
+        else ""
+    )
+    for substage in (
+        "onehop",
+        "incident_index_build",
+        "twohop_expansion",
+        "simhash",
+        "bucket_emit",
+        "partition_ann",
+        "fallback",
+        "store_finalize",
+    ):
+        final[f"candidate_substage_times.{substage}"] = _sum_float_key(
+            ordered,
+            f"candidate_substage_times.{substage}",
+        )
+    final["bucket_coverage"] = _first(last, ("bucket_coverage", "candidate_source_coverage.bucket"), "")
+    final["twohop_expansion_time"] = final.get("candidate_substage_times.twohop_expansion", "")
+    final["partition_count"] = last.get("partition_imbalance.partition_count", "")
+    final["partition_imbalance_max_to_mean"] = last.get("partition_imbalance.max_to_mean", "")
+    final["candidate_buffer_bytes"] = last.get("memory_by_candidate_buffers.estimated_total_bytes", "")
     final["candidate_pairs_scored_per_sec"] = (
         float(_candidate_pairs_total(ordered) / scoring_runtime) if scoring_runtime > 0 else ""
     )
@@ -843,6 +893,36 @@ def _run_resource_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             "runtime_by_stage.task_train": row.get("runtime_by_stage.task_train", ""),
             "runtime_by_stage.task_refine": row.get("runtime_by_stage.task_refine", ""),
             "runtime_by_stage.baselines": row.get("runtime_by_stage.baselines", ""),
+            "candidate_generation_time": row.get("candidate_generation_time", ""),
+            "candidate_pairs_per_sec": row.get("candidate_pairs_per_sec", ""),
+            "candidate_substage_times.onehop": row.get("candidate_substage_times.onehop", ""),
+            "candidate_substage_times.incident_index_build": row.get(
+                "candidate_substage_times.incident_index_build",
+                "",
+            ),
+            "candidate_substage_times.twohop_expansion": row.get(
+                "candidate_substage_times.twohop_expansion",
+                "",
+            ),
+            "candidate_substage_times.simhash": row.get("candidate_substage_times.simhash", ""),
+            "candidate_substage_times.bucket_emit": row.get(
+                "candidate_substage_times.bucket_emit",
+                "",
+            ),
+            "candidate_substage_times.partition_ann": row.get(
+                "candidate_substage_times.partition_ann",
+                "",
+            ),
+            "candidate_substage_times.fallback": row.get("candidate_substage_times.fallback", ""),
+            "candidate_substage_times.store_finalize": row.get(
+                "candidate_substage_times.store_finalize",
+                "",
+            ),
+            "bucket_coverage": row.get("bucket_coverage", ""),
+            "twohop_expansion_time": row.get("twohop_expansion_time", ""),
+            "partition_count": row.get("partition_count", ""),
+            "partition_imbalance_max_to_mean": row.get("partition_imbalance_max_to_mean", ""),
+            "candidate_buffer_bytes": row.get("candidate_buffer_bytes", ""),
             "candidate_pairs_scored_per_sec": row.get("candidate_pairs_scored_per_sec", ""),
             "edges_aggregated_per_sec": row.get("edges_aggregated_per_sec", ""),
             "peak_rss_gb": row.get("peak_rss_gb", ""),

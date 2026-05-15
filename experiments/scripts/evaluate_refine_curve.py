@@ -70,6 +70,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hidden-dim", type=int, default=32)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--full-graph-rgcn-lite", action="store_true")
+    parser.add_argument("--full-graph-baselines", nargs="+", default=None)
+    parser.add_argument("--full-graph-tuned-epochs", type=int)
     return parser
 
 
@@ -126,7 +128,20 @@ def _rows_from_task_payload(
                 "best_refined_macro_f1": payload.get("best_refined_macro_f1", ""),
                 "best_refined_epoch": payload.get("best_refined_epoch", ""),
                 "refine_auc_macro_f1": payload.get("refine_auc_macro_f1", ""),
-                "full_graph_macro_f1": payload.get("full_graph_rgcn_lite_macro_f1", ""),
+                "full_graph_macro_f1": payload.get(
+                    "full_graph_rgcn_lite_tuned_macro_f1",
+                    payload.get(
+                        "full_graph_rgcn_lite_default_macro_f1",
+                        payload.get("full_graph_rgcn_lite_macro_f1", ""),
+                    ),
+                ),
+                "full_graph_rgcn_lite_default_macro_f1": payload.get(
+                    "full_graph_rgcn_lite_default_macro_f1",
+                    payload.get("full_graph_rgcn_lite_macro_f1", ""),
+                ),
+                "full_graph_rgcn_lite_tuned_macro_f1": payload.get("full_graph_rgcn_lite_tuned_macro_f1", ""),
+                "full_graph_han_small_macro_f1": payload.get("full_graph_han_small_macro_f1", ""),
+                "full_graph_hgt_small_macro_f1": payload.get("full_graph_hgt_small_macro_f1", ""),
                 "source": source,
                 "status": "success",
             }
@@ -168,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
                 hidden_dim=args.hidden_dim,
                 device=args.device,
                 full_graph_rgcn_lite=args.full_graph_rgcn_lite,
+                full_graph_baselines=args.full_graph_baselines,
+                full_graph_tuned_epochs=args.full_graph_tuned_epochs,
             )
         except Exception as exc:
             derived = _derived_rows(summary_row, args.refine_epochs)

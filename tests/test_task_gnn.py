@@ -1,6 +1,8 @@
 import numpy as np
+import pytest
 
-from hesf_coarsen.eval.task_gnn import compose_assignments, f1_scores, refine_curve_summary
+from hesf_coarsen.eval.task_gnn import compose_assignments, evaluate_rgcn_task, f1_scores, refine_curve_summary
+from hesf_coarsen.io.edge_list import generate_synthetic_graph
 
 
 def test_compose_assignments_maps_original_to_final_level(tmp_path):
@@ -38,3 +40,38 @@ def test_refine_curve_summary_reports_best_epoch_auc_and_time_mapping():
     assert summary["best_refined_epoch"] == 3
     assert np.isclose(summary["refine_auc_macro_f1"], 0.641)
     assert summary["refine_time_by_epoch"] == {"0": 0.0, "1": 0.2, "3": 0.7, "5": 1.1}
+
+
+def test_task_eval_reports_named_full_graph_baselines():
+    pytest.importorskip("torch")
+    graph = generate_synthetic_graph(num_users=14, num_items=8, num_tags=5, seed=707)
+    mapping = np.arange(graph.num_nodes, dtype=np.int64)
+
+    metrics = evaluate_rgcn_task(
+        graph,
+        graph,
+        mapping,
+        seed=707,
+        hidden_dim=8,
+        epochs=1,
+        refine_epochs=0,
+        refine_epochs_list=[0],
+        device="cpu",
+        full_graph_baselines=[
+            "full_graph_rgcn_lite_default",
+            "full_graph_rgcn_lite_tuned",
+            "full_graph_han_small",
+            "full_graph_hgt_small",
+        ],
+    ).metrics
+
+    for name in (
+        "full_graph_rgcn_lite_default",
+        "full_graph_rgcn_lite_tuned",
+        "full_graph_han_small",
+        "full_graph_hgt_small",
+    ):
+        assert f"{name}_macro_f1" in metrics
+        assert f"{name}_micro_f1" in metrics
+        assert f"{name}_train_time" in metrics
+        assert metrics.get(f"{name}_skipped", False) is False

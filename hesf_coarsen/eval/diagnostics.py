@@ -195,6 +195,41 @@ def _cluster_label_entropy(labels: np.ndarray | None, assignment: Assignment) ->
     return float(np.mean(entropies)) if entropies else 0.0
 
 
+def _partition_imbalance(graph: HeteroGraph) -> dict[str, Any]:
+    if graph.partitions is None:
+        partitions = np.zeros(graph.num_nodes, dtype=np.int32)
+    else:
+        partitions = np.asarray(graph.partitions, dtype=np.int64).reshape(-1)
+    if len(partitions) == 0:
+        return {
+            "partition_count": 0,
+            "max_count": 0,
+            "mean_count": 0.0,
+            "max_to_mean": 0.0,
+            "by_type": {},
+        }
+    _values, counts = np.unique(partitions, return_counts=True)
+    mean_count = float(np.mean(counts)) if len(counts) else 0.0
+    by_type: dict[str, dict[str, float | int]] = {}
+    for type_id in sorted(np.unique(graph.node_type)):
+        mask = graph.node_type == type_id
+        _type_values, type_counts = np.unique(partitions[mask], return_counts=True)
+        type_mean = float(np.mean(type_counts)) if len(type_counts) else 0.0
+        by_type[str(int(type_id))] = {
+            "partition_count": int(len(type_counts)),
+            "max_count": int(type_counts.max(initial=0)),
+            "mean_count": type_mean,
+            "max_to_mean": float(type_counts.max(initial=0) / max(type_mean, 1.0e-12)),
+        }
+    return {
+        "partition_count": int(len(counts)),
+        "max_count": int(counts.max(initial=0)),
+        "mean_count": mean_count,
+        "max_to_mean": float(counts.max(initial=0) / max(mean_count, 1.0e-12)),
+        "by_type": by_type,
+    }
+
+
 def _current_rss_bytes() -> int | None:
     try:
         import psutil  # type: ignore
@@ -364,6 +399,7 @@ def compute_diagnostics(
     Z: np.ndarray | None = None,
     relation_profiles: np.ndarray | None = None,
     conv_response: np.ndarray | None = None,
+    candidate_generation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     sizes = assignment.cluster_sizes()
     original_weights = _relation_weights(original)
@@ -372,6 +408,62 @@ def compute_diagnostics(
         relation_id: abs(original_weights.get(relation_id, 0.0) - coarse_weights.get(relation_id, 0.0))
         for relation_id in sorted(set(original_weights) | set(coarse_weights))
     }
+    candidate_generation = candidate_generation or {}
+    candidate_substage_times = {
+        key: float(value)
+        for key, value in (candidate_generation.get("substage_times") or {}).items()
+    }
+    for key in (
+        "onehop",
+        "incident_index_build",
+        "twohop_expansion",
+        "simhash",
+        "bucket_emit",
+        "partition_ann",
+        "fallback",
+        "store_finalize",
+    ):
+        candidate_substage_times.setdefault(key, 0.0)
+    candidate_generation_time = float(
+        candidate_generation.get(
+            "total_time",
+            (runtime_by_stage or {}).get("candidates", 0.0),
+        )
+        or 0.0
+    )
+    retained_pair_count = int(
+        candidate_generation.get("retained_pair_count", sum(int(value) for value in source_counts.values()))
+        or 0
+    )
+    candidate_pairs_per_sec = float(
+        candidate_generation.get(
+            "candidate_pairs_per_sec",
+            retained_pair_count / candidate_generation_time if candidate_generation_time > 0.0 else 0.0,
+        )
+        or 0.0
+    )
+    memory_by_candidate_buffers = dict(candidate_generation.get("memory_by_candidate_buffers") or {})
+    if "estimated_total_bytes" not in memory_by_candidate_buffers:
+        candidate_cfg = (config or {}).get("candidates", {})
+        candidate_K = int(candidate_cfg.get("total_budget_K", 0) or 0)
+        memory_by_candidate_buffers["estimated_total_bytes"] = int(
+            original.num_nodes
+            * max(candidate_K, 0)
+            * (
+                np.dtype(np.int64).itemsize
+                + np.dtype(np.float32).itemsize
+                + np.dtype(np.int16).itemsize
+            )
+            + original.num_nodes * np.dtype(np.int32).itemsize
+        )
+    candidate_source_coverage = {
+        str(key): float(value)
+        for key, value in (candidate_generation.get("source_node_coverage") or {}).items()
+    }
+    for source in ("onehop", "capped_twohop", "bucket", "fallback", "partition_ann"):
+        candidate_source_coverage.setdefault(source, 0.0)
+    for source in source_counts:
+        candidate_source_coverage.setdefault(str(source), 0.0)
     diagnostics = {
         "original_nodes": int(original.num_nodes),
         "coarse_nodes": int(coarse.num_nodes),
@@ -390,6 +482,16 @@ def compute_diagnostics(
             "p99": float(np.percentile(candidate_counts, 99)) if len(candidate_counts) else 0.0,
         },
         "candidate_source_counts": dict(source_counts),
+        "candidate_generation_time": candidate_generation_time,
+        "candidate_pairs_per_sec": candidate_pairs_per_sec,
+        "candidate_retained_pair_count": retained_pair_count,
+        "candidate_substage_times": candidate_substage_times,
+        "candidate_source_generation": candidate_generation.get("source_generation", {}),
+        "candidate_source_coverage": candidate_source_coverage,
+        "bucket_coverage": float(candidate_source_coverage.get("bucket", 0.0)),
+        "twohop_expansion_time": float(candidate_substage_times.get("twohop_expansion", 0.0)),
+        "partition_imbalance": _partition_imbalance(original),
+        "memory_by_candidate_buffers": memory_by_candidate_buffers,
         "matched_pairs": int(np.sum(sizes == 2)),
         "matched_merges": int(np.sum(np.maximum(sizes - 1, 0))),
         "matched_units": int(np.sum(np.maximum(sizes - 1, 0))),

@@ -81,6 +81,7 @@ def test_experiment_scripts_support_help():
         "compare_hgb_ablation.py",
         "run_ogbn_mag_subset.py",
         "run_ogbn_mag_envelope.py",
+        "run_ogbn_mag_next4_medium.py",
         "collect_diagnostics.py",
         "summarize_experiments.py",
         "make_synthetic_scale.py",
@@ -234,6 +235,21 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
         },
         "task": {"micro_f1": 0.7, "macro_f1": 0.6},
         "candidate_count_total": 4,
+        "candidate_generation_time": 2.0,
+        "candidate_retained_pair_count": 3,
+        "candidate_pairs_per_sec": 1.5,
+        "candidate_substage_times": {
+            "onehop": 0.2,
+            "incident_index_build": 0.1,
+            "twohop_expansion": 0.7,
+            "simhash": 0.2,
+            "bucket_emit": 0.6,
+            "fallback": 0.1,
+            "store_finalize": 0.1,
+        },
+        "candidate_source_coverage": {"bucket": 0.8, "capped_twohop": 0.6},
+        "partition_imbalance": {"partition_count": 1, "max_to_mean": 1.0},
+        "memory_by_candidate_buffers": {"estimated_total_bytes": 4096},
         "candidate_source_counts": {"bucket": 3, "onehop": 1},
         "matched_pairs": 2,
         "matched_units": 3,
@@ -384,6 +400,14 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert np.isclose(float(final_rows[0]["final_cumulative_ratio"]), 0.52)
     assert np.isclose(float(final_rows[0]["target_abs_error"]), 0.02)
     assert final_rows[0]["target_hit"] == "true"
+    assert final_rows[0]["candidate_generation_time"] == "4.0"
+    assert final_rows[0]["candidate_retained_pair_count"] == "6"
+    assert final_rows[0]["candidate_pairs_per_sec"] == "1.5"
+    assert final_rows[0]["candidate_substage_times.twohop_expansion"] == "1.4"
+    assert final_rows[0]["bucket_coverage"] == "0.8"
+    assert final_rows[0]["partition_count"] == "1"
+    assert final_rows[0]["partition_imbalance_max_to_mean"] == "1.0"
+    assert final_rows[0]["candidate_buffer_bytes"] == "4096"
     assert final_rows[0]["best_level"] == "2"
     assert final_rows[0]["config.sketch.method"] == "chebyshev_heat"
     assert final_rows[0]["final_DEE"] == "0.1"
@@ -566,6 +590,49 @@ def test_next4_mainline_default_freezes_short_confirmation_matrix(tmp_path):
     assert len(run_names) == 5
     assert {name.split("_")[2] for name in run_names} == {"H0", "H2", "H3", "H4", "H6"}
     assert not any("_H5_" in name for name in run_names)
+
+
+def test_ogbn_mag_next4_medium_dry_run_generates_cuda_h2h3h4(tmp_path):
+    from experiments.scripts.run_ogbn_mag_next4_medium import main
+
+    exit_code = main(
+        [
+            "--input",
+            str(tmp_path / "missing_subset"),
+            "--output",
+            str(tmp_path),
+            "--variants",
+            "H2",
+            "H3",
+            "H4",
+            "--seeds",
+            "12345",
+            "--device",
+            "cuda",
+            "--optimized-candidates",
+            "--dry-run",
+        ]
+    )
+
+    configs = {
+        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in tmp_path.glob("ogbn_mag_medium_*/config.yaml")
+    }
+
+    assert exit_code == 0
+    assert len(configs) == 3
+    assert {name.split("_")[3] for name in configs} == {"H2", "H3", "H4"}
+    h2 = next(cfg for name, cfg in configs.items() if "_H2_" in name)
+    h3 = next(cfg for name, cfg in configs.items() if "_H3_" in name)
+    h4 = next(cfg for name, cfg in configs.items() if "_H4_" in name)
+    assert h2["acceleration"]["device"] == "cuda"
+    assert h2["acceleration"]["dense_backend"] == "torch"
+    assert h2["candidates"]["store_backend"] == "array"
+    assert h2["candidates"]["use_chunked_generation"] is True
+    assert h2["candidates"]["enable_capped_twohop"] is False
+    assert h2["diagnostics"]["enable_large_graph_envelope"] is True
+    assert h3["scoring"]["lambda_conv"] == 0.35
+    assert h4["scoring"]["lambda_conv"] == 0.0
 
 
 def test_next4_relation_fusion_dry_run_generates_required_variants(tmp_path):

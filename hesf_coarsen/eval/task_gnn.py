@@ -143,6 +143,8 @@ def evaluate_rgcn_task(
     weight_decay: float = 5e-4,
     device: str = "auto",
     full_graph_rgcn_lite: bool = False,
+    full_graph_baselines: Iterable[str] | None = None,
+    full_graph_tuned_epochs: int | None = None,
 ) -> TaskEvalResult:
     try:
         import torch
@@ -192,10 +194,10 @@ def evaluate_rgcn_task(
             }
         )
 
-    class RGCNLite(nn.Module):
-        def __init__(self, graph: HeteroGraph):
+    class TypeEncoder(nn.Module):
+        def __init__(self, graph: HeteroGraph, model_hidden_dim: int):
             super().__init__()
-            self.hidden_dim = int(hidden_dim)
+            self.hidden_dim = int(model_hidden_dim)
             type_ids = sorted(int(type_id) for type_id in np.unique(graph.node_type))
             self.type_linears = nn.ModuleDict()
             self.type_embeddings = nn.ParameterDict()
@@ -205,6 +207,35 @@ def evaluate_rgcn_task(
                     self.type_embeddings[str(type_id)] = nn.Parameter(torch.zeros(self.hidden_dim))
                 else:
                     self.type_linears[str(type_id)] = nn.Linear(int(feature.shape[1]), self.hidden_dim)
+
+        def reset_parameters(self) -> None:
+            for module in self.type_linears.values():
+                nn.init.xavier_uniform_(module.weight)
+                nn.init.zeros_(module.bias)
+            for parameter in self.type_embeddings.values():
+                nn.init.normal_(parameter, std=0.02)
+
+        def forward(self, data: dict[str, Any]) -> Any:
+            h = torch.zeros((data["num_nodes"], self.hidden_dim), device=dev)
+            for type_id, node_tensor in data["type_nodes"].items():
+                key = str(type_id)
+                if key in self.type_linears:
+                    h[node_tensor] = self.type_linears[key](data["features"][type_id])
+                else:
+                    h[node_tensor] = self.type_embeddings[key]
+            return h
+
+    class RGCNLite(nn.Module):
+        def __init__(
+            self,
+            graph: HeteroGraph,
+            *,
+            model_hidden_dim: int | None = None,
+            dropout: float = 0.2,
+        ):
+            super().__init__()
+            self.hidden_dim = int(model_hidden_dim if model_hidden_dim is not None else hidden_dim)
+            self.encoder = TypeEncoder(graph, self.hidden_dim)
             rel_ids = sorted(int(relation_id) for relation_id in graph.relations)
             self.rel_ids = rel_ids
             self.rel_weights = nn.ParameterDict(
@@ -217,15 +248,11 @@ def evaluate_rgcn_task(
             )
             self.self_linear = nn.Linear(self.hidden_dim, self.hidden_dim)
             self.out = nn.Linear(self.hidden_dim, int(num_classes))
-            self.dropout = nn.Dropout(0.2)
+            self.dropout = nn.Dropout(float(dropout))
             self.reset_parameters()
 
         def reset_parameters(self) -> None:
-            for module in self.type_linears.values():
-                nn.init.xavier_uniform_(module.weight)
-                nn.init.zeros_(module.bias)
-            for parameter in self.type_embeddings.values():
-                nn.init.normal_(parameter, std=0.02)
+            self.encoder.reset_parameters()
             for parameter in self.rel_weights.values():
                 nn.init.xavier_uniform_(parameter)
             nn.init.xavier_uniform_(self.self_linear.weight)
@@ -234,14 +261,7 @@ def evaluate_rgcn_task(
             nn.init.zeros_(self.out.bias)
 
         def encode(self, data: dict[str, Any]) -> Any:
-            h = torch.zeros((data["num_nodes"], self.hidden_dim), device=dev)
-            for type_id, node_tensor in data["type_nodes"].items():
-                key = str(type_id)
-                if key in self.type_linears:
-                    h[node_tensor] = self.type_linears[key](data["features"][type_id])
-                else:
-                    h[node_tensor] = self.type_embeddings[key]
-            return torch.relu(h)
+            return torch.relu(self.encoder(data))
 
         def forward(self, data: dict[str, Any]) -> Any:
             h = self.dropout(self.encode(data))
@@ -255,6 +275,135 @@ def evaluate_rgcn_task(
                 msg = msg * weight[:, None]
                 out.index_add_(0, dst, msg)
                 degree.index_add_(0, dst, weight[:, None])
+            h = torch.relu(out / degree.clamp_min(1.0e-6))
+            return self.out(self.dropout(h))
+
+    class HANSmall(nn.Module):
+        def __init__(
+            self,
+            graph: HeteroGraph,
+            *,
+            model_hidden_dim: int | None = None,
+            dropout: float = 0.2,
+        ):
+            super().__init__()
+            self.hidden_dim = int(model_hidden_dim if model_hidden_dim is not None else hidden_dim)
+            self.encoder = TypeEncoder(graph, self.hidden_dim)
+            self.rel_ids = sorted(int(relation_id) for relation_id in graph.relations)
+            self.rel_weights = nn.ParameterDict(
+                {
+                    str(relation_id): nn.Parameter(torch.empty(self.hidden_dim, self.hidden_dim))
+                    for relation_id in self.rel_ids
+                }
+            )
+            self.self_linear = nn.Linear(self.hidden_dim, self.hidden_dim)
+            self.semantic_attention = nn.Parameter(torch.empty(self.hidden_dim))
+            self.out = nn.Linear(self.hidden_dim, int(num_classes))
+            self.dropout = nn.Dropout(float(dropout))
+            self.reset_parameters()
+
+        def reset_parameters(self) -> None:
+            self.encoder.reset_parameters()
+            for parameter in self.rel_weights.values():
+                nn.init.xavier_uniform_(parameter)
+            nn.init.xavier_uniform_(self.self_linear.weight)
+            nn.init.zeros_(self.self_linear.bias)
+            nn.init.normal_(self.semantic_attention, std=0.02)
+            nn.init.xavier_uniform_(self.out.weight)
+            nn.init.zeros_(self.out.bias)
+
+        def forward(self, data: dict[str, Any]) -> Any:
+            h = self.dropout(torch.relu(self.encoder(data)))
+            relation_outputs = []
+            for relation_id, edge in data["edges"].items():
+                src, dst, weight = edge
+                if src.numel() == 0:
+                    continue
+                rel_out = torch.zeros((data["num_nodes"], self.hidden_dim), device=dev)
+                degree = torch.zeros((data["num_nodes"], 1), device=dev)
+                msg = h[src] @ self.rel_weights[str(relation_id)]
+                msg = msg * weight[:, None]
+                rel_out.index_add_(0, dst, msg)
+                degree.index_add_(0, dst, weight[:, None])
+                relation_outputs.append(rel_out / degree.clamp_min(1.0e-6))
+            if relation_outputs:
+                stacked = torch.stack(relation_outputs, dim=1)
+                logits = torch.tanh(stacked) @ self.semantic_attention
+                attention = torch.softmax(logits, dim=1)
+                rel_h = torch.sum(stacked * attention[:, :, None], dim=1)
+                h = torch.relu(self.self_linear(h) + rel_h)
+            else:
+                h = torch.relu(self.self_linear(h))
+            return self.out(self.dropout(h))
+
+    class HGTLite(nn.Module):
+        def __init__(
+            self,
+            graph: HeteroGraph,
+            *,
+            model_hidden_dim: int | None = None,
+            dropout: float = 0.2,
+        ):
+            super().__init__()
+            self.hidden_dim = int(model_hidden_dim if model_hidden_dim is not None else hidden_dim)
+            self.encoder = TypeEncoder(graph, self.hidden_dim)
+            type_ids = sorted(int(type_id) for type_id in np.unique(graph.node_type))
+            self.q_linears = nn.ModuleDict({str(t): nn.Linear(self.hidden_dim, self.hidden_dim) for t in type_ids})
+            self.k_linears = nn.ModuleDict({str(t): nn.Linear(self.hidden_dim, self.hidden_dim) for t in type_ids})
+            self.v_linears = nn.ModuleDict({str(t): nn.Linear(self.hidden_dim, self.hidden_dim) for t in type_ids})
+            self.rel_ids = sorted(int(relation_id) for relation_id in graph.relations)
+            self.rel_weights = nn.ParameterDict(
+                {
+                    str(relation_id): nn.Parameter(torch.empty(self.hidden_dim, self.hidden_dim))
+                    for relation_id in self.rel_ids
+                }
+            )
+            self.rel_priors = nn.ParameterDict(
+                {str(relation_id): nn.Parameter(torch.zeros(1)) for relation_id in self.rel_ids}
+            )
+            self.self_linear = nn.Linear(self.hidden_dim, self.hidden_dim)
+            self.out = nn.Linear(self.hidden_dim, int(num_classes))
+            self.dropout = nn.Dropout(float(dropout))
+            self.reset_parameters()
+
+        def reset_parameters(self) -> None:
+            self.encoder.reset_parameters()
+            for modules in (self.q_linears, self.k_linears, self.v_linears):
+                for module in modules.values():
+                    nn.init.xavier_uniform_(module.weight)
+                    nn.init.zeros_(module.bias)
+            for parameter in self.rel_weights.values():
+                nn.init.xavier_uniform_(parameter)
+            nn.init.xavier_uniform_(self.self_linear.weight)
+            nn.init.zeros_(self.self_linear.bias)
+            nn.init.xavier_uniform_(self.out.weight)
+            nn.init.zeros_(self.out.bias)
+
+        def _apply_type_linears(self, modules: Any, h: Any, data: dict[str, Any]) -> Any:
+            out = torch.zeros_like(h)
+            for type_id, node_tensor in data["type_nodes"].items():
+                out[node_tensor] = modules[str(type_id)](h[node_tensor])
+            return out
+
+        def forward(self, data: dict[str, Any]) -> Any:
+            h = self.dropout(torch.relu(self.encoder(data)))
+            q = self._apply_type_linears(self.q_linears, h, data)
+            k = self._apply_type_linears(self.k_linears, h, data)
+            v = self._apply_type_linears(self.v_linears, h, data)
+            out = self.self_linear(h)
+            degree = torch.ones((data["num_nodes"], 1), device=dev)
+            scale = float(self.hidden_dim) ** 0.5
+            for relation_id, edge in data["edges"].items():
+                src, dst, weight = edge
+                if src.numel() == 0:
+                    continue
+                attn = torch.sigmoid(
+                    torch.sum(q[dst] * k[src], dim=1) / scale + self.rel_priors[str(relation_id)]
+                )
+                rel_weight = weight * attn
+                msg = (v[src] @ self.rel_weights[str(relation_id)]) * rel_weight[:, None]
+                out.index_add_(0, dst, msg)
+                degree.index_add_(0, dst, rel_weight[:, None])
             h = torch.relu(out / degree.clamp_min(1.0e-6))
             return self.out(self.dropout(h))
 
@@ -282,9 +431,22 @@ def evaluate_rgcn_task(
     coarse_train = torch.as_tensor(coarse_train_nodes, dtype=torch.long, device=dev)
     original_train = torch.as_tensor(train_nodes, dtype=torch.long, device=dev)
 
-    def train_model(model: Any, data: dict[str, Any], y: Any, idx: Any, n_epochs: int) -> float:
+    def train_model(
+        model: Any,
+        data: dict[str, Any],
+        y: Any,
+        idx: Any,
+        n_epochs: int,
+        *,
+        lr_value: float | None = None,
+        weight_decay_value: float | None = None,
+    ) -> float:
         start = perf_counter()
-        optimizer = torch.optim.Adam(model.parameters(), lr=float(lr), weight_decay=float(weight_decay))
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=float(lr if lr_value is None else lr_value),
+            weight_decay=float(weight_decay if weight_decay_value is None else weight_decay_value),
+        )
         loss_fn = nn.CrossEntropyLoss()
         model.train()
         for _ in range(max(0, int(n_epochs))):
@@ -414,17 +576,97 @@ def evaluate_rgcn_task(
         metrics[f"refined_original_macro_f1{suffix}"] = values["macro_f1"]
         metrics[f"refine_time{suffix}"] = values["refine_time"]
 
-    if full_graph_rgcn_lite:
-        full_model = RGCNLite(original).to(dev)
-        full_train_time = train_model(full_model, original_data, original_y, original_train, int(epochs))
-        full_pred = eval_model(full_model, original_data)
-        full_f1 = f1_scores(labels[test_nodes], full_pred[test_nodes])
-        metrics.update(
-            {
-                "full_graph_rgcn_lite_micro_f1": full_f1["micro_f1"],
-                "full_graph_rgcn_lite_macro_f1": full_f1["macro_f1"],
-                "full_graph_rgcn_lite_train_time": float(full_train_time),
-            }
-        )
+    baseline_names = [str(name) for name in (full_graph_baselines or [])]
+    if full_graph_rgcn_lite and "full_graph_rgcn_lite_default" not in baseline_names:
+        baseline_names.insert(0, "full_graph_rgcn_lite_default")
+    tuned_epochs = (
+        max(int(epochs), int(epochs) * 2)
+        if full_graph_tuned_epochs is None
+        else int(full_graph_tuned_epochs)
+    )
+    baseline_specs: dict[str, dict[str, Any]] = {
+        "full_graph_rgcn_lite_default": {
+            "factory": lambda: RGCNLite(original, model_hidden_dim=int(hidden_dim), dropout=0.2),
+            "epochs": int(epochs),
+            "lr": float(lr),
+            "weight_decay": float(weight_decay),
+        },
+        "full_graph_rgcn_lite_tuned": {
+            "factory": lambda: RGCNLite(
+                original,
+                model_hidden_dim=max(int(hidden_dim), 64),
+                dropout=0.3,
+            ),
+            "epochs": tuned_epochs,
+            "lr": min(float(lr), 0.005),
+            "weight_decay": min(float(weight_decay), 1e-4),
+        },
+        "full_graph_han_small": {
+            "factory": lambda: HANSmall(original, model_hidden_dim=max(int(hidden_dim), 32), dropout=0.25),
+            "epochs": int(epochs),
+            "lr": float(lr),
+            "weight_decay": float(weight_decay),
+        },
+        "full_graph_hgt_small": {
+            "factory": lambda: HGTLite(original, model_hidden_dim=max(int(hidden_dim), 32), dropout=0.25),
+            "epochs": int(epochs),
+            "lr": float(lr),
+            "weight_decay": float(weight_decay),
+        },
+        "full_graph_r_hgt_lite": {
+            "factory": lambda: HGTLite(original, model_hidden_dim=max(int(hidden_dim), 32), dropout=0.25),
+            "epochs": int(epochs),
+            "lr": float(lr),
+            "weight_decay": float(weight_decay),
+        },
+    }
+    for baseline_name in dict.fromkeys(baseline_names):
+        spec = baseline_specs.get(str(baseline_name))
+        if spec is None:
+            metrics[f"{baseline_name}_skipped"] = True
+            metrics[f"{baseline_name}_skip_reason"] = "unknown_full_graph_baseline"
+            continue
+        start = perf_counter()
+        try:
+            full_model = spec["factory"]().to(dev)
+            full_train_time = train_model(
+                full_model,
+                original_data,
+                original_y,
+                original_train,
+                int(spec["epochs"]),
+                lr_value=float(spec["lr"]),
+                weight_decay_value=float(spec["weight_decay"]),
+            )
+            full_pred = eval_model(full_model, original_data)
+            full_f1 = f1_scores(labels[test_nodes], full_pred[test_nodes])
+            metrics.update(
+                {
+                    f"{baseline_name}_micro_f1": full_f1["micro_f1"],
+                    f"{baseline_name}_macro_f1": full_f1["macro_f1"],
+                    f"{baseline_name}_train_time": float(full_train_time),
+                    f"{baseline_name}_total_time": float(perf_counter() - start),
+                    f"{baseline_name}_epochs": int(spec["epochs"]),
+                    f"{baseline_name}_skipped": False,
+                }
+            )
+            if baseline_name == "full_graph_rgcn_lite_default":
+                metrics.update(
+                    {
+                        "full_graph_rgcn_lite_micro_f1": full_f1["micro_f1"],
+                        "full_graph_rgcn_lite_macro_f1": full_f1["macro_f1"],
+                        "full_graph_rgcn_lite_train_time": float(full_train_time),
+                    }
+                )
+        except RuntimeError as exc:
+            if "out of memory" in str(exc).lower() and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            metrics.update(
+                {
+                    f"{baseline_name}_skipped": True,
+                    f"{baseline_name}_skip_reason": str(exc),
+                    f"{baseline_name}_total_time": float(perf_counter() - start),
+                }
+            )
 
     return TaskEvalResult(metrics)

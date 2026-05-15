@@ -185,7 +185,7 @@ def _add_fallback_candidates(
     partition_id: np.ndarray,
     store: BoundedCandidateStore | ArrayCandidateStore,
     config: dict,
-) -> None:
+) -> dict[str, int]:
     candidate_cfg = config.get("candidates", {})
     same_partition = bool(config.get("coarsening", {}).get("same_partition_only", True))
     penalty = float(candidate_cfg.get("fallback_penalty", 1.0e6))
@@ -193,7 +193,7 @@ def _add_fallback_candidates(
     max_pairs = max(0, int(ceil(graph.num_nodes * max_fraction)))
     added = 0
     if max_pairs == 0:
-        return
+        return {"pairs_considered": 0}
     for type_id in sorted(np.unique(graph.node_type)):
         nodes = nodes_of_type(graph, int(type_id))
         if same_partition:
@@ -206,7 +206,8 @@ def _add_fallback_candidates(
                 store.add(int(left), int(right), penalty, "fallback")
                 added += 1
                 if added >= max_pairs:
-                    return
+                    return {"pairs_considered": added}
+    return {"pairs_considered": added}
 
 
 def _config_for_level(config: dict, num_nodes: int, target_nodes: int) -> dict:
@@ -822,6 +823,20 @@ def _flush_candidate_store(store: BoundedCandidateStore | ArrayCandidateStore) -
         flush()
 
 
+def _store_source_node_coverage(store: BoundedCandidateStore | ArrayCandidateStore) -> dict[str, float]:
+    coverage = getattr(store, "source_node_coverage", None)
+    if callable(coverage):
+        return {str(key): float(value) for key, value in coverage().items()}
+    return {}
+
+
+def _store_buffer_nbytes(store: BoundedCandidateStore | ArrayCandidateStore) -> dict[str, int]:
+    buffer_nbytes = getattr(store, "buffer_nbytes", None)
+    if callable(buffer_nbytes):
+        return {str(key): int(value) for key, value in buffer_nbytes().items()}
+    return {}
+
+
 def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelResult]:
     original_nodes = graph.num_nodes
     target_nodes = max(1, int(np.ceil(original_nodes * float(config["coarsening"]["target_ratio"]))))
@@ -884,9 +899,33 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         candidate_cfg = config.get("candidates", {})
         store = _make_candidate_store(current, config, level)
         use_chunked = bool(candidate_cfg.get("use_chunked_generation", False))
+        candidate_substage_times: dict[str, float] = {
+            "onehop": 0.0,
+            "incident_index_build": 0.0,
+            "twohop_expansion": 0.0,
+            "simhash": 0.0,
+            "bucket_emit": 0.0,
+            "partition_ann": 0.0,
+            "fallback": 0.0,
+            "store_finalize": 0.0,
+        }
+        candidate_source_generation: dict[str, dict[str, float | int]] = {}
+
+        def _add_source_stats(source: str, stats: dict | None) -> None:
+            if not stats:
+                return
+            target = candidate_source_generation.setdefault(source, {})
+            for key, value in stats.items():
+                if isinstance(value, (int, float)):
+                    target[key] = float(target.get(key, 0.0)) + float(value)
+                else:
+                    target[key] = value
+
         if config["candidates"].get("enable_onehop", True):
+            source_start = perf_counter()
+            onehop_stats = None
             if use_chunked:
-                generate_onehop_candidates_chunked(
+                onehop_stats = generate_onehop_candidates_chunked(
                     current,
                     Z,
                     partition_id,
@@ -896,7 +935,11 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 )
             else:
                 generate_onehop_candidates(current, Z, partition_id, config, store)
+            candidate_substage_times["onehop"] += float(perf_counter() - source_start)
+            _add_source_stats("onehop", onehop_stats)
         if config["candidates"].get("enable_capped_twohop", True):
+            source_start = perf_counter()
+            twohop_stats = None
             if use_chunked:
                 twohop_config = config
                 incident_index_mmap_dir = candidate_cfg.get("incident_index_mmap_dir")
@@ -905,7 +948,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                     twohop_config.setdefault("candidates", {})["incident_index_mmap_dir"] = str(
                         Path(incident_index_mmap_dir) / f"level_{level}"
                     )
-                generate_capped_twohop_candidates_chunked(
+                twohop_stats = generate_capped_twohop_candidates_chunked(
                     current,
                     Z,
                     partition_id,
@@ -916,8 +959,24 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 )
             else:
                 generate_capped_twohop_candidates(current, Z, partition_id, config, store)
+            twohop_elapsed = float(perf_counter() - source_start)
+            if twohop_stats:
+                candidate_substage_times["incident_index_build"] += float(
+                    twohop_stats.get("incident_index_build_time", 0.0) or 0.0
+                )
+                candidate_substage_times["twohop_expansion"] += float(
+                    twohop_stats.get(
+                        "twohop_expansion_time",
+                        max(0.0, twohop_elapsed - candidate_substage_times["incident_index_build"]),
+                    )
+                    or 0.0
+                )
+            else:
+                candidate_substage_times["twohop_expansion"] += twohop_elapsed
+            _add_source_stats("capped_twohop", twohop_stats)
         if config["candidates"].get("enable_bucket", True):
             for table_id, bits in enumerate(_bucket_hash_bits(candidate_cfg)):
+                simhash_start = perf_counter()
                 buckets = compute_simhash_buckets(
                     Z,
                     current.node_type,
@@ -925,11 +984,14 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                     bits=int(bits),
                     seed=int(config.get("seed", 12345)) + level + 1009 * table_id,
                 )
+                candidate_substage_times["simhash"] += float(perf_counter() - simhash_start)
                 bucket_config = deepcopy(config)
                 bucket_config.setdefault("candidates", {})["active_hash_bits"] = int(bits)
                 bucket_config["candidates"]["active_hash_table"] = int(table_id)
+                emit_start = perf_counter()
+                bucket_stats = None
                 if use_chunked:
-                    generate_bucket_candidates_chunked(
+                    bucket_stats = generate_bucket_candidates_chunked(
                         buckets,
                         current.node_type,
                         partition_id,
@@ -945,16 +1007,36 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                         bucket_config,
                         store,
                     )
+                candidate_substage_times["bucket_emit"] += float(perf_counter() - emit_start)
+                _add_source_stats("bucket", bucket_stats)
         if config["candidates"].get("enable_partition_ann", False):
+            source_start = perf_counter()
             generate_partition_ann_candidates(current, Z, partition_id, config, store)
+            candidate_substage_times["partition_ann"] += float(perf_counter() - source_start)
         if bool(candidate_cfg.get("enable_fallback", True)):
-            _add_fallback_candidates(current, partition_id, store, config)
+            source_start = perf_counter()
+            fallback_stats = _add_fallback_candidates(current, partition_id, store, config)
+            candidate_substage_times["fallback"] += float(perf_counter() - source_start)
+            _add_source_stats("fallback", fallback_stats)
+        finalize_start = perf_counter()
         _flush_candidate_store(store)
         pair_count_fn = getattr(store, "pair_count", None)
         pair_count = int(pair_count_fn()) if callable(pair_count_fn) else int(store.to_pairs().shape[0])
         candidate_counts = store.counts()
         source_counts = store.source_counts()
+        candidate_substage_times["store_finalize"] += float(perf_counter() - finalize_start)
         runtime["candidates"] = perf_counter() - start
+        candidate_generation = {
+            "total_time": float(runtime["candidates"]),
+            "retained_pair_count": int(pair_count),
+            "candidate_pairs_per_sec": float(pair_count / runtime["candidates"])
+            if runtime["candidates"] > 0
+            else 0.0,
+            "substage_times": candidate_substage_times,
+            "source_generation": candidate_source_generation,
+            "source_node_coverage": _store_source_node_coverage(store),
+            "memory_by_candidate_buffers": _store_buffer_nbytes(store),
+        }
         progress_message(
             config,
             f"level {level}: candidates done in {runtime['candidates']:.2f}s "
@@ -1186,6 +1268,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 }.items()
                 if path is not None
             },
+            candidate_generation=candidate_generation,
             Z=Z.astype(np.float32, copy=False),
             relation_profiles=relation_profiles,
             conv_response=conv,

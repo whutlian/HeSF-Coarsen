@@ -46,6 +46,38 @@ def _cumulative_assignment(run_dir: Path, original_nodes: int, final_level: Path
     return compose_assignments(original_nodes, _assignment_paths(run_dir))
 
 
+def _input_from_command(metadata: dict[str, Any]) -> Path | None:
+    command = metadata.get("command", [])
+    if not isinstance(command, list):
+        return None
+    for index, token in enumerate(command):
+        if str(token) == "--input" and index + 1 < len(command):
+            return Path(str(command[index + 1]))
+    return None
+
+
+def _original_graph_dir(metadata: dict[str, Any], graph_root: Path) -> Path:
+    for key in ("input_graph_dir", "graph_input", "original_graph_dir"):
+        value = metadata.get(key)
+        if value:
+            path = Path(str(value))
+            if path.exists():
+                return path
+    command_input = _input_from_command(metadata)
+    if command_input is not None and command_input.exists():
+        return command_input
+    dataset = str(metadata.get("dataset", ""))
+    candidates = [
+        graph_root / f"{dataset.lower()}_hesf",
+        graph_root / dataset.lower(),
+        graph_root / dataset,
+    ]
+    for candidate in candidates:
+        if (candidate / "schema.json").exists():
+            return candidate
+    return candidates[0]
+
+
 def evaluate_run(
     run_dir: Path,
     *,
@@ -57,13 +89,15 @@ def evaluate_run(
     hidden_dim: int,
     device: str,
     full_graph_rgcn_lite: bool,
+    full_graph_baselines: list[str] | None = None,
+    full_graph_tuned_epochs: int | None = None,
 ) -> dict[str, Any]:
     metadata_path = run_dir / "metadata.json"
     metadata = read_json(metadata_path) if metadata_path.exists() else {}
     dataset = str(metadata.get("dataset", ""))
     if not dataset:
         raise ValueError(f"{run_dir} metadata does not contain dataset")
-    original_dir = graph_root / f"{dataset.lower()}_hesf"
+    original_dir = _original_graph_dir(metadata, graph_root)
     final_level = _final_level_dir(run_dir)
     if final_level is None:
         raise ValueError(f"{run_dir} has no completed level graph")
@@ -81,6 +115,8 @@ def evaluate_run(
         refine_epochs_list=refine_epochs_list,
         device=device,
         full_graph_rgcn_lite=bool(full_graph_rgcn_lite),
+        full_graph_baselines=full_graph_baselines,
+        full_graph_tuned_epochs=full_graph_tuned_epochs,
     ).metrics
     result.update(
         {
@@ -117,6 +153,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="full_graph_rgcn_lite",
     )
+    parser.add_argument(
+        "--full-graph-baselines",
+        nargs="+",
+        default=None,
+        help=(
+            "Named full-graph task baselines, e.g. "
+            "full_graph_rgcn_lite_default full_graph_rgcn_lite_tuned "
+            "full_graph_han_small full_graph_hgt_small."
+        ),
+    )
+    parser.add_argument("--full-graph-tuned-epochs", type=int)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--progress", action="store_true")
     return parser
@@ -155,6 +202,8 @@ def main(argv: list[str] | None = None) -> int:
                 hidden_dim=args.hidden_dim,
                 device=args.device,
                 full_graph_rgcn_lite=args.full_graph_rgcn_lite,
+                full_graph_baselines=args.full_graph_baselines,
+                full_graph_tuned_epochs=args.full_graph_tuned_epochs,
             )
         except Exception as exc:
             row = {

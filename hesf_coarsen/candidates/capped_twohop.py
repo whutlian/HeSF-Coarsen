@@ -5,6 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 
@@ -522,12 +523,15 @@ def generate_capped_twohop_candidates_chunked(
     global_cap = candidate_cfg.get("middle_degree_cap_policy", "p99")
     cap = None if global_cap in (None, "none", "off", False) else int(global_cap) if isinstance(global_cap, (int, float)) else None
 
+    index_start = perf_counter()
     incident_index = CappedTwoHopIncidentIndex.from_graph(
         graph,
         edge_chunk_size=edge_chunk_size,
         mmap_dir=candidate_cfg.get("incident_index_mmap_dir"),
         progress_config=config,
     )
+    incident_index_build_time = float(perf_counter() - index_start)
+    expansion_start = perf_counter()
     total_emitted = 0
     max_per_middle = 0
     middle_count = 0
@@ -590,4 +594,6 @@ def generate_capped_twohop_candidates_chunked(
         "middle_nodes_considered": middle_count,
         "pairs_considered": total_emitted,
         "max_pairs_emitted_per_middle": max_per_middle,
+        "incident_index_build_time": incident_index_build_time,
+        "twohop_expansion_time": float(perf_counter() - expansion_start),
     }
