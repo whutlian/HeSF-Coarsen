@@ -5,6 +5,7 @@ import shutil
 from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 
@@ -18,6 +19,48 @@ _FEATURE_AGGREGATION_METHODS = {
     "pagerank_weighted",
     "custom_weight",
 }
+
+_AGGREGATION_TIMING_KEYS = (
+    "aggregation_total_sec",
+    "aggregation_relation_loop_sec",
+    "aggregation_assignment_map_sec",
+    "aggregation_key_build_sec",
+    "aggregation_sort_sec",
+    "aggregation_reduce_sec",
+    "aggregation_dedup_sec",
+    "aggregation_shard_write_sec",
+    "aggregation_shard_read_sec",
+    "aggregation_kway_merge_sec",
+    "aggregation_output_write_sec",
+    "aggregation_flush_sec",
+    "aggregation_feature_sec",
+    "aggregation_label_sec",
+)
+
+
+def _current_rss_gb() -> float | None:
+    try:
+        import psutil
+
+        return float(psutil.Process().memory_info().rss / (1024**3))
+    except Exception:
+        return None
+
+
+def _init_aggregation_diagnostics(diagnostics: dict | None, reducer: str) -> dict | None:
+    if diagnostics is None:
+        return None
+    for key in _AGGREGATION_TIMING_KEYS:
+        diagnostics.setdefault(key, 0.0)
+    diagnostics["aggregation_reducer"] = str(reducer)
+    diagnostics["aggregation_python_dict_used"] = bool(reducer == "hash")
+    diagnostics.setdefault("aggregation_by_relation", [])
+    return diagnostics
+
+
+def _add_time(diagnostics: dict | None, key: str, elapsed: float) -> None:
+    if diagnostics is not None:
+        diagnostics[key] = float(diagnostics.get(key, 0.0) + float(elapsed))
 
 
 def _incident_weight_mass(graph: HeteroGraph) -> np.ndarray:
@@ -257,6 +300,7 @@ def coarsen_graph_chunked(
     feature_weights: np.ndarray | dict[int, np.ndarray] | None = None,
     pagerank_iterations: int = 20,
     pagerank_damping: float = 0.85,
+    aggregation_diagnostics: dict | None = None,
 ) -> HeteroGraph:
     """Coarsen relation edges in chunks.
 
@@ -268,6 +312,8 @@ def coarsen_graph_chunked(
     dictionary path for debugging on small graphs.
     """
 
+    total_start = perf_counter()
+    diagnostics = _init_aggregation_diagnostics(aggregation_diagnostics, reducer)
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
     if reducer not in {"sort", "hash"}:
@@ -286,9 +332,25 @@ def coarsen_graph_chunked(
             raise ValueError("coarse node type must match every cluster member")
 
     relations: dict[int, RelationAdj] = {}
+    relation_loop_start = perf_counter()
     for relation_id, rel in graph.relations.items():
+        relation_start = perf_counter()
+        relation_diag = {
+            "relation_id": int(relation_id),
+            "relation_name": graph.relation_specs.get(relation_id).name
+            if relation_id in graph.relation_specs
+            else f"relation_{relation_id}",
+            "original_edges": int(rel.num_edges),
+            "coarse_edges_before_dedup": int(rel.num_edges),
+            "rss_before_gb": _current_rss_gb(),
+        }
         if reducer == "hash":
-            src, dst, weight = _aggregate_relation_hash(rel, assignment, chunk_size)
+            src, dst, weight = _aggregate_relation_hash(
+                rel,
+                assignment,
+                chunk_size,
+                diagnostics=diagnostics,
+            )
         else:
             relation_spill_dir = None if spill_root is None else spill_root / f"relation_{relation_id}"
             src, dst, weight = _aggregate_relation_sort(
@@ -296,7 +358,30 @@ def coarsen_graph_chunked(
                 assignment,
                 chunk_size,
                 output_dir=relation_spill_dir,
+                diagnostics=diagnostics,
             )
+        relation_elapsed = float(perf_counter() - relation_start)
+        relation_diag.update(
+            {
+                "coarse_edges_after_dedup": int(len(src)),
+                "uniqueness_ratio": float(len(src) / max(int(rel.num_edges), 1)),
+                "aggregation_sec": relation_elapsed,
+                "edges_per_sec": float(rel.num_edges / relation_elapsed)
+                if relation_elapsed > 0.0
+                else 0.0,
+                "rss_after_gb": _current_rss_gb(),
+                "edge_weight_original_sum": float(np.sum(rel.weight.astype(np.float64, copy=False))),
+                "edge_weight_coarse_sum": float(np.sum(weight.astype(np.float64, copy=False))),
+                "edge_weight_abs_error": float(
+                    abs(
+                        float(np.sum(rel.weight.astype(np.float64, copy=False)))
+                        - float(np.sum(weight.astype(np.float64, copy=False)))
+                    )
+                ),
+            }
+        )
+        if diagnostics is not None:
+            diagnostics["aggregation_by_relation"].append(relation_diag)
         relations[relation_id] = RelationAdj(
             src=src,
             dst=dst,
@@ -305,6 +390,7 @@ def coarsen_graph_chunked(
             dst_type=rel.dst_type,
             relation_id=relation_id,
         )
+    _add_time(diagnostics, "aggregation_relation_loop_sec", perf_counter() - relation_loop_start)
 
     specs = {
         relation_id: RelationSpec(
@@ -315,22 +401,29 @@ def coarsen_graph_chunked(
         )
         for relation_id, spec in graph.relation_specs.items()
     }
+    feature_start = perf_counter()
+    features = _aggregate_features(
+        graph,
+        assignment,
+        feature_aggregation=feature_aggregation,
+        feature_weights=feature_weights,
+        pagerank_iterations=pagerank_iterations,
+        pagerank_damping=pagerank_damping,
+    )
+    _add_time(diagnostics, "aggregation_feature_sec", perf_counter() - feature_start)
+    label_start = perf_counter()
+    labels = _aggregate_labels(graph, assignment)
+    _add_time(diagnostics, "aggregation_label_sec", perf_counter() - label_start)
     coarse = HeteroGraph(
         num_nodes=assignment.num_supernodes,
         node_type=assignment.supernode_type.copy(),
         relations=relations,
         relation_specs=specs,
-        features=_aggregate_features(
-            graph,
-            assignment,
-            feature_aggregation=feature_aggregation,
-            feature_weights=feature_weights,
-            pagerank_iterations=pagerank_iterations,
-            pagerank_damping=pagerank_damping,
-        ),
-        labels=_aggregate_labels(graph, assignment),
+        features=features,
+        labels=labels,
     )
     validate_schema(coarse)
+    _add_time(diagnostics, "aggregation_total_sec", perf_counter() - total_start)
     return coarse
 
 
@@ -338,15 +431,20 @@ def _aggregate_relation_hash(
     rel: RelationAdj,
     assignment: Assignment,
     chunk_size: int,
+    diagnostics: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     reduced: defaultdict[tuple[int, int], float] = defaultdict(float)
     for start in range(0, rel.num_edges, chunk_size):
         stop = min(start + chunk_size, rel.num_edges)
+        map_start = perf_counter()
         coarse_src = assignment.assignment[rel.src[start:stop]]
         coarse_dst = assignment.assignment[rel.dst[start:stop]]
+        _add_time(diagnostics, "aggregation_assignment_map_sec", perf_counter() - map_start)
         weights = rel.weight[start:stop]
+        reduce_start = perf_counter()
         for src, dst, weight in zip(coarse_src, coarse_dst, weights):
             reduced[(int(src), int(dst))] += float(weight)
+        _add_time(diagnostics, "aggregation_reduce_sec", perf_counter() - reduce_start)
     items = sorted(reduced.items())
     return (
         np.asarray([key[0] for key, _value in items], dtype=np.int64),
@@ -358,15 +456,22 @@ def _aggregate_relation_hash(
 def _reduce_sorted_keys(
     keys: np.ndarray,
     weights: np.ndarray,
+    diagnostics: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     if len(keys) == 0:
         return keys.astype(np.int64), weights.astype(np.float32)
+    sort_start = perf_counter()
     order = np.argsort(keys, kind="mergesort")
     sorted_keys = keys[order]
     sorted_weights = weights[order].astype(np.float32, copy=False)
+    _add_time(diagnostics, "aggregation_sort_sec", perf_counter() - sort_start)
+    dedup_start = perf_counter()
     boundaries = np.r_[0, np.flatnonzero(sorted_keys[1:] != sorted_keys[:-1]) + 1]
     reduced_keys = sorted_keys[boundaries]
+    _add_time(diagnostics, "aggregation_dedup_sec", perf_counter() - dedup_start)
+    reduce_start = perf_counter()
     reduced_weights = np.add.reduceat(sorted_weights, boundaries).astype(np.float32)
+    _add_time(diagnostics, "aggregation_reduce_sec", perf_counter() - reduce_start)
     return reduced_keys.astype(np.int64, copy=False), reduced_weights
 
 
@@ -424,8 +529,11 @@ def _merge_sorted_chunks(
     chunks: list[tuple[np.ndarray, np.ndarray]],
     num_supernodes: int,
     output_dir: Path | None,
+    diagnostics: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    merge_start = perf_counter()
     count = sum(1 for _key, _weight in _iter_merged_sorted_chunks(chunks))
+    _add_time(diagnostics, "aggregation_kway_merge_sec", perf_counter() - merge_start)
     if output_dir is None:
         src = np.empty(count, dtype=np.int64)
         dst = np.empty(count, dtype=np.int64)
@@ -451,15 +559,19 @@ def _merge_sorted_chunks(
             shape=(count,),
         )
 
+    write_start = perf_counter()
     for pos, (key, merged_weight) in enumerate(_iter_merged_sorted_chunks(chunks)):
         src[pos] = key // int(num_supernodes)
         dst[pos] = key % int(num_supernodes)
         weight[pos] = np.float32(merged_weight)
+    _add_time(diagnostics, "aggregation_output_write_sec", perf_counter() - write_start)
 
+    flush_start = perf_counter()
     for array in (src, dst, weight):
         flush = getattr(array, "flush", None)
         if callable(flush):
             flush()
+    _add_time(diagnostics, "aggregation_flush_sec", perf_counter() - flush_start)
     return src, dst, weight
 
 
@@ -481,6 +593,7 @@ def _aggregate_relation_sort(
     assignment: Assignment,
     chunk_size: int,
     output_dir: Path | None = None,
+    diagnostics: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     num_supernodes = assignment.num_supernodes
     chunks: list[tuple[np.ndarray, np.ndarray]] = []
@@ -494,19 +607,30 @@ def _aggregate_relation_sort(
 
     for start in range(0, rel.num_edges, chunk_size):
         stop = min(start + chunk_size, rel.num_edges)
+        map_start = perf_counter()
         coarse_src = assignment.assignment[rel.src[start:stop]].astype(np.int64, copy=False)
         coarse_dst = assignment.assignment[rel.dst[start:stop]].astype(np.int64, copy=False)
+        _add_time(diagnostics, "aggregation_assignment_map_sec", perf_counter() - map_start)
+        key_start = perf_counter()
         keys = _encode_coarse_keys(coarse_src, coarse_dst, num_supernodes)
-        reduced_keys, reduced_weights = _reduce_sorted_keys(keys, rel.weight[start:stop])
+        _add_time(diagnostics, "aggregation_key_build_sec", perf_counter() - key_start)
+        reduced_keys, reduced_weights = _reduce_sorted_keys(
+            keys,
+            rel.weight[start:stop],
+            diagnostics=diagnostics,
+        )
         if chunk_dir is None:
             chunks.append((reduced_keys, reduced_weights))
         else:
             chunk_id = len(chunk_paths)
+            shard_start = perf_counter()
             chunk_paths.append(
                 _write_sorted_chunk_shard(chunk_dir, chunk_id, reduced_keys, reduced_weights)
             )
+            _add_time(diagnostics, "aggregation_shard_write_sec", perf_counter() - shard_start)
 
     if chunk_paths:
+        read_start = perf_counter()
         chunks = [
             (
                 np.load(key_path, mmap_mode="r"),
@@ -514,4 +638,5 @@ def _aggregate_relation_sort(
             )
             for key_path, weight_path in chunk_paths
         ]
-    return _merge_sorted_chunks(chunks, num_supernodes, output_dir)
+        _add_time(diagnostics, "aggregation_shard_read_sec", perf_counter() - read_start)
+    return _merge_sorted_chunks(chunks, num_supernodes, output_dir, diagnostics=diagnostics)

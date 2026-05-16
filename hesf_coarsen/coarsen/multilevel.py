@@ -21,6 +21,7 @@ from hesf_coarsen.candidates.partition_ann import generate_partition_ann_candida
 from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph, coarsen_graph_chunked
 from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.eval.diagnostics import compute_diagnostics, save_diagnostics
+from hesf_coarsen.eval.relation_diagnostics import relation_diagnostics_summary
 from hesf_coarsen.eval.spectral_diagnostics import compute_spectral_diagnostics
 from hesf_coarsen.io.edge_list import load_graph, save_graph
 from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
@@ -41,6 +42,7 @@ from hesf_coarsen.scoring.merge_cost import (
     score_term_contributions,
     score_pair_block_with_terms,
 )
+from hesf_coarsen.scoring.guards import apply_candidate_guards
 from hesf_coarsen.scoring.relation_profile import compute_relation_profiles
 from hesf_coarsen.sketch.lowpass import compute_lowpass_sketch
 from hesf_coarsen.sketch.simhash import compute_simhash_buckets
@@ -306,6 +308,8 @@ def _resolved_config_diagnostics(config: dict) -> dict:
                 "relation_profile_mode",
             )
         },
+        "spectral_guard": config.get("spectral_guard", {}),
+        "source_aware_guard": config.get("source_aware_guard", {}),
         "candidates": {
             key: candidates.get(key)
             for key in (
@@ -1236,6 +1240,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         scored = None
         scored_pair_count = 0
         source_policy_filter_diag: dict = {}
+        candidate_guard_diag: dict = {}
         streaming_state = None
         if streaming_mutual_best:
             streaming_state = initialize_mutual_best_state(current)
@@ -1280,6 +1285,37 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                     partition_id=partition_id,
                     source_lookup=getattr(store, "source_for_pair", None),
                 )
+            spectral_cfg = scoring_config.get("spectral_guard", {})
+            source_guard_cfg = scoring_config.get("source_aware_guard", {})
+            candidate_guard_diag = {
+                "spectral_guard": {
+                    "guard_enabled": bool(isinstance(spectral_cfg, dict) and spectral_cfg.get("enabled", False)),
+                    "guard_triggered": False,
+                    "trigger_reason": "streaming_mutual_best_uses_blockwise_matching",
+                    "pairs_before": int(scored_pair_count),
+                    "pairs_after": int(scored_pair_count),
+                    "rejected_by_spec_count": 0,
+                    "rejected_by_spec_share": 0.0,
+                    "fallback_used_count": 0,
+                    "target_pressure_accept_count": 0,
+                },
+                "source_aware_guard": {
+                    "guard_enabled": bool(isinstance(source_guard_cfg, dict) and source_guard_cfg.get("enabled", False)),
+                    "guard_triggered": False,
+                    "trigger_reason": "streaming_mutual_best_requires_non_streaming_auto_guard",
+                    "pairs_before": int(scored_pair_count),
+                    "pairs_after": int(scored_pair_count),
+                    "source_selected_share_before": {},
+                    "source_selected_share_after": {},
+                    "source_avg_delta_spec_before": {},
+                    "source_avg_delta_spec_after": {},
+                    "rejected_by_spec_count": 0,
+                    "rejected_by_spec_share": 0.0,
+                    "fallback_used_count": 0,
+                    "target_pressure_accept_count": 0,
+                    "cluster_size_hist": {},
+                },
+            }
         else:
             pairs = store.to_pairs()
             scoring_context = prepare_pair_scoring_context(
@@ -1297,6 +1333,13 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 term_values,
                 getattr(store, "source_for_pair", None),
                 scoring_config,
+            )
+            scored, term_values, candidate_guard_diag = apply_candidate_guards(
+                scored,
+                term_values,
+                node_type=current.node_type,
+                source_lookup=getattr(store, "source_for_pair", None),
+                config=scoring_config,
             )
             score_term_accumulator.update(term_values)
             score_contribution_accumulator.update(
@@ -1366,10 +1409,12 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             seed=int(config.get("seed", 12345)) + level + 20_000,
         )
         runtime["matching"] = perf_counter() - matching_start
+        selected_pair_source_start = perf_counter()
         matched_pairs_by_source = selected_pair_sources(
             assignment,
             source_lookup or (lambda _i, _j: None),
         )
+        runtime["selected_pair_source"] = perf_counter() - selected_pair_source_start
         selected_merges_by_source = dict(
             matching_diag.get("selected_merges_by_source") or matched_pairs_by_source
         )
@@ -1377,11 +1422,13 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             matching_diag.get("_selected_merge_pairs", np.empty((0, 2), dtype=np.int64)),
             dtype=np.int64,
         ).reshape(-1, 2)
+        cumulative_assignment_start = perf_counter()
         next_cumulative_assignment = (
             assignment.assignment[cumulative_assignment]
             if cumulative_assignment is not None
             else None
         )
+        runtime["cumulative_assignment"] = perf_counter() - cumulative_assignment_start
         aggregation_chunk_size = int(config.get("coarsening", {}).get("aggregation_chunk_size", 1_000_000))
         aggregation_reducer = str(config.get("coarsening", {}).get("aggregation_reducer", "sort"))
         feature_aggregation, feature_weights, feature_aggregation_diag = _feature_aggregation_options(config)
@@ -1392,6 +1439,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             f"feature_aggregation={feature_aggregation})",
         )
         aggregation_start = perf_counter()
+        aggregation_diagnostics: dict = {}
         coarse = coarsen_graph_chunked(
             current,
             assignment,
@@ -1406,6 +1454,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             pagerank_damping=float(
                 config.get("coarsening", {}).get("feature_aggregation_pagerank_damping", 0.85)
             ),
+            aggregation_diagnostics=aggregation_diagnostics,
         )
         progress_message(config, f"level {level}: chunked aggregation done")
         runtime["aggregation"] = perf_counter() - aggregation_start
@@ -1471,7 +1520,10 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         diagnostics["score_contributions"] = score_contribution_summary
         diagnostics["score_contribution_share"] = _score_contribution_share(score_contribution_summary)
         diagnostics["source_policy_filter"] = source_policy_filter_diag
+        diagnostics["spectral_guard"] = candidate_guard_diag.get("spectral_guard", {})
+        diagnostics["source_aware_guard"] = candidate_guard_diag.get("source_aware_guard", {})
         diagnostics["cumulative_guard"] = cumulative_guard_diag
+        diagnostics["aggregation"] = aggregation_diagnostics
         diagnostics["terminal_guard"] = dict(
             getattr(assignment, "diagnostics", {}).get(
                 "terminal_guard",
@@ -1499,6 +1551,15 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             level_config=level_matching_config,
         )
         diagnostics_cfg = config.get("diagnostics", {})
+        if bool(diagnostics_cfg.get("enable_relation_diagnostics", False)):
+            diagnostics["relation_diagnostics"] = relation_diagnostics_summary(
+                current,
+                coarse,
+                assignment,
+                signals=Z.astype(np.float32, copy=False),
+                metapath_max_pairs=int(diagnostics_cfg.get("metapath_sample_pairs", 512)),
+                seed=int(config.get("seed", 12345)) + level + 30_000,
+            )
         diagnostics["config"] = _resolved_config_diagnostics(scoring_config)
         diagnostics["matched_pairs_by_source"] = matched_pairs_by_source
         diagnostics["selected_merges_by_source"] = selected_merges_by_source

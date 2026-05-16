@@ -1,0 +1,57 @@
+paper:
+  method: HeSF-LVC-OGBN-system
+  variant: next9_opt_aggregation
+  role: system_protocol
+coarsening:
+  target_ratio: 0.5
+  max_levels: 1
+  per_level_ratio: 0.5
+  same_type_only: true
+  same_partition_only: true
+  matching_method: greedy_cluster
+  max_cluster_size: 4
+  aggregation_reducer: sort
+  aggregation_chunk_size: 1000000
+sketch:
+  method: chebyshev_heat
+  dim: 16
+  order: 5
+  dtype: float16
+  row_normalize: true
+fusion:
+  relation_operator_mode: relationwise
+  relation_weighting:
+    method: uniform
+metapath_sketch:
+  enabled: false
+  preset: off
+  operator_weight_total: 0.0
+  paths: []
+candidates:
+  source: onehop_bucket
+  store_backend: array
+  use_chunked_generation: true
+  total_budget_K: 8
+  twohop_budget_K2: 0
+  twohop_mode: capped_sampled
+  twohop_budget_per_node: 0
+  enable_onehop: true
+  enable_capped_twohop: false
+  enable_bucket: true
+  enable_partition_ann: false
+  enable_fallback: true
+  edge_chunk_size: 1000000
+  middle_chunk_size: 100000
+  node_chunk_size: 1000000
+scoring:
+  lambda_spec: 0.25
+  lambda_rel: 0.0
+  lambda_conv: 0.0
+  lambda_feat: 0.1
+  lambda_boundary: 0.1
+  normalization: p95
+  normalization_scope: level
+diagnostics:
+  enable_large_graph_envelope: true
+  spectral_relation_detail: true
+  enable_relation_diagnostics: false

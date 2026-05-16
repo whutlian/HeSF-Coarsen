@@ -147,6 +147,26 @@ scoring:
   boundary_hub_gamma: 0.05
   boundary_terminal_gamma: 1.0
   boundary_terminal_degree: 1.0
+spectral_guard:
+  enabled: false
+  mode: auto
+  threshold_policy: per_type_source_quantile
+  quantile: 0.95
+  warmup_from_bucket: true
+  reject_high_delta_spec: true
+  downrank_instead_of_reject: false
+  min_candidates_per_node_after_guard: 2
+source_aware_guard:
+  enabled: false
+  mode: auto
+  trigger:
+    onehop_selected_share_above: 0.30
+    onehop_avg_delta_spec_ratio_to_bucket_above: 4.0
+    onehop_delta_spec_tail_quantile: 0.95
+  action:
+    onehop_topk_per_node: 2
+    reject_if_delta_spec_above_bucket_q95: true
+    fallback_max_selected_share: 0.05
 features:
   projected_dim: 32
   projection_dtype: float16
@@ -158,6 +178,8 @@ diagnostics:
   spectral_relation_detail: true
   edge_sample_size: 1024
   enable_spectral: true
+  enable_relation_diagnostics: false
+  metapath_sample_pairs: 512
   spectral_num_signals: 4
   spectral_smoothing_steps: 1
   spectral_exact_eigenvalue_max_nodes: 256

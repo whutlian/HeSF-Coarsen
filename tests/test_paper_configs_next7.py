@@ -96,6 +96,15 @@ EXPECTED_PAPER_CONFIGS = {
     },
 }
 
+NEXT9_PAPER_CONFIGS = {
+    "hgb_hesf_lvc_t_appendix.yaml",
+    "hgb_hesf_lvc_p_spectral_guard.yaml",
+    "hgb_hesf_lvc_s_spectral_guard.yaml",
+    "hgb_hesf_lvc_p_sourceaware_auto.yaml",
+    "hgb_hesf_lvc_s_sourceaware_auto.yaml",
+    "ogbn_mag_next9_opt_aggregation.yaml",
+}
+
 
 def _tiny_smoke_config(config: dict, tmp_path: Path) -> dict:
     cfg = deepcopy(config)
@@ -124,7 +133,8 @@ def test_next7_paper_configs_exist_and_load_expected_profiles():
     paper_dir = Path("configs/paper")
     paths = {path.name: path for path in paper_dir.glob("*.yaml")}
 
-    assert set(paths) == set(EXPECTED_PAPER_CONFIGS)
+    assert set(EXPECTED_PAPER_CONFIGS).issubset(paths)
+    assert NEXT9_PAPER_CONFIGS.issubset(paths)
     for name, expected in EXPECTED_PAPER_CONFIGS.items():
         config = load_config(paths[name])
 

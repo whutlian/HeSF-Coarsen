@@ -119,12 +119,14 @@ def _load_assignment(path: Path) -> Assignment:
 def cmd_chunked_aggregate(args: argparse.Namespace) -> None:
     graph = load_memmap_graph(args.input) if args.memmap_input else load_graph(args.input)
     assignment = _load_assignment(args.assignment)
+    aggregation_diagnostics: dict = {}
     coarse = coarsen_graph_chunked(
         graph,
         assignment,
         chunk_size=args.chunk_size,
         output_dir=args.output,
         reducer=args.reducer,
+        aggregation_diagnostics=aggregation_diagnostics,
     )
     save_graph(coarse, args.output)
     _print_json(
@@ -136,6 +138,7 @@ def cmd_chunked_aggregate(args: argparse.Namespace) -> None:
             "reducer": args.reducer,
             "num_nodes": coarse.num_nodes,
             "relations": {str(k): rel.num_edges for k, rel in coarse.relations.items()},
+            "aggregation": aggregation_diagnostics,
         }
     )
 
