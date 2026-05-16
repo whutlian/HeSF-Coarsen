@@ -260,6 +260,7 @@ def _selected_source_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
                 row,
                 (
                     f"selected_match_source_distribution_after_quota.{source}",
+                    f"selected_merges_by_source.{source}",
                     f"matched_pairs_by_source.{source}",
                 ),
                 0.0,
@@ -647,6 +648,8 @@ def _final_cumulative_row(
             "runtime_by_stage.sketch": _runtime_stage_total(ordered, "sketch"),
             "runtime_by_stage.candidates": _runtime_stage_total(ordered, "candidates"),
             "runtime_by_stage.scoring": _runtime_stage_total(ordered, "scoring"),
+            "runtime_by_stage.matching": _runtime_stage_total(ordered, "matching"),
+            "runtime_by_stage.aggregation": _runtime_stage_total(ordered, "aggregation"),
             "runtime_by_stage.matching_and_aggregation": _runtime_stage_total(
                 ordered,
                 "matching_and_aggregation",
@@ -664,7 +667,11 @@ def _final_cumulative_row(
         }
     )
     scoring_runtime = _as_float(final.get("runtime_by_stage.scoring"), 0.0) or 0.0
-    aggregation_runtime = _as_float(final.get("runtime_by_stage.matching_and_aggregation"), 0.0) or 0.0
+    aggregation_runtime = (
+        _as_float(final.get("runtime_by_stage.aggregation"), 0.0)
+        or _as_float(final.get("runtime_by_stage.matching_and_aggregation"), 0.0)
+        or 0.0
+    )
     candidate_generation_time = _sum_float_key(ordered, "candidate_generation_time")
     candidate_retained_pair_count = int(_sum_float_key(ordered, "candidate_retained_pair_count"))
     final["candidate_generation_time"] = candidate_generation_time
@@ -814,13 +821,29 @@ def _candidate_source_pareto_rows(final_rows: list[dict[str, Any]]) -> list[dict
         for key in row:
             if key.startswith("candidate_source_counts."):
                 sources.add(key.removeprefix("candidate_source_counts."))
+            if key.startswith("generated_candidates_by_source."):
+                sources.add(key.removeprefix("generated_candidates_by_source."))
+            if key.startswith("selected_merges_by_source."):
+                sources.add(key.removeprefix("selected_merges_by_source."))
             if key.startswith("matched_pairs_by_source."):
                 sources.add(key.removeprefix("matched_pairs_by_source."))
         candidate_total = _as_float(row.get("candidate_count_total"), None)
         matched_total = _as_float(row.get("matched_pairs"), None)
+        selected_total = sum(
+            _as_float(row.get(f"selected_merges_by_source.{source}"), 0.0) or 0.0
+            for source in sources
+        ) or matched_total
         for source in sorted(sources):
-            candidate_count = _as_float(row.get(f"candidate_source_counts.{source}"), 0.0) or 0.0
-            selected_count = _as_float(row.get(f"matched_pairs_by_source.{source}"), 0.0) or 0.0
+            candidate_count = (
+                _as_float(row.get(f"generated_candidates_by_source.{source}"), None)
+                if row.get(f"generated_candidates_by_source.{source}") not in {None, ""}
+                else _as_float(row.get(f"candidate_source_counts.{source}"), 0.0)
+            ) or 0.0
+            selected_count = (
+                _as_float(row.get(f"selected_merges_by_source.{source}"), None)
+                if row.get(f"selected_merges_by_source.{source}") not in {None, ""}
+                else _as_float(row.get(f"matched_pairs_by_source.{source}"), 0.0)
+            ) or 0.0
             if candidate_count == 0.0 and selected_count == 0.0:
                 continue
             rows.append(
@@ -833,8 +856,21 @@ def _candidate_source_pareto_rows(final_rows: list[dict[str, Any]]) -> list[dict
                     else float(candidate_count / candidate_total),
                     "selected_count": selected_count,
                     "selected_fraction": ""
-                    if not matched_total
-                    else float(selected_count / matched_total),
+                    if not selected_total
+                    else float(selected_count / selected_total),
+                    "retained_candidate_count": _as_float(
+                        row.get(f"candidate_source_counts.{source}"),
+                        0.0,
+                    )
+                    or 0.0,
+                    "matched_pair_count": _as_float(
+                        row.get(f"matched_pairs_by_source.{source}"),
+                        0.0,
+                    )
+                    or 0.0,
+                    "avg_score": row.get(f"selected_source_avg_score.{source}", ""),
+                    "avg_delta_spec": row.get(f"selected_source_avg_delta_spec.{source}", ""),
+                    "avg_delta_conv": row.get(f"selected_source_avg_delta_conv.{source}", ""),
                 }
             )
     return rows
@@ -918,6 +954,8 @@ def _run_resource_rows(final_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             "runtime_by_stage.sketch": row.get("runtime_by_stage.sketch", ""),
             "runtime_by_stage.candidates": row.get("runtime_by_stage.candidates", ""),
             "runtime_by_stage.scoring": row.get("runtime_by_stage.scoring", ""),
+            "runtime_by_stage.matching": row.get("runtime_by_stage.matching", ""),
+            "runtime_by_stage.aggregation": row.get("runtime_by_stage.aggregation", ""),
             "runtime_by_stage.matching_and_aggregation": row.get(
                 "runtime_by_stage.matching_and_aggregation",
                 "",
@@ -1638,7 +1676,7 @@ def summarize_experiments(inputs: Iterable[str | Path], output: str | Path) -> N
         "",
         "## Runtime Breakdown",
         "",
-        "Standard stage fields map to `runtime_by_stage.sketch`, `runtime_by_stage.candidates`, `runtime_by_stage.scoring`, `runtime_by_stage.matching_and_aggregation`, `runtime_by_stage.cumulative_diagnostics`, task train/refine, and baseline totals.",
+        "Standard stage fields map to `runtime_by_stage.sketch`, `runtime_by_stage.candidates`, `runtime_by_stage.scoring`, split `runtime_by_stage.matching` / `runtime_by_stage.aggregation`, combined `runtime_by_stage.matching_and_aggregation`, `runtime_by_stage.cumulative_diagnostics`, task train/refine, and baseline totals.",
         "",
         "## Memory And Disk Footprint",
         "",

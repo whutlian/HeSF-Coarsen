@@ -840,6 +840,97 @@ def _store_buffer_nbytes(store: BoundedCandidateStore | ArrayCandidateStore) -> 
     return {}
 
 
+def _selected_source_score_breakdown(
+    *,
+    scoring_context,
+    selected_pairs: np.ndarray,
+    source_lookup,
+    assignment: Assignment,
+    max_pairs: int,
+) -> dict:
+    selected_pairs = np.asarray(selected_pairs, dtype=np.int64).reshape(-1, 2)
+    total_pairs = int(selected_pairs.shape[0])
+    if total_pairs == 0 or source_lookup is None:
+        return {
+            "selected_source_avg_score": {},
+            "selected_source_avg_delta_spec": {},
+            "selected_source_avg_delta_conv": {},
+            "selected_source_cluster_size_hist": {},
+            "selected_merge_stats_by_source": {},
+            "selected_source_analysis_total_pairs": total_pairs,
+            "selected_source_analysis_sampled_pairs": 0,
+        }
+    limit = max(1, int(max_pairs))
+    if total_pairs > limit:
+        indices = np.linspace(0, total_pairs - 1, num=limit, dtype=np.int64)
+        selected_pairs = selected_pairs[indices]
+    scored, terms = score_pair_block_with_terms(scoring_context, selected_pairs)
+    if scored.size == 0:
+        sampled = 0
+        score = np.empty(0, dtype=np.float64)
+        spec = np.empty(0, dtype=np.float32)
+        conv = np.empty(0, dtype=np.float32)
+        pairs = np.empty((0, 2), dtype=np.int64)
+    else:
+        sampled = int(scored.shape[0])
+        pairs = scored[:, :2].astype(np.int64, copy=False)
+        score = scored[:, 2].astype(np.float64, copy=False)
+        spec = np.asarray(terms.get("spec", np.empty(0)), dtype=np.float32)
+        conv = np.asarray(terms.get("conv", np.empty(0)), dtype=np.float32)
+    cluster_sizes = assignment.cluster_sizes()
+    values: dict[str, dict[str, list[float] | dict[str, int]]] = {}
+    for index, (raw_i, raw_j) in enumerate(pairs):
+        i = int(raw_i)
+        j = int(raw_j)
+        source = str(source_lookup(i, j) or "unknown")
+        item = values.setdefault(
+            source,
+            {"score": [], "spec": [], "conv": [], "cluster_size_hist": {}},
+        )
+        item["score"].append(float(score[index]))
+        item["spec"].append(float(spec[index]) if index < len(spec) else 0.0)
+        item["conv"].append(float(conv[index]) if index < len(conv) else 0.0)
+        supernode = int(assignment.assignment[i])
+        size = int(cluster_sizes[supernode]) if 0 <= supernode < len(cluster_sizes) else 0
+        hist = item["cluster_size_hist"]
+        assert isinstance(hist, dict)
+        hist[str(size)] = int(hist.get(str(size), 0)) + 1
+
+    avg_score: dict[str, float] = {}
+    avg_spec: dict[str, float] = {}
+    avg_conv: dict[str, float] = {}
+    hist_by_source: dict[str, dict[str, int]] = {}
+    nested: dict[str, dict] = {}
+    for source, item in sorted(values.items()):
+        source_scores = item["score"]
+        source_specs = item["spec"]
+        source_convs = item["conv"]
+        assert isinstance(source_scores, list)
+        assert isinstance(source_specs, list)
+        assert isinstance(source_convs, list)
+        hist = item["cluster_size_hist"]
+        assert isinstance(hist, dict)
+        avg_score[source] = float(np.mean(source_scores)) if source_scores else 0.0
+        avg_spec[source] = float(np.mean(source_specs)) if source_specs else 0.0
+        avg_conv[source] = float(np.mean(source_convs)) if source_convs else 0.0
+        hist_by_source[source] = {str(key): int(value) for key, value in sorted(hist.items())}
+        nested[source] = {
+            "avg_score": avg_score[source],
+            "avg_delta_spec": avg_spec[source],
+            "avg_delta_conv": avg_conv[source],
+            "cluster_size_hist": hist_by_source[source],
+        }
+    return {
+        "selected_source_avg_score": avg_score,
+        "selected_source_avg_delta_spec": avg_spec,
+        "selected_source_avg_delta_conv": avg_conv,
+        "selected_source_cluster_size_hist": hist_by_source,
+        "selected_merge_stats_by_source": nested,
+        "selected_source_analysis_total_pairs": total_pairs,
+        "selected_source_analysis_sampled_pairs": sampled,
+    }
+
+
 def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelResult]:
     original_nodes = graph.num_nodes
     target_nodes = max(1, int(np.ceil(original_nodes * float(config["coarsening"]["target_ratio"]))))
@@ -937,7 +1028,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                     edge_chunk_size=int(candidate_cfg.get("edge_chunk_size", 1_000_000)),
                 )
             else:
-                generate_onehop_candidates(current, Z, partition_id, config, store)
+                onehop_stats = generate_onehop_candidates(current, Z, partition_id, config, store)
             candidate_substage_times["onehop"] += float(perf_counter() - source_start)
             _add_source_stats("onehop", onehop_stats)
         if config["candidates"].get("enable_capped_twohop", True):
@@ -961,7 +1052,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                     edge_chunk_size=int(candidate_cfg.get("edge_chunk_size", 1_000_000)),
                 )
             else:
-                generate_capped_twohop_candidates(current, Z, partition_id, config, store)
+                twohop_stats = generate_capped_twohop_candidates(current, Z, partition_id, config, store)
             twohop_elapsed = float(perf_counter() - source_start)
             if twohop_stats:
                 candidate_substage_times["incident_index_build"] += float(
@@ -1003,7 +1094,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                         node_chunk_size=int(candidate_cfg.get("node_chunk_size", 1_000_000)),
                     )
                 else:
-                    generate_bucket_candidates(
+                    bucket_stats = generate_bucket_candidates(
                         buckets,
                         current.node_type,
                         partition_id,
@@ -1014,8 +1105,9 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 _add_source_stats("bucket", bucket_stats)
         if config["candidates"].get("enable_partition_ann", False):
             source_start = perf_counter()
-            generate_partition_ann_candidates(current, Z, partition_id, config, store)
+            ann_stats = generate_partition_ann_candidates(current, Z, partition_id, config, store)
             candidate_substage_times["partition_ann"] += float(perf_counter() - source_start)
+            _add_source_stats("partition_ann", ann_stats)
         if bool(candidate_cfg.get("enable_fallback", True)):
             source_start = perf_counter()
             fallback_stats = _add_fallback_candidates(current, partition_id, store, config)
@@ -1149,14 +1241,16 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
 
         progress_message(config, f"level {level}: matching and aggregation start")
         start = perf_counter()
+        matching_start = perf_counter()
         progress_message(config, f"level {level}: matching start (method={matching_method})")
+        source_lookup = getattr(store, "source_for_pair", None)
         if streaming_mutual_best:
             assert streaming_state is not None
             assignment = finalize_mutual_best(
                 current,
                 streaming_state,
                 level_matching_config,
-                source_lookup=getattr(store, "source_for_pair", None),
+                source_lookup=source_lookup,
             )
         else:
             assert scored is not None
@@ -1165,8 +1259,10 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 scored,
                 level_matching_config,
                 partition_id=partition_id,
+                source_lookup=source_lookup,
             )
         progress_message(config, f"level {level}: matching done")
+        matching_diag = dict(getattr(assignment, "diagnostics", {}) or {})
         pre_repair_assignment = assignment
         assignment, cumulative_guard_diag = _repair_bad_clusters(
             current,
@@ -1195,10 +1291,18 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             diagnostics=cumulative_guard_diag,
             seed=int(config.get("seed", 12345)) + level + 20_000,
         )
+        runtime["matching"] = perf_counter() - matching_start
         matched_pairs_by_source = selected_pair_sources(
             assignment,
-            getattr(store, "source_for_pair", lambda _i, _j: None),
+            source_lookup or (lambda _i, _j: None),
         )
+        selected_merges_by_source = dict(
+            matching_diag.get("selected_merges_by_source") or matched_pairs_by_source
+        )
+        selected_merge_pairs = np.asarray(
+            matching_diag.get("_selected_merge_pairs", np.empty((0, 2), dtype=np.int64)),
+            dtype=np.int64,
+        ).reshape(-1, 2)
         next_cumulative_assignment = (
             assignment.assignment[cumulative_assignment]
             if cumulative_assignment is not None
@@ -1213,6 +1317,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             f"(chunk_size={aggregation_chunk_size}, reducer={aggregation_reducer}, "
             f"feature_aggregation={feature_aggregation})",
         )
+        aggregation_start = perf_counter()
         coarse = coarsen_graph_chunked(
             current,
             assignment,
@@ -1229,6 +1334,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             ),
         )
         progress_message(config, f"level {level}: chunked aggregation done")
+        runtime["aggregation"] = perf_counter() - aggregation_start
         runtime["matching_and_aggregation"] = perf_counter() - start
         progress_message(
             config,
@@ -1317,8 +1423,24 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             target_nodes=target_nodes,
             level_config=level_matching_config,
         )
+        diagnostics_cfg = config.get("diagnostics", {})
         diagnostics["config"] = _resolved_config_diagnostics(scoring_config)
         diagnostics["matched_pairs_by_source"] = matched_pairs_by_source
+        diagnostics["selected_merges_by_source"] = selected_merges_by_source
+        diagnostics.update(
+            _selected_source_score_breakdown(
+                scoring_context=scoring_context,
+                selected_pairs=selected_merge_pairs,
+                source_lookup=source_lookup,
+                assignment=assignment,
+                max_pairs=int(
+                    diagnostics_cfg.get(
+                        "selected_source_analysis_max_pairs",
+                        diagnostics_cfg.get("selected_merge_analysis_max_pairs", 20_000),
+                    )
+                ),
+            )
+        )
         if streaming_state is not None and streaming_state.selected_quota_diagnostics is not None:
             quota_diag = streaming_state.selected_quota_diagnostics
             diagnostics["selected_match_quota"] = quota_diag
@@ -1349,7 +1471,6 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
             coarse=coarse,
             cumulative_assignment=next_cumulative_assignment,
         )
-        diagnostics_cfg = config.get("diagnostics", {})
         if bool(diagnostics_cfg.get("enable_spectral", True)):
             progress_message(config, f"level {level}: spectral diagnostics start")
             start_spectral = perf_counter()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import perf_counter
+from collections.abc import Mapping
 from typing import Any, Iterable
 
 import numpy as np
@@ -150,6 +151,7 @@ def select_task_protocol_split(
     target_node_type: str | int | None = None,
     train_fraction: float = 0.6,
     val_fraction: float = 0.2,
+    official_split_nodes: Mapping[str, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
     labels = np.asarray(labels).reshape(-1)
     type_id = resolve_target_node_type(graph, target_node_type)
@@ -160,13 +162,34 @@ def select_task_protocol_split(
         candidate_nodes = nodes_of_type(graph, int(type_id))
         target_label = str(target_node_type)
     labeled_nodes = candidate_nodes[labels[candidate_nodes] >= 0].astype(np.int64, copy=False)
-    train_nodes, val_nodes, test_nodes = _stratified_three_way_split(
-        labeled_nodes,
-        labels,
-        seed=int(seed),
-        train_fraction=float(train_fraction),
-        val_fraction=float(val_fraction),
-    )
+    split_policy = "synthetic_stratified"
+    if official_split_nodes is None:
+        train_nodes, val_nodes, test_nodes = _stratified_three_way_split(
+            labeled_nodes,
+            labels,
+            seed=int(seed),
+            train_fraction=float(train_fraction),
+            val_fraction=float(val_fraction),
+        )
+    else:
+        candidate_set = set(int(node) for node in candidate_nodes.tolist())
+
+        def _official_nodes(*names: str) -> np.ndarray:
+            for name in names:
+                if name in official_split_nodes:
+                    raw = np.asarray(official_split_nodes[name], dtype=np.int64).reshape(-1)
+                    kept = [
+                        int(node)
+                        for node in raw.tolist()
+                        if int(node) in candidate_set and labels[int(node)] >= 0
+                    ]
+                    return np.asarray(kept, dtype=np.int64)
+            return np.asarray([], dtype=np.int64)
+
+        train_nodes = _official_nodes("train")
+        val_nodes = _official_nodes("valid", "val")
+        test_nodes = _official_nodes("test")
+        split_policy = "official"
 
     def _coverage(nodes: np.ndarray) -> float:
         if len(nodes) == 0:
@@ -182,8 +205,10 @@ def select_task_protocol_split(
     diagnostics: dict[str, Any] = {
         "target_node_type": target_label,
         "target_node_type_id": "" if type_id is None else int(type_id),
-        "task_split_policy": "synthetic_stratified",
-        "official_split_consistency": f"synthetic_stratified_{suffix}",
+        "task_split_policy": split_policy,
+        "official_split_consistency": (
+            f"official_{suffix}" if official_split_nodes is not None else f"synthetic_stratified_{suffix}"
+        ),
         "macro_f1_empty_class_policy": "truth_pred_union",
         "coarse_train_label_source": "train_only",
         "num_labeled_nodes_total": int(len(labeled_nodes)),
@@ -291,6 +316,7 @@ def evaluate_rgcn_task(
     train_fraction: float = 0.6,
     val_fraction: float = 0.2,
     macro_empty_class_policy: str = "truth_pred_union",
+    official_split_nodes: Mapping[str, np.ndarray] | None = None,
 ) -> TaskEvalResult:
     try:
         import torch
@@ -319,6 +345,7 @@ def evaluate_rgcn_task(
         target_node_type=target_node_type,
         train_fraction=float(train_fraction),
         val_fraction=float(val_fraction),
+        official_split_nodes=official_split_nodes,
     )
     task_protocol["macro_f1_empty_class_policy"] = str(macro_empty_class_policy)
     if len(train_nodes) == 0 or len(test_nodes) == 0:

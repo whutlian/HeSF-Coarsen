@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from experiments.scripts._common import discover_run_dirs, read_json, write_csv, write_json
-from hesf_coarsen.eval.task_gnn import compose_assignments, evaluate_rgcn_task
+from hesf_coarsen.eval.task_gnn import compose_assignments, evaluate_rgcn_task, resolve_target_node_type
 from hesf_coarsen.io.edge_list import load_graph
+from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
 
 
 def _level_number(path: Path) -> int:
@@ -78,6 +82,37 @@ def _original_graph_dir(metadata: dict[str, Any], graph_root: Path) -> Path:
     return candidates[0]
 
 
+def _read_split_csv_gz(path: Path) -> np.ndarray:
+    values: list[int] = []
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            values.append(int(line.split(",", 1)[0]))
+    return np.asarray(values, dtype=np.int64)
+
+
+def _official_ogbn_split_nodes(
+    graph: HeteroGraph,
+    split_root: Path | None,
+    target_node_type: str | int | None,
+) -> dict[str, np.ndarray] | None:
+    if split_root is None:
+        return None
+    target_type = resolve_target_node_type(graph, target_node_type or "paper")
+    if target_type is None:
+        raise ValueError("official OGBN split requires a concrete target node type")
+    target_nodes = nodes_of_type(graph, int(target_type))
+    split_dir = split_root / "paper" if (split_root / "paper").exists() else split_root
+    split: dict[str, np.ndarray] = {}
+    for split_name, file_name in (("train", "train.csv.gz"), ("valid", "valid.csv.gz"), ("test", "test.csv.gz")):
+        local = _read_split_csv_gz(split_dir / file_name)
+        local = local[(local >= 0) & (local < len(target_nodes))]
+        split[split_name] = target_nodes[local]
+    return split
+
+
 def evaluate_run(
     run_dir: Path,
     *,
@@ -95,6 +130,7 @@ def evaluate_run(
     train_fraction: float = 0.6,
     val_fraction: float = 0.2,
     macro_empty_class_policy: str = "truth_pred_union",
+    official_ogbn_split_root: Path | None = None,
 ) -> dict[str, Any]:
     metadata_path = run_dir / "metadata.json"
     metadata = read_json(metadata_path) if metadata_path.exists() else {}
@@ -108,6 +144,11 @@ def evaluate_run(
     original = load_graph(original_dir)
     coarse = load_graph(final_level)
     mapping = _cumulative_assignment(run_dir, original.num_nodes, final_level)
+    official_split_nodes = _official_ogbn_split_nodes(
+        original,
+        official_ogbn_split_root,
+        target_node_type,
+    )
     result = evaluate_rgcn_task(
         original,
         coarse,
@@ -125,7 +166,10 @@ def evaluate_run(
         train_fraction=float(train_fraction),
         val_fraction=float(val_fraction),
         macro_empty_class_policy=str(macro_empty_class_policy),
+        official_split_nodes=official_split_nodes,
     ).metrics
+    if official_split_nodes is not None:
+        result["official_split_root"] = str(official_ogbn_split_root)
     result.update(
         {
             "run_name": metadata.get("run_name", run_dir.name),
@@ -173,6 +217,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--full-graph-tuned-epochs", type=int)
     parser.add_argument("--target-node-type")
+    parser.add_argument(
+        "--official-ogbn-split-root",
+        type=Path,
+        help="Directory containing OGBN-MAG paper train/valid/test CSV.GZ split files.",
+    )
     parser.add_argument("--train-fraction", type=float, default=0.6)
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument(
@@ -224,6 +273,7 @@ def main(argv: list[str] | None = None) -> int:
                 train_fraction=float(args.train_fraction),
                 val_fraction=float(args.val_fraction),
                 macro_empty_class_policy=str(args.macro_empty_class_policy),
+                official_ogbn_split_root=args.official_ogbn_split_root,
             )
         except Exception as exc:
             row = {

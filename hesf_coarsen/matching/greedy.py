@@ -14,6 +14,7 @@ def run_greedy_matching(
     scored_pairs: np.ndarray,
     config: dict,
     partition_id: np.ndarray | None = None,
+    source_lookup=None,
 ) -> Assignment:
     coarsen_cfg = config.get("coarsening", {})
     same_type_only = bool(coarsen_cfg.get("same_type_only", True))
@@ -37,6 +38,8 @@ def run_greedy_matching(
         order = np.empty(0, dtype=np.int64)
 
     matched = 0
+    selected_pairs: list[tuple[int, int]] = []
+    selected_sources: dict[str, int] = {}
     for row_index in order:
         if max_matched_pairs is not None and matched >= max_matched_pairs:
             break
@@ -59,6 +62,9 @@ def run_greedy_matching(
         used[j] = True
         super_types.append(int(graph.node_type[i]))
         matched += 1
+        selected_pairs.append((i, j))
+        source = _source_name(source_lookup, i, j)
+        selected_sources[source] = selected_sources.get(source, 0) + 1
 
     for node in range(graph.num_nodes):
         if assignment[node] >= 0:
@@ -70,6 +76,10 @@ def run_greedy_matching(
     return Assignment(
         assignment=assignment,
         supernode_type=np.asarray(super_types, dtype=np.int32),
+        diagnostics={
+            "selected_merges_by_source": selected_sources,
+            "_selected_merge_pairs": np.asarray(selected_pairs, dtype=np.int64).reshape(-1, 2),
+        },
     )
 
 
@@ -78,6 +88,7 @@ def run_greedy_cluster_matching(
     scored_pairs: np.ndarray,
     config: dict,
     partition_id: np.ndarray | None = None,
+    source_lookup=None,
 ) -> Assignment:
     coarsen_cfg = config.get("coarsening", {})
     same_type_only = bool(coarsen_cfg.get("same_type_only", True))
@@ -116,6 +127,8 @@ def run_greedy_cluster_matching(
         order = np.empty(0, dtype=np.int64)
 
     merges = 0
+    selected_pairs: list[tuple[int, int]] = []
+    selected_sources: dict[str, int] = {}
     for row_index in order:
         if max_merges is not None and merges >= max_merges:
             break
@@ -157,6 +170,9 @@ def run_greedy_cluster_matching(
         size[root_i] += size[root_j]
         protected_count[root_i] += protected_count[root_j]
         merges += 1
+        selected_pairs.append((i, j))
+        source = _source_name(source_lookup, i, j)
+        selected_sources[source] = selected_sources.get(source, 0) + 1
 
     root_to_super: dict[int, int] = {}
     assignment = np.empty(graph.num_nodes, dtype=np.int64)
@@ -181,7 +197,11 @@ def run_greedy_cluster_matching(
     return Assignment(
         assignment=assignment,
         supernode_type=np.asarray(super_types, dtype=np.int32),
-        diagnostics={"terminal_guard": terminal_diag},
+        diagnostics={
+            "terminal_guard": terminal_diag,
+            "selected_merges_by_source": selected_sources,
+            "_selected_merge_pairs": np.asarray(selected_pairs, dtype=np.int64).reshape(-1, 2),
+        },
     )
 
 
@@ -290,9 +310,12 @@ def _assignment_from_pair_arrays(
     graph: HeteroGraph,
     left: np.ndarray,
     right: np.ndarray,
+    source_lookup=None,
 ) -> Assignment:
     assignment = np.full(graph.num_nodes, -1, dtype=np.int64)
     super_types: list[int] = []
+    selected_pairs: list[tuple[int, int]] = []
+    selected_sources: dict[str, int] = {}
     for raw_i, raw_j in zip(left, right):
         i = int(raw_i)
         j = int(raw_j)
@@ -302,6 +325,9 @@ def _assignment_from_pair_arrays(
         assignment[i] = super_id
         assignment[j] = super_id
         super_types.append(int(graph.node_type[i]))
+        selected_pairs.append((i, j))
+        source = _source_name(source_lookup, i, j)
+        selected_sources[source] = selected_sources.get(source, 0) + 1
 
     for node in range(graph.num_nodes):
         if assignment[node] >= 0:
@@ -313,6 +339,10 @@ def _assignment_from_pair_arrays(
     return Assignment(
         assignment=assignment,
         supernode_type=np.asarray(super_types, dtype=np.int32),
+        diagnostics={
+            "selected_merges_by_source": selected_sources,
+            "_selected_merge_pairs": np.asarray(selected_pairs, dtype=np.int64).reshape(-1, 2),
+        },
     )
 
 
@@ -689,7 +719,7 @@ def finalize_mutual_best(
     )
     state.selected_quota_diagnostics = quota_diagnostics
 
-    return _assignment_from_pair_arrays(graph, mutual_left, mutual_right)
+    return _assignment_from_pair_arrays(graph, mutual_left, mutual_right, source_lookup=source_lookup)
 
 
 def run_mutual_best_matching(
@@ -697,10 +727,18 @@ def run_mutual_best_matching(
     scored_pairs: np.ndarray,
     config: dict,
     partition_id: np.ndarray | None = None,
+    source_lookup=None,
 ) -> Assignment:
     state = initialize_mutual_best_state(graph)
-    mutual_best_update_block(graph, state, scored_pairs, config, partition_id=partition_id)
-    return finalize_mutual_best(graph, state, config)
+    mutual_best_update_block(
+        graph,
+        state,
+        scored_pairs,
+        config,
+        partition_id=partition_id,
+        source_lookup=source_lookup,
+    )
+    return finalize_mutual_best(graph, state, config, source_lookup=source_lookup)
 
 
 def run_matching(
@@ -708,12 +746,31 @@ def run_matching(
     scored_pairs: np.ndarray,
     config: dict,
     partition_id: np.ndarray | None = None,
+    source_lookup=None,
 ) -> Assignment:
     method = str(config.get("coarsening", {}).get("matching_method", "mutual_best")).lower()
     if method in {"mutual_best", "mutual-best"}:
-        return run_mutual_best_matching(graph, scored_pairs, config, partition_id=partition_id)
+        return run_mutual_best_matching(
+            graph,
+            scored_pairs,
+            config,
+            partition_id=partition_id,
+            source_lookup=source_lookup,
+        )
     if method in {"greedy", "global_greedy", "sorted_greedy"}:
-        return run_greedy_matching(graph, scored_pairs, config, partition_id=partition_id)
+        return run_greedy_matching(
+            graph,
+            scored_pairs,
+            config,
+            partition_id=partition_id,
+            source_lookup=source_lookup,
+        )
     if method in {"greedy_cluster", "cluster_greedy", "block_local_approximate_greedy"}:
-        return run_greedy_cluster_matching(graph, scored_pairs, config, partition_id=partition_id)
+        return run_greedy_cluster_matching(
+            graph,
+            scored_pairs,
+            config,
+            partition_id=partition_id,
+            source_lookup=source_lookup,
+        )
     raise ValueError(f"unsupported matching_method: {method}")

@@ -13,8 +13,9 @@ def generate_onehop_candidates(
     partition_id: np.ndarray,
     config: dict,
     store: BoundedCandidateStore,
-) -> None:
+) -> dict[str, int]:
     same_partition = bool(config.get("coarsening", {}).get("same_partition_only", True))
+    emitted = 0
     for rel in graph.relations.values():
         if rel.src_type != rel.dst_type:
             continue
@@ -23,6 +24,8 @@ def generate_onehop_candidates(
                 continue
             diff = Z[src].astype(np.float32) - Z[dst].astype(np.float32)
             store.add(int(src), int(dst), float(np.dot(diff, diff)), "onehop")
+            emitted += 1
+    return {"pairs_considered": emitted}
 
 
 def generate_onehop_candidates_chunked(

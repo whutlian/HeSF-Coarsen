@@ -33,6 +33,42 @@ def small_config(tmp_path):
     return config
 
 
+def test_cluster_quality_diagnostics_group_assignment_without_full_scans():
+    from hesf_coarsen.eval.diagnostics import _cluster_label_entropy, compute_cluster_quality_diagnostics
+
+    graph = HeteroGraph(
+        num_nodes=5,
+        node_type=np.zeros(5, dtype=np.int32),
+        relations={},
+        labels=np.array([0, 1, 2, 2, -1], dtype=np.int64),
+    )
+    coarse = HeteroGraph(
+        num_nodes=3,
+        node_type=np.zeros(3, dtype=np.int32),
+        relations={},
+        labels=np.array([0, 2, -1], dtype=np.int64),
+    )
+    assignment = Assignment(
+        assignment=np.array([0, 0, 1, 1, 2], dtype=np.int64),
+        supernode_type=np.zeros(3, dtype=np.int32),
+    )
+
+    diagnostics = compute_cluster_quality_diagnostics(
+        graph,
+        coarse,
+        assignment,
+        Z=np.arange(10, dtype=np.float32).reshape(5, 2),
+        relation_profiles=np.arange(15, dtype=np.float32).reshape(5, 3),
+        conv_response=np.arange(5, dtype=np.float32),
+        config={"coarsening": {"max_cluster_size": 2}},
+    )
+
+    assert np.isclose(_cluster_label_entropy(graph.labels, assignment), np.log(2.0) / 2.0)
+    assert np.isclose(diagnostics["cluster_label_entropy_train_only_mean"], np.log(2.0) / 3.0)
+    assert diagnostics["bad_cluster_count"] == 0
+    assert diagnostics["cluster_sketch_spread_mean"] > 0.0
+
+
 def test_multilevel_pipeline_runs_and_writes_diagnostics(tmp_path):
     graph = generate_synthetic_graph(
         num_users=14,
@@ -736,6 +772,47 @@ def test_multilevel_pipeline_records_selected_match_sources_and_fallback_fractio
     selected = results[0].diagnostics["matched_pairs_by_source"]
     assert sum(selected.values()) == results[0].diagnostics["matched_pairs"]
     assert "fallback_selected_fraction" in results[0].diagnostics
+
+
+def test_multilevel_pipeline_records_selected_source_score_breakdown_and_split_timing(tmp_path):
+    graph = generate_synthetic_graph(
+        num_users=8,
+        num_items=5,
+        num_tags=3,
+        seed=4601,
+    )
+    config = small_config(tmp_path)
+    config["coarsening"] = dict(
+        config["coarsening"],
+        matching_method="greedy_cluster",
+        max_cluster_size=4,
+    )
+    config["diagnostics"] = dict(
+        config["diagnostics"],
+        enable_spectral=False,
+        selected_source_analysis_max_pairs=1000,
+    )
+
+    results = run_multilevel_coarsening(graph, config)
+
+    diagnostics = results[0].diagnostics
+    generated = diagnostics["generated_candidates_by_source"]
+    retained = diagnostics["candidate_source_counts"]
+    assert generated
+    for source, count in retained.items():
+        assert generated[source] >= count
+    assert "selected_merges_by_source" in diagnostics
+    assert "selected_source_avg_score" in diagnostics
+    assert "selected_source_avg_delta_spec" in diagnostics
+    assert "selected_source_avg_delta_conv" in diagnostics
+    assert "selected_source_cluster_size_hist" in diagnostics
+    assert sum(diagnostics["selected_merges_by_source"].values()) > 0
+    assert diagnostics["runtime_by_stage"]["matching"] >= 0.0
+    assert diagnostics["runtime_by_stage"]["aggregation"] >= 0.0
+    assert diagnostics["runtime_by_stage"]["matching_and_aggregation"] >= (
+        diagnostics["runtime_by_stage"]["matching"]
+        + diagnostics["runtime_by_stage"]["aggregation"]
+    )
 
 
 def test_multilevel_pipeline_can_disable_fallback_candidates(tmp_path):

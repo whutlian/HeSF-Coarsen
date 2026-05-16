@@ -427,7 +427,7 @@ def generate_capped_twohop_candidates(
     partition_id: np.ndarray,
     config: dict,
     store: BoundedCandidateStore,
-) -> None:
+) -> dict[str, int | float | bool]:
     candidate_cfg = config.get("candidates", {})
     coarsen_cfg = config.get("coarsening", {})
     per_middle_pair_cap = int(candidate_cfg.get("per_middle_pair_cap", 64))
@@ -441,6 +441,8 @@ def generate_capped_twohop_candidates(
     max_time_budget = candidate_cfg.get("twohop_max_time_budget_sec")
     max_time_budget = None if max_time_budget in (None, "", False) else float(max_time_budget)
     expansion_start = perf_counter()
+    emitted = 0
+    stopped_by_time_budget = False
     endpoint_emit_counts = (
         np.zeros(graph.num_nodes, dtype=np.int32)
         if twohop_mode == "capped_sampled" and per_node_budget > 0
@@ -485,15 +487,26 @@ def generate_capped_twohop_candidates(
                 pair_seed = seed + middle * 9176 + endpoint_type * 131
                 for i, j in _sample_pairs(group, per_middle_pair_cap, pair_seed):
                     if max_time_budget is not None and float(perf_counter() - expansion_start) >= max_time_budget:
-                        return
+                        stopped_by_time_budget = True
+                        return {
+                            "pairs_considered": emitted,
+                            "twohop_expansion_time": float(perf_counter() - expansion_start),
+                            "stopped_by_time_budget": stopped_by_time_budget,
+                        }
                     if endpoint_emit_counts is not None:
                         if endpoint_emit_counts[i] >= per_node_budget or endpoint_emit_counts[j] >= per_node_budget:
                             continue
                     diff = Z[i].astype(np.float32) - Z[j].astype(np.float32)
                     store.add(i, j, float(np.dot(diff, diff)) * twohop_score_scale, "capped_twohop")
+                    emitted += 1
                     if endpoint_emit_counts is not None:
                         endpoint_emit_counts[i] += 1
                         endpoint_emit_counts[j] += 1
+    return {
+        "pairs_considered": emitted,
+        "twohop_expansion_time": float(perf_counter() - expansion_start),
+        "stopped_by_time_budget": stopped_by_time_budget,
+    }
 
 
 def _collect_incident_for_middle_range(

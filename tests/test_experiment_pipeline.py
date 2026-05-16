@@ -73,6 +73,7 @@ def test_experiment_scripts_support_help():
         "run_hgb_task_eval.py",
         "run_hgb_next4_mainline.py",
         "run_hgb_next4_relation_fusion.py",
+        "run_hgb_lambda_grid.py",
         "run_hgb_next4_baselines.py",
         "evaluate_refine_curve.py",
         "summarize_stage_b.py",
@@ -251,6 +252,12 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
         "partition_imbalance": {"partition_count": 1, "max_to_mean": 1.0},
         "memory_by_candidate_buffers": {"estimated_total_bytes": 4096},
         "candidate_source_counts": {"bucket": 3, "onehop": 1},
+        "generated_candidates_by_source": {"bucket": 3, "onehop": 1},
+        "selected_merges_by_source": {"bucket": 2},
+        "selected_source_avg_score": {"bucket": 0.42},
+        "selected_source_avg_delta_spec": {"bucket": 0.12},
+        "selected_source_avg_delta_conv": {"bucket": 0.08},
+        "selected_source_cluster_size_hist": {"bucket": {"2": 2}},
         "matched_pairs": 2,
         "matched_units": 3,
         "node_reduction": 3,
@@ -274,6 +281,14 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
             "feat": 0.1,
             "conv": 0.2,
             "boundary": 0.1,
+        },
+        "runtime_by_stage": {
+            "sketch": 1.0,
+            "candidates": 2.0,
+            "scoring": 0.5,
+            "matching": 0.25,
+            "aggregation": 0.75,
+            "matching_and_aggregation": 1.2,
         },
         "cumulative_spectral": {
             "sketch_dirichlet_energy_relative_error": 0.11,
@@ -413,6 +428,12 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert final_rows[0]["candidate_retained_pair_count"] == "6"
     assert final_rows[0]["candidate_pairs_per_sec"] == "1.5"
     assert final_rows[0]["candidate_substage_times.twohop_expansion"] == "1.4"
+    assert final_rows[0]["runtime_by_stage.matching"] == "0.5"
+    assert final_rows[0]["runtime_by_stage.aggregation"] == "1.5"
+    assert final_rows[0]["selected_source_avg_score.bucket"] == "0.42"
+    assert final_rows[0]["selected_source_avg_delta_spec.bucket"] == "0.12"
+    assert final_rows[0]["selected_source_avg_delta_conv.bucket"] == "0.08"
+    assert final_rows[0]["selected_source_cluster_size_hist.bucket.2"] == "2"
     assert final_rows[0]["bucket_coverage"] == "0.8"
     assert final_rows[0]["partition_count"] == "1"
     assert final_rows[0]["partition_imbalance_max_to_mean"] == "1.0"
@@ -474,7 +495,7 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     assert final_rows[0]["node_reduction"] == "3"
     assert final_rows[0]["cluster_size_mean"] == "1.03"
     assert final_rows[0]["score_contribution_share_spec"] == "0.4"
-    assert np.isclose(float(final_rows[0]["runtime_total_run"]), 0.0)
+    assert np.isclose(float(final_rows[0]["runtime_total_run"]), 9.4)
     assert np.isclose(float(final_rows[0]["peak_rss_gb"]), 2.0)
     assert np.isclose(float(final_rows[0]["peak_cpu_memory_gb"]), 2.0)
     assert np.isclose(float(final_rows[0]["peak_vram_allocated_gb"]), 3.0)
@@ -488,6 +509,9 @@ def test_summarizer_writes_final_cumulative_rows_and_target_errors(tmp_path):
     bucket_source = next(row for row in source_rows if row["source"] == "bucket")
     assert bucket_source["candidate_count"] == "3.0"
     assert bucket_source["selected_count"] == "2.0"
+    assert bucket_source["avg_score"] == "0.42"
+    assert bucket_source["avg_delta_spec"] == "0.12"
+    assert bucket_source["avg_delta_conv"] == "0.08"
     assert task_rows[0]["task_projected_macro_f1"] == "0.65"
     assert task_rows[0]["task_refined_macro_f1"] == "0.72"
     assert task_rows[0]["task_best_refined_macro_f1"] == "0.72"
@@ -586,6 +610,42 @@ def test_next4_mainline_dry_run_generates_required_variants(tmp_path):
     assert h3["scoring"]["lambda_conv"] == 0.35
     assert h4["scoring"]["lambda_conv"] == 0.0
     assert h6["scoring"]["lambda_spec"] == 0.0
+
+
+def test_hgb_lambda_grid_dry_run_generates_lambda_configs(tmp_path):
+    from experiments.scripts.run_hgb_lambda_grid import main
+
+    exit_code = main(
+        [
+            "--datasets",
+            "ACM",
+            "--output",
+            str(tmp_path),
+            "--variants",
+            "H2",
+            "--lambda-specs",
+            "0",
+            "1",
+            "--lambda-convs",
+            "0",
+            "0.5",
+            "--lambda-rel",
+            "0",
+            "--seeds",
+            "12345",
+            "--dry-run",
+        ]
+    )
+
+    configs = [
+        yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in sorted(tmp_path.glob("lambda_grid_*/config.yaml"))
+    ]
+    assert exit_code == 0
+    assert len(configs) == 4
+    assert {cfg["scoring"]["lambda_spec"] for cfg in configs} == {0.0, 1.0}
+    assert {cfg["scoring"]["lambda_conv"] for cfg in configs} == {0.0, 0.5}
+    assert {cfg["scoring"]["lambda_rel"] for cfg in configs} == {0.0}
 
 
 def test_next4_mainline_default_freezes_short_confirmation_matrix(tmp_path):

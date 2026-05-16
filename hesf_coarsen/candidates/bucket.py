@@ -153,13 +153,13 @@ def generate_bucket_candidates(
     partition_id: np.ndarray,
     config: dict,
     store: BoundedCandidateStore,
-) -> None:
+) -> dict[str, int]:
     seed = int(config.get("seed", 12345))
     groups: dict[int, list[int]] = defaultdict(list)
     for node, bucket in enumerate(np.asarray(buckets, dtype=np.int64)):
         groups[int(bucket)].append(node)
 
-    _emit_bucket_candidates(
+    emitted = _emit_bucket_candidates(
         groups,
         node_type,
         partition_id,
@@ -167,6 +167,7 @@ def generate_bucket_candidates(
         store,
         table_seed=seed,
     )
+    return {"pairs_considered": emitted}
 
 
 def generate_bucket_candidates_chunked(
