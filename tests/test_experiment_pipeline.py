@@ -74,6 +74,7 @@ def test_experiment_scripts_support_help():
         "run_hgb_next4_mainline.py",
         "run_hgb_next4_relation_fusion.py",
         "run_hgb_lambda_grid.py",
+        "summarize_next7_baseline_gap.py",
         "run_hgb_next4_baselines.py",
         "evaluate_refine_curve.py",
         "summarize_stage_b.py",

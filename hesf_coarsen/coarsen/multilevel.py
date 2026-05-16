@@ -255,10 +255,18 @@ def _resolved_config_diagnostics(config: dict) -> dict:
     metapath = config.get("metapath_sketch", {})
     scoring = config.get("scoring", {})
     candidates = config.get("candidates", {})
+    paper = config.get("paper", {})
+    if not isinstance(paper, dict):
+        paper = {}
     relation_weighting = fusion.get("relation_weighting", {})
     if not isinstance(relation_weighting, dict):
         relation_weighting = {"method": relation_weighting}
     return {
+        "paper": {
+            key: value
+            for key, value in paper.items()
+            if not isinstance(value, (dict, list))
+        },
         "coarsening": {
             "target_ratio": coarsening.get("target_ratio"),
             "per_level_ratio": coarsening.get("per_level_ratio"),

@@ -1,0 +1,55 @@
+paper:
+  method: HeSF-LVC-P
+  variant: H2
+  description: Next7 Pareto knee P; low spectral error with lambda_rel sealed off.
+coarsening:
+  target_ratio: 0.5
+  max_levels: 4
+  per_level_ratio: 0.55
+  same_type_only: true
+  same_partition_only: true
+  matching_method: greedy_cluster
+  max_cluster_size: 4
+sketch:
+  method: chebyshev_heat
+  dim: 16
+  order: 5
+  dtype: float16
+  row_normalize: true
+fusion:
+  relation_operator_mode: relationwise
+  relation_weighting:
+    method: uniform
+metapath_sketch:
+  enabled: false
+  preset: off
+  operator_weight_total: 0.0
+  paths: []
+candidates:
+  source: onehop_twohop_bucket
+  total_budget_K: 8
+  twohop_budget_K2: 8
+  twohop_mode: full
+  twohop_budget_per_node: 0
+  enable_onehop: true
+  enable_capped_twohop: true
+  enable_bucket: true
+  enable_partition_ann: false
+  enable_fallback: true
+  fallback_max_fraction: 0.05
+scoring:
+  lambda_spec: 0.25
+  lambda_rel: 0.0
+  lambda_conv: 0.0
+  lambda_feat: 0.1
+  lambda_boundary: 0.1
+  normalization: p95
+  normalization_scope: level
+  relation_guard:
+    enabled: false
+diagnostics:
+  spectral_relation_detail: true
+  spectral_baselines:
+    - random
+    - graphzoom_style
+    - convmatch_style

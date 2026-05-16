@@ -5,7 +5,7 @@ import yaml
 from hesf_coarsen.config import DEFAULT_CONFIG, load_config
 
 
-CONFIG_PATHS = sorted(Path("configs").glob("*.yaml"))
+CONFIG_PATHS = sorted(Path("configs").rglob("*.yaml"))
 
 
 def test_default_config_uses_canonical_sketch_schema():
