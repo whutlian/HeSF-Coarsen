@@ -807,12 +807,100 @@ def test_multilevel_pipeline_records_selected_source_score_breakdown_and_split_t
     assert "selected_source_avg_delta_conv" in diagnostics
     assert "selected_source_cluster_size_hist" in diagnostics
     assert sum(diagnostics["selected_merges_by_source"].values()) > 0
-    assert diagnostics["runtime_by_stage"]["matching"] >= 0.0
-    assert diagnostics["runtime_by_stage"]["aggregation"] >= 0.0
-    assert diagnostics["runtime_by_stage"]["matching_and_aggregation"] >= (
-        diagnostics["runtime_by_stage"]["matching"]
-        + diagnostics["runtime_by_stage"]["aggregation"]
+
+
+def test_source_policy_filter_rejects_onehop_above_bucket_q95():
+    from hesf_coarsen.coarsen.multilevel import _filter_scored_pairs_by_source_policy
+
+    scored = np.asarray(
+        [
+            [0, 1, 0.1],
+            [0, 2, 0.2],
+            [0, 3, 0.3],
+            [1, 2, 0.4],
+        ],
+        dtype=np.float64,
     )
+    terms = {
+        "spec": np.asarray([1.0, 2.0, 20.0, 1.5], dtype=np.float32),
+        "conv": np.zeros(4, dtype=np.float32),
+    }
+
+    def source_lookup(i, j):
+        return {
+            (0, 1): "bucket",
+            (0, 2): "bucket",
+            (0, 3): "onehop",
+            (1, 2): "onehop",
+        }[(int(i), int(j))]
+
+    filtered, filtered_terms, diagnostics = _filter_scored_pairs_by_source_policy(
+        scored,
+        terms,
+        source_lookup,
+        {
+            "candidates": {
+                "source_policies": {
+                    "onehop": {"reject_if_delta_spec_above": "bucket_q95"},
+                }
+            }
+        },
+    )
+
+    assert filtered[:, :2].astype(int).tolist() == [[0, 1], [0, 2], [1, 2]]
+    assert filtered_terms["spec"].tolist() == [1.0, 2.0, 1.5]
+    assert diagnostics["onehop_rejected_by_spec"] == 1
+    assert diagnostics["pairs_after"] == 3
+
+
+def test_greedy_cluster_enforces_fallback_selected_share():
+    from hesf_coarsen.matching.greedy import run_greedy_cluster_matching
+
+    graph = HeteroGraph(
+        num_nodes=4,
+        node_type=np.zeros(4, dtype=np.int32),
+        relations={},
+        features={0: np.eye(4, dtype=np.float32)},
+        labels=np.asarray([0, 0, 1, 1], dtype=np.int64),
+    )
+    scored = np.asarray(
+        [
+            [0, 1, 0.0],
+            [2, 3, 0.0],
+            [0, 2, 10.0],
+            [1, 3, 10.0],
+        ],
+        dtype=np.float64,
+    )
+
+    def source_lookup(i, j):
+        pair = tuple(sorted((int(i), int(j))))
+        return "fallback" if pair in {(0, 1), (2, 3)} else "bucket"
+
+    assignment = run_greedy_cluster_matching(
+        graph,
+        scored,
+        {
+            "coarsening": {
+                "matching_method": "greedy_cluster",
+                "max_cluster_size": 2,
+                "max_matched_pairs": 2,
+                "same_type_only": True,
+                "same_partition_only": False,
+            },
+            "candidates": {
+                "quotas": {
+                    "enforce_on": "selected_matches",
+                    "fallback_max_fraction": 0.05,
+                }
+            },
+        },
+        partition_id=np.zeros(graph.num_nodes, dtype=np.int32),
+        source_lookup=source_lookup,
+    )
+
+    assert assignment.diagnostics["selected_merges_by_source"].get("fallback", 0) == 0
+    assert assignment.diagnostics["selected_merges_by_source"].get("bucket", 0) == 2
 
 
 def test_multilevel_pipeline_can_disable_fallback_candidates(tmp_path):

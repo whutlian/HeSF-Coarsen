@@ -25,6 +25,33 @@ DEFAULT_LAMBDA_SPECS = (0.0, 0.25, 0.5, 1.0, 2.0)
 DEFAULT_LAMBDA_CONVS = (0.0, 0.25, 0.5, 1.0)
 
 
+def _apply_source_policy(config: dict, source_policy: str | None) -> dict:
+    if source_policy in {None, "", "none"}:
+        return config
+    if str(source_policy) != "p3-source-aware":
+        raise ValueError(f"unsupported source policy: {source_policy}")
+    cfg = deepcopy(config)
+    candidates = cfg.setdefault("candidates", {})
+    candidates["source_policies"] = {
+        "bucket": {
+            "priority": "high",
+            "topk_per_node": 8,
+        },
+        "onehop": {
+            "priority": "medium",
+            "topk_per_node": 2,
+            "reject_if_delta_spec_above": "bucket_q95",
+        },
+        "fallback": {
+            "max_selected_share": 0.05,
+        },
+    }
+    quotas = candidates.setdefault("quotas", {})
+    quotas["enforce_on"] = "selected_matches"
+    quotas["fallback_max_fraction"] = 0.05
+    return cfg
+
+
 @dataclass(frozen=True)
 class LambdaGridConfig:
     run_name: str
@@ -189,6 +216,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--candidate-K", "--candidate-k", type=int, default=8, dest="candidate_K")
     parser.add_argument("--twohop-budget-per-node", type=int, default=1)
     parser.add_argument("--twohop-max-time-budget-sec", type=float)
+    parser.add_argument("--source-policy", choices=["none", "p3-source-aware"], default="none")
     parser.add_argument("--progress", action="store_true")
     parser.add_argument("--progress-backend", choices=["auto", "plain", "tqdm"], default="plain")
     parser.add_argument("--progress-interval", type=float)
@@ -238,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
                 stream_output=args.progress,
             )
         run_dir = args.output / item.run_name
-        config = deepcopy(item.config)
+        config = _apply_source_policy(deepcopy(item.config), args.source_policy)
         if args.progress:
             config.setdefault("progress", {})["enabled"] = True
         config.setdefault("progress", {})["backend"] = args.progress_backend

@@ -1,7 +1,7 @@
 paper:
   method: HeSF-LVC-T
   variant: H2
-  description: Next7 Pareto knee T; task-balanced H2 setting.
+  description: Next7/Next8 appendix variant for SIPE/REEmax orientation; not the main default.
 coarsening:
   target_ratio: 0.5
   max_levels: 4

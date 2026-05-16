@@ -814,8 +814,14 @@ def _make_candidate_store(
     same_type_only = bool(config.get("coarsening", {}).get("same_type_only", True))
     K = int(candidate_cfg["total_budget_K"])
     backend = str(candidate_cfg.get("store_backend", "heap")).lower()
+    source_policies = candidate_cfg.get("source_policies", candidate_cfg.get("source_policy", {}))
     if backend in {"heap", "bounded_heap"}:
-        return BoundedCandidateStore(graph.node_type, K=K, same_type_only=same_type_only)
+        return BoundedCandidateStore(
+            graph.node_type,
+            K=K,
+            same_type_only=same_type_only,
+            source_policies=source_policies,
+        )
     if backend in {"array", "mmap", "memmap"}:
         mmap_dir = candidate_cfg.get("mmap_dir")
         level_mmap_dir = None if mmap_dir is None else Path(mmap_dir) / f"level_{level}"
@@ -824,6 +830,7 @@ def _make_candidate_store(
             K=K,
             same_type_only=same_type_only,
             mmap_dir=level_mmap_dir,
+            source_policies=source_policies,
         )
     raise ValueError(f"unsupported candidate store_backend: {backend}")
 
@@ -937,6 +944,58 @@ def _selected_source_score_breakdown(
         "selected_source_analysis_total_pairs": total_pairs,
         "selected_source_analysis_sampled_pairs": sampled,
     }
+
+
+def _filter_scored_pairs_by_source_policy(
+    scored: np.ndarray,
+    terms: dict[str, np.ndarray],
+    source_lookup,
+    config: dict,
+) -> tuple[np.ndarray, dict[str, np.ndarray], dict]:
+    candidate_cfg = config.get("candidates", {})
+    policies = candidate_cfg.get("source_policies", candidate_cfg.get("source_policy", {}))
+    if scored.size == 0 or source_lookup is None or not isinstance(policies, dict):
+        return scored, terms, {"enabled": False, "pairs_before": int(scored.shape[0]), "pairs_after": int(scored.shape[0])}
+    spec = np.asarray(terms.get("spec", np.empty(0)), dtype=np.float32)
+    if len(spec) != int(scored.shape[0]):
+        return scored, terms, {"enabled": False, "pairs_before": int(scored.shape[0]), "pairs_after": int(scored.shape[0])}
+
+    sources = np.asarray(
+        [str(source_lookup(int(row[0]), int(row[1])) or "unknown") for row in scored[:, :2]],
+        dtype=object,
+    )
+    keep = np.ones(int(scored.shape[0]), dtype=bool)
+    diagnostics: dict[str, object] = {
+        "enabled": True,
+        "pairs_before": int(scored.shape[0]),
+        "pairs_after": int(scored.shape[0]),
+        "onehop_rejected_by_spec": 0,
+    }
+
+    for source, policy in policies.items():
+        if not isinstance(policy, dict):
+            continue
+        threshold_policy = str(policy.get("reject_if_delta_spec_above", ""))
+        if threshold_policy != "bucket_q95":
+            continue
+        bucket_values = spec[sources == "bucket"]
+        if len(bucket_values) == 0:
+            continue
+        threshold = float(np.percentile(bucket_values, 95))
+        source_mask = sources == str(source)
+        rejected = source_mask & (spec > threshold)
+        keep &= ~rejected
+        diagnostics[f"{source}_reject_threshold"] = threshold
+        diagnostics[f"{source}_rejected_by_spec"] = int(np.count_nonzero(rejected))
+        if str(source) == "onehop":
+            diagnostics["onehop_rejected_by_spec"] = int(np.count_nonzero(rejected))
+
+    filtered_terms = {
+        name: np.asarray(values)[keep]
+        for name, values in terms.items()
+    }
+    diagnostics["pairs_after"] = int(np.count_nonzero(keep))
+    return scored[keep], filtered_terms, diagnostics
 
 
 def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelResult]:
@@ -1176,6 +1235,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         score_contribution_accumulator = ScoreTermAccumulator.from_config(scoring_config)
         scored = None
         scored_pair_count = 0
+        source_policy_filter_diag: dict = {}
         streaming_state = None
         if streaming_mutual_best:
             streaming_state = initialize_mutual_best_state(current)
@@ -1232,6 +1292,12 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
                 partition_id=partition_id,
             )
             scored, term_values = score_pair_block_with_terms(scoring_context, pairs)
+            scored, term_values, source_policy_filter_diag = _filter_scored_pairs_by_source_policy(
+                scored,
+                term_values,
+                getattr(store, "source_for_pair", None),
+                scoring_config,
+            )
             score_term_accumulator.update(term_values)
             score_contribution_accumulator.update(
                 score_term_contributions(scoring_context, term_values)
@@ -1404,6 +1470,7 @@ def run_multilevel_coarsening(graph: HeteroGraph, config: dict) -> list[LevelRes
         diagnostics["score_terms"] = score_term_summary
         diagnostics["score_contributions"] = score_contribution_summary
         diagnostics["score_contribution_share"] = _score_contribution_share(score_contribution_summary)
+        diagnostics["source_policy_filter"] = source_policy_filter_diag
         diagnostics["cumulative_guard"] = cumulative_guard_diag
         diagnostics["terminal_guard"] = dict(
             getattr(assignment, "diagnostics", {}).get(

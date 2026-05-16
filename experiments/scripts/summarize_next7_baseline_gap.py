@@ -27,22 +27,33 @@ COARSE_BASELINE_METHODS = {
     "H0-mutual-best",
     "flatten-sum",
 }
+FULL_GRAPH_METHOD_COLUMNS = {
+    "full RGCN default": "full_graph_rgcn_lite_default_macro_f1",
+    "full RGCN tuned": "full_graph_rgcn_lite_tuned_macro_f1",
+    "HAN-small": "full_graph_han_small_macro_f1",
+    "HGT-lite": "full_graph_hgt_small_macro_f1",
+}
 METHOD_ORDER = [
     "HeSF-LVC-P",
     "HeSF-LVC-S",
-    "HeSF-LVC-T",
+    "H4-no-conv",
+    "H6-no-spec",
     "H0-mutual-best",
     "flatten-sum",
     "random",
     "GraphZoom-style",
     "ConvMatch-style",
+    "full RGCN default",
+    "full RGCN tuned",
+    "HAN-small",
+    "HGT-lite",
+    "HeSF-LVC-T",
     "H2-old",
     "H3-old",
-    "H4-no-conv",
-    "H6-no-spec",
 ]
 METRIC_COLUMNS = [
     "dee",
+    "fse",
     "ree_max",
     "sipe",
     "projected_macro_f1",
@@ -53,6 +64,9 @@ METRIC_COLUMNS = [
     "best_macro_f1",
     "refine_auc_macro_f1",
     "runtime_sec",
+    "train_time_sec",
+    "peak_memory_gb",
+    "coarse_graph_ratio",
 ]
 
 
@@ -101,6 +115,11 @@ def _std(values: Iterable[Any]) -> float | None:
     numbers = [_as_float(value, None) for value in values]
     clean = [float(value) for value in numbers if value is not None]
     return None if len(clean) <= 1 else float(pstdev(clean))
+
+
+def _mean_or_blank(values: Iterable[Any]) -> float | str:
+    value = _mean(values)
+    return "" if value is None else value
 
 
 def _lambda_value(row: Mapping[str, Any], name: str) -> Any:
@@ -154,6 +173,7 @@ def _final_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "lambda_conv": _lambda_value(row, "lambda_conv"),
         "lambda_rel": _lambda_value(row, "lambda_rel"),
         "dee": _first(row, ("cumulative_dee", "cumulative_spectral.dirichlet_energy_relative_error"), ""),
+        "fse": _first(row, ("cumulative_fse_unweighted", "cumulative_spectral.fused_sketch_energy_relative_error"), ""),
         "ree_max": _first(row, ("cumulative_ree_max", "cumulative_spectral.relation_energy_relative_error_max"), ""),
         "sipe": _first(
             row,
@@ -196,6 +216,19 @@ def _final_row(row: Mapping[str, Any]) -> dict[str, Any]:
         "refine_time_sec": _first(row, ("task_refine_time", "task.refine_time", "runtime_by_stage.task_refine"), ""),
         "total_time_sec": _first(row, ("task_total_time", "task.total_time"), ""),
         "runtime_sec": _first(row, ("runtime_total_run", "runtime_total", "task.total_time"), ""),
+        "peak_memory_gb": _first(
+            row,
+            (
+                "peak_gpu_memory_reserved_gb",
+                "peak_vram_reserved_gb",
+                "peak_cpu_memory_gb",
+                "peak_rss_gb",
+            ),
+        ),
+        "peak_cpu_memory_gb": _first(row, ("peak_cpu_memory_gb", "peak_rss_gb"), ""),
+        "peak_gpu_memory_gb": _first(row, ("peak_gpu_memory_reserved_gb", "peak_vram_reserved_gb"), ""),
+        "coarse_graph_ratio": _first(row, ("final_cumulative_ratio", "compression_ratio", "target_control.level_ratio"), ""),
+        "target_hit": _first(row, ("target_hit", "baseline_target_hit"), ""),
         "full_graph_rgcn_lite_default_macro_f1": _first(
             row,
             ("task_full_graph_rgcn_lite_default_macro_f1", "task.full_graph_rgcn_lite_default_macro_f1"),
@@ -234,6 +267,7 @@ def _baseline_row(row: Mapping[str, Any]) -> dict[str, Any] | None:
         "lambda_conv": "",
         "lambda_rel": "",
         "dee": row.get("baseline_cumulative_dee", ""),
+        "fse": row.get("baseline_cumulative_fse_unweighted", ""),
         "ree_max": row.get("baseline_cumulative_ree_max", ""),
         "sipe": row.get("baseline_cumulative_sipe", ""),
         "projected_macro_f1": row.get("baseline_projected_macro_f1", ""),
@@ -250,6 +284,11 @@ def _baseline_row(row: Mapping[str, Any]) -> dict[str, Any] | None:
         "refine_time_sec": row.get("baseline_task_refine_time", ""),
         "total_time_sec": row.get("baseline_task_total_time", ""),
         "runtime_sec": row.get("baseline_runtime_total", ""),
+        "peak_memory_gb": "",
+        "peak_cpu_memory_gb": "",
+        "peak_gpu_memory_gb": "",
+        "coarse_graph_ratio": row.get("baseline_final_cumulative_ratio", ""),
+        "target_hit": row.get("baseline_target_hit", ""),
         "full_graph_rgcn_lite_default_macro_f1": "",
         "full_graph_rgcn_lite_tuned_macro_f1": "",
         "full_graph_han_small_macro_f1": "",
@@ -310,9 +349,66 @@ def _full_refs(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(refs.values(), key=lambda item: (str(item["dataset"]), str(item["seed"])))
 
 
+def _full_graph_rows(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    for ref in _full_refs(rows):
+        for method, column in FULL_GRAPH_METHOD_COLUMNS.items():
+            value = ref.get(column, "")
+            if value == "":
+                continue
+            output.append(
+                {
+                    "method": method,
+                    "source": "full_graph_reference",
+                    "dataset": ref["dataset"],
+                    "variant": "full_graph",
+                    "seed": ref["seed"],
+                    "target_ratio": "1.0",
+                    "run_name": f"{ref['dataset']}_{method}_{ref['seed']}",
+                    "run_dir": "",
+                    "lambda_spec": "",
+                    "lambda_conv": "",
+                    "lambda_rel": "",
+                    "dee": "",
+                    "fse": "",
+                    "ree_max": "",
+                    "sipe": "",
+                    "projected_macro_f1": value,
+                    "refined_macro_f1@0": value,
+                    "refined_macro_f1@1": value,
+                    "refined_macro_f1@3": value,
+                    "refined_macro_f1@5": value,
+                    "best_macro_f1": value,
+                    "refine_auc_macro_f1": value,
+                    "train_time_sec": "",
+                    "refine_time_sec": "",
+                    "total_time_sec": "",
+                    "runtime_sec": "",
+                    "peak_memory_gb": "",
+                    "peak_cpu_memory_gb": "",
+                    "peak_gpu_memory_gb": "",
+                    "coarse_graph_ratio": "1.0",
+                    "target_hit": "true",
+                    **{name: ref.get(name, "") for name in FULL_GRAPH_METHOD_COLUMNS.values()},
+                }
+            )
+    return output
+
+
 def _attach_gaps(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     best_baselines = _best_by_key(rows, COARSE_BASELINE_METHODS)
-    h0_rows = _best_by_key(rows, {"H0-mutual-best"})
+    comparator_sets = {
+        "H0": {"H0-mutual-best"},
+        "flatten_sum": {"flatten-sum"},
+        "GraphZoom_style": {"GraphZoom-style"},
+        "ConvMatch_style": {"ConvMatch-style"},
+        "random": {"random"},
+        "full_RGCN_tuned": {"full RGCN tuned"},
+    }
+    comparators = {
+        name: _best_by_key(rows, methods)
+        for name, methods in comparator_sets.items()
+    }
     full_refs_by_key = {
         (str(row["dataset"]), str(row["seed"])): row
         for row in _full_refs(rows)
@@ -322,12 +418,9 @@ def _attach_gaps(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
         output = dict(row)
         key = (str(row.get("dataset", "")), str(row.get("seed", "")))
         best_baseline = best_baselines.get(key)
-        h0 = h0_rows.get(key)
         full_ref = full_refs_by_key.get(key)
-        for prefix, comparator in (
-            ("best_baseline", best_baseline),
-            ("h0", h0),
-        ):
+        output["oracle_coarse_baseline_method"] = best_baseline.get("method", "") if best_baseline else ""
+        for prefix, comparator in (("best_baseline", best_baseline),):
             output[f"{prefix}_method"] = comparator.get("method", "") if comparator else ""
             output[f"delta_best_vs_{prefix}"] = ""
             output[f"dee_reduction_vs_{prefix}"] = ""
@@ -340,6 +433,24 @@ def _attach_gaps(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
                 comp_dee = _as_float(comparator.get("dee"), None)
                 if own_dee is not None and comp_dee not in (None, 0.0):
                     output[f"dee_reduction_vs_{prefix}"] = (comp_dee - own_dee) / comp_dee
+        output["delta_best_vs_oracle_coarse_baseline"] = output["delta_best_vs_best_baseline"]
+        output["dee_reduction_vs_oracle_coarse_baseline"] = output["dee_reduction_vs_best_baseline"]
+        for name, comparator_by_key in comparators.items():
+            comparator = comparator_by_key.get(key)
+            output[f"{name}_method"] = comparator.get("method", "") if comparator else ""
+            output[f"delta_vs_{name}"] = ""
+            output[f"dee_reduction_vs_{name}"] = ""
+            if comparator:
+                own_best = _as_float(row.get("best_macro_f1"), None)
+                comp_best = _as_float(comparator.get("best_macro_f1"), None)
+                if own_best is not None and comp_best is not None:
+                    output[f"delta_vs_{name}"] = own_best - comp_best
+                own_dee = _as_float(row.get("dee"), None)
+                comp_dee = _as_float(comparator.get("dee"), None)
+                if own_dee is not None and comp_dee not in (None, 0.0):
+                    output[f"dee_reduction_vs_{name}"] = (comp_dee - own_dee) / comp_dee
+        output["delta_best_vs_h0"] = output["delta_vs_H0"]
+        output["dee_reduction_vs_h0"] = output["dee_reduction_vs_H0"]
         output["delta_best_vs_full_tuned"] = ""
         if full_ref:
             own_best = _as_float(row.get("best_macro_f1"), None)
@@ -371,14 +482,28 @@ def _group_rows(rows: Sequence[dict[str, Any]], group_keys: Sequence[str]) -> li
                 if mean_value is None
                 else f"{_fmt(mean_value)} +/- {_fmt(std_value or 0.0)}"
             )
+        hit_values = [
+            1.0 if str(row.get("target_hit", "")).lower() == "true" else 0.0
+            for row in group
+            if str(row.get("target_hit", "")) != ""
+        ]
+        summary["target_hit_rate"] = "" if not hit_values else float(mean(hit_values))
         for gap_col in (
             "delta_best_vs_best_baseline",
+            "delta_best_vs_oracle_coarse_baseline",
             "delta_best_vs_h0",
             "delta_best_vs_full_tuned",
+            "delta_vs_H0",
+            "delta_vs_flatten_sum",
+            "delta_vs_GraphZoom_style",
+            "delta_vs_ConvMatch_style",
+            "delta_vs_random",
+            "delta_vs_full_RGCN_tuned",
             "dee_reduction_vs_best_baseline",
+            "dee_reduction_vs_oracle_coarse_baseline",
             "dee_reduction_vs_h0",
         ):
-            summary[f"{gap_col}_mean"] = _mean(row.get(gap_col) for row in group) or ""
+            summary[f"{gap_col}_mean"] = _mean_or_blank(row.get(gap_col) for row in group)
         output.append(summary)
     return sorted(output, key=lambda row: _sort_key(row.get("method", "")))
 
@@ -452,6 +577,70 @@ def _pareto_rows(aggregate_rows: Sequence[dict[str, Any]]) -> list[dict[str, Any
     return sorted(points, key=lambda row: _sort_key(row["method"]))
 
 
+def _quality_cost_rows(aggregate_rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for row in aggregate_rows:
+        rows.append(
+            {
+                "method": row.get("method", ""),
+                "wall_clock_sec_mean": row.get("runtime_sec_mean", ""),
+                "peak_memory_gb_mean": row.get("peak_memory_gb_mean", ""),
+                "train_time_sec_mean": row.get("train_time_sec_mean", ""),
+                "best_macro_f1_mean": row.get("best_macro_f1_mean", ""),
+                "refined_macro_f1@5_mean": row.get("refined_macro_f1@5_mean", ""),
+                "coarse_graph_ratio_mean": row.get("coarse_graph_ratio_mean", ""),
+            }
+        )
+    return sorted(rows, key=lambda row: _sort_key(row["method"]))
+
+
+def _write_quality_cost_figures(output: Path, rows: Sequence[dict[str, Any]]) -> None:
+    figures = output / "figures"
+    figures.mkdir(parents=True, exist_ok=True)
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        for name in (
+            "quality_cost_best_macro_f1_vs_wall_clock.png",
+            "quality_cost_best_macro_f1_vs_peak_memory.png",
+            "quality_cost_best_macro_f1_vs_train_time.png",
+        ):
+            (figures / name).write_bytes(b"")
+        return
+
+    specs = [
+        ("wall_clock_sec_mean", "wall-clock sec", "quality_cost_best_macro_f1_vs_wall_clock.png"),
+        ("peak_memory_gb_mean", "peak memory GB", "quality_cost_best_macro_f1_vs_peak_memory.png"),
+        ("train_time_sec_mean", "train time sec", "quality_cost_best_macro_f1_vs_train_time.png"),
+    ]
+    for x_key, xlabel, filename in specs:
+        points = [
+            (
+                str(row.get("method", "")),
+                _as_float(row.get(x_key), None),
+                _as_float(row.get("best_macro_f1_mean"), None),
+                _as_float(row.get("coarse_graph_ratio_mean"), 1.0) or 1.0,
+            )
+            for row in rows
+        ]
+        points = [(label, x, y, ratio) for label, x, y, ratio in points if x is not None and y is not None]
+        plt.figure(figsize=(7, 4.5))
+        if points:
+            labels, xs, ys, ratios = zip(*points)
+            sizes = [max(30.0, 220.0 * float(ratio)) for ratio in ratios]
+            plt.scatter(xs, ys, s=sizes, alpha=0.8)
+            for label, x, y, _ratio in points:
+                plt.annotate(label, (x, y), textcoords="offset points", xytext=(5, 4), fontsize=8)
+        plt.xlabel(xlabel)
+        plt.ylabel("best macro-F1")
+        plt.tight_layout()
+        plt.savefig(figures / filename, dpi=160)
+        plt.close()
+
+
 def summarize_next7_baseline_gap(
     *,
     input_summaries: Sequence[str | Path],
@@ -467,12 +656,14 @@ def summarize_next7_baseline_gap(
             converted = _baseline_row(row)
             if converted is not None:
                 rows.append(converted)
+    rows.extend(_full_graph_rows(rows))
     rows = _attach_gaps(_dedupe(rows))
 
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     aggregate_rows = _group_rows(rows, ["method"])
     per_dataset_rows = _group_rows(rows, ["dataset", "method"])
+    quality_cost_rows = _quality_cost_rows(aggregate_rows)
     gap_rows = _group_rows(
         [row for row in rows if row.get("method") not in COARSE_BASELINE_METHODS],
         ["method"],
@@ -481,10 +672,14 @@ def summarize_next7_baseline_gap(
     write_csv(output / "per_seed_table.csv", rows)
     write_csv(output / "aggregate_main_table.csv", aggregate_rows)
     write_csv(output / "per_dataset_main_table.csv", per_dataset_rows)
+    write_csv(output / "final_gap_main_table.csv", aggregate_rows)
+    write_csv(output / "final_gap_per_dataset_table.csv", per_dataset_rows)
     write_csv(output / "gap_summary.csv", gap_rows)
     write_csv(output / "win_rate_by_seed.csv", _win_rows(rows))
     write_csv(output / "pareto_points.csv", _pareto_rows(aggregate_rows))
+    write_csv(output / "quality_cost_pareto_points.csv", quality_cost_rows)
     write_csv(output / "full_graph_reference_table.csv", _full_refs(rows))
+    _write_quality_cost_figures(output, quality_cost_rows)
     (output / "run_commands.txt").write_text("\n".join(command_lines) + ("\n" if command_lines else ""), encoding="utf-8")
 
     report_rows = [
@@ -499,6 +694,10 @@ def summarize_next7_baseline_gap(
             "random",
             "GraphZoom-style",
             "ConvMatch-style",
+            "full RGCN default",
+            "full RGCN tuned",
+            "HAN-small",
+            "HGT-lite",
         }
     ]
     report = [
@@ -517,19 +716,24 @@ def summarize_next7_baseline_gap(
                 "seed_count",
                 "datasets",
                 "dee_mean_pm_std",
+                "fse_mean_pm_std",
                 "ree_max_mean_pm_std",
                 "sipe_mean_pm_std",
+                "projected_macro_f1_mean_pm_std",
+                "refined_macro_f1@0_mean_pm_std",
+                "refined_macro_f1@1_mean_pm_std",
+                "refined_macro_f1@3_mean_pm_std",
                 "refined_macro_f1@5_mean_pm_std",
                 "best_macro_f1_mean_pm_std",
                 "refine_auc_macro_f1_mean_pm_std",
-                "delta_best_vs_best_baseline_mean",
-                "delta_best_vs_full_tuned_mean",
+                "delta_best_vs_oracle_coarse_baseline_mean",
+                "delta_vs_full_RGCN_tuned_mean",
             ],
         ),
         "",
         "## Notes",
         "",
-        "- Best baseline is selected per dataset/seed from random, GraphZoom-style, ConvMatch-style, H0-mutual-best, and flatten-sum.",
+        "- oracle coarse baseline is selected per dataset/seed from random, GraphZoom-style, ConvMatch-style, H0-mutual-best, and flatten-sum.",
         "- Spectral reductions use DEE, where lower is better.",
         "- Full graph references are read from cached task-eval columns when available.",
         "",

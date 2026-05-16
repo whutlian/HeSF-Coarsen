@@ -75,3 +75,32 @@ def test_task_eval_reports_named_full_graph_baselines():
         assert f"{name}_micro_f1" in metrics
         assert f"{name}_train_time" in metrics
         assert metrics.get(f"{name}_skipped", False) is False
+
+
+@pytest.mark.parametrize("coarse_model", ["rgcn_lite", "han_small", "hgt_lite"])
+def test_task_eval_supports_named_coarse_models(coarse_model):
+    pytest.importorskip("torch")
+    graph = generate_synthetic_graph(num_users=12, num_items=7, num_tags=4, seed=808)
+    mapping = np.arange(graph.num_nodes, dtype=np.int64)
+
+    metrics = evaluate_rgcn_task(
+        graph,
+        graph,
+        mapping,
+        seed=808,
+        hidden_dim=8,
+        epochs=1,
+        refine_epochs=0,
+        refine_epochs_list=[0],
+        device="cpu",
+        coarse_model=coarse_model,
+        train_fraction=0.1,
+        val_fraction=0.1,
+    ).metrics
+
+    assert metrics["coarse_model"] == coarse_model
+    assert metrics["model"] == coarse_model
+    assert metrics["train_fraction"] == 0.1
+    assert metrics["val_fraction"] == 0.1
+    assert "projected_original_macro_f1" in metrics
+    assert "refined_original_macro_f1@0" in metrics

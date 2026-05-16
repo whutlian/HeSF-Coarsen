@@ -88,6 +88,9 @@ def test_experiment_scripts_support_help():
         "summarize_experiments.py",
         "make_synthetic_scale.py",
         "run_synthetic_scale.py",
+        "summarize_ogbn_system_scale.py",
+        "summarize_p1_flatten_sum_challenge.py",
+        "summarize_p3_source_aware.py",
     ]
     for script in scripts:
         completed = subprocess.run(
@@ -634,6 +637,8 @@ def test_hgb_lambda_grid_dry_run_generates_lambda_configs(tmp_path):
             "0",
             "--seeds",
             "12345",
+            "--source-policy",
+            "p3-source-aware",
             "--dry-run",
         ]
     )
@@ -647,6 +652,12 @@ def test_hgb_lambda_grid_dry_run_generates_lambda_configs(tmp_path):
     assert {cfg["scoring"]["lambda_spec"] for cfg in configs} == {0.0, 1.0}
     assert {cfg["scoring"]["lambda_conv"] for cfg in configs} == {0.0, 0.5}
     assert {cfg["scoring"]["lambda_rel"] for cfg in configs} == {0.0}
+    first_policy = configs[0]["candidates"]["source_policies"]
+    assert first_policy["bucket"]["topk_per_node"] == 8
+    assert first_policy["onehop"]["topk_per_node"] == 2
+    assert first_policy["onehop"]["reject_if_delta_spec_above"] == "bucket_q95"
+    assert first_policy["fallback"]["max_selected_share"] == 0.05
+    assert configs[0]["candidates"]["quotas"]["enforce_on"] == "selected_matches"
 
 
 def test_next4_mainline_default_freezes_short_confirmation_matrix(tmp_path):
@@ -1549,6 +1560,74 @@ def test_stage_b_ablation_supports_matching_and_repair_objective_variants(tmp_pa
 
     parsed = build_task_eval_parser().parse_args(["--runs-root", "runs", "--refine-epochs-list", "0", "1", "3", "5"])
     assert parsed.refine_epochs_list == [0, 1, 3, 5]
+    parsed_models = build_task_eval_parser().parse_args(
+        [
+            "--runs-root",
+            "runs",
+            "--coarse-models",
+            "rgcn_lite",
+            "han_small",
+            "hgt_lite",
+            "--no-write-run-json",
+        ]
+    )
+    assert parsed_models.coarse_models == ["rgcn_lite", "han_small", "hgt_lite"]
+    assert parsed_models.write_run_json is False
+
+
+def test_hgb_task_eval_writes_one_row_per_coarse_model_without_cache_overwrite(tmp_path, monkeypatch):
+    from experiments.scripts import run_hgb_task_eval as task_eval
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "metadata.json").write_text(
+        json.dumps({"dataset": "ACM", "variant": "H2", "status": "success"}),
+        encoding="utf-8",
+    )
+    existing_cache = run_dir / "task_eval.json"
+    existing_cache.write_text('{"cached": true}', encoding="utf-8")
+
+    calls = []
+
+    def fake_discover_run_dirs(_inputs):
+        return [run_dir]
+
+    def fake_evaluate_run(run_dir_arg, **kwargs):
+        calls.append(kwargs)
+        return {
+            "run_name": Path(run_dir_arg).name,
+            "dataset": "ACM",
+            "variant": "H2",
+            "coarse_model": kwargs["coarse_model"],
+            "status": "success",
+        }
+
+    monkeypatch.setattr(task_eval, "discover_run_dirs", fake_discover_run_dirs)
+    monkeypatch.setattr(task_eval, "evaluate_run", fake_evaluate_run)
+
+    output = tmp_path / "task_eval.csv"
+    exit_code = task_eval.main(
+        [
+            "--runs-root",
+            str(tmp_path),
+            "--datasets",
+            "ACM",
+            "--variants",
+            "H2",
+            "--coarse-models",
+            "rgcn_lite",
+            "han_small",
+            "--no-write-run-json",
+            "--output",
+            str(output),
+        ]
+    )
+
+    rows = list(csv.DictReader(output.open()))
+    assert exit_code == 0
+    assert [row["coarse_model"] for row in rows] == ["rgcn_lite", "han_small"]
+    assert [call["write_run_json"] for call in calls] == [False, False]
+    assert existing_cache.read_text(encoding="utf-8") == '{"cached": true}'
 
 
 def test_sanity_runner_outputs_summary_and_report(tmp_path):

@@ -22,6 +22,7 @@ def run_greedy_matching(
     max_matched_pairs = coarsen_cfg.get("max_matched_pairs")
     if max_matched_pairs is not None:
         max_matched_pairs = int(max_matched_pairs)
+    selected_limits = _selected_source_limits(config, max_matched_pairs)
 
     used = np.zeros(graph.num_nodes, dtype=bool)
     assignment = np.full(graph.num_nodes, -1, dtype=np.int64)
@@ -55,6 +56,10 @@ def run_greedy_matching(
             and partition_id[i] != partition_id[j]
         ):
             continue
+        source = _quota_source_key(_source_name(source_lookup, i, j))
+        limit = selected_limits.get(source)
+        if limit is not None and selected_sources.get(source, 0) >= limit:
+            continue
         super_id = len(super_types)
         assignment[i] = super_id
         assignment[j] = super_id
@@ -63,7 +68,6 @@ def run_greedy_matching(
         super_types.append(int(graph.node_type[i]))
         matched += 1
         selected_pairs.append((i, j))
-        source = _source_name(source_lookup, i, j)
         selected_sources[source] = selected_sources.get(source, 0) + 1
 
     for node in range(graph.num_nodes):
@@ -96,6 +100,7 @@ def run_greedy_cluster_matching(
     max_cluster_size = max(2, int(coarsen_cfg.get("max_cluster_size", 4)))
     max_matched_pairs = coarsen_cfg.get("max_matched_pairs")
     max_merges = None if max_matched_pairs is None else max(0, int(max_matched_pairs))
+    selected_limits = _selected_source_limits(config, max_merges)
     terminal_state = _terminal_guard_state(graph, config, partition_id)
     if max_merges == 0:
         assignment = _singleton_assignment(graph)
@@ -164,6 +169,10 @@ def run_greedy_cluster_matching(
             combined_size,
         ):
             continue
+        source = _quota_source_key(_source_name(source_lookup, i, j))
+        limit = selected_limits.get(source)
+        if limit is not None and selected_sources.get(source, 0) >= limit:
+            continue
         if size[root_i] < size[root_j] or (size[root_i] == size[root_j] and root_j < root_i):
             root_i, root_j = root_j, root_i
         parent[root_j] = root_i
@@ -171,7 +180,6 @@ def run_greedy_cluster_matching(
         protected_count[root_i] += protected_count[root_j]
         merges += 1
         selected_pairs.append((i, j))
-        source = _source_name(source_lookup, i, j)
         selected_sources[source] = selected_sources.get(source, 0) + 1
 
     root_to_super: dict[int, int] = {}
@@ -489,6 +497,30 @@ def _quota_source_key(source: str) -> str:
     if normalized in {"twohop", "capped_twohop", "capped-twohop"}:
         return "capped_twohop"
     return normalized
+
+
+def _selected_source_limits(config: dict, max_selected: int | None) -> dict[str, int]:
+    if max_selected is None:
+        return {}
+    limit_base = max(0, int(max_selected))
+    candidate_cfg = config.get("candidates", {})
+    quotas = candidate_cfg.get("quotas", {}) or {}
+    policies = candidate_cfg.get("source_policies", candidate_cfg.get("source_policy", {})) or {}
+    enforce_on = str(quotas.get("enforce_on", "candidate_retention")).lower() if isinstance(quotas, dict) else ""
+    if enforce_on not in {"selected_matches", "selected-match", "selected"} and not isinstance(policies, dict):
+        return {}
+    limits: dict[str, int] = {}
+    if isinstance(quotas, dict):
+        for source, key in (("fallback", "fallback_max_fraction"), ("capped_twohop", "twohop_max_fraction")):
+            if quotas.get(key) is not None:
+                limits[source] = int(floor(limit_base * float(quotas[key]) + 1.0e-12))
+    if isinstance(policies, dict):
+        for source, policy in policies.items():
+            if isinstance(policy, dict) and policy.get("max_selected_share") is not None:
+                limits[_quota_source_key(str(source))] = int(
+                    floor(limit_base * float(policy["max_selected_share"]) + 1.0e-12)
+                )
+    return limits
 
 
 def _source_distribution(

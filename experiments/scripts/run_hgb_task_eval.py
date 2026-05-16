@@ -126,11 +126,13 @@ def evaluate_run(
     full_graph_rgcn_lite: bool,
     full_graph_baselines: list[str] | None = None,
     full_graph_tuned_epochs: int | None = None,
+    coarse_model: str = "rgcn_lite",
     target_node_type: str | None = None,
     train_fraction: float = 0.6,
     val_fraction: float = 0.2,
     macro_empty_class_policy: str = "truth_pred_union",
     official_ogbn_split_root: Path | None = None,
+    write_run_json: bool = True,
 ) -> dict[str, Any]:
     metadata_path = run_dir / "metadata.json"
     metadata = read_json(metadata_path) if metadata_path.exists() else {}
@@ -162,6 +164,7 @@ def evaluate_run(
         full_graph_rgcn_lite=bool(full_graph_rgcn_lite),
         full_graph_baselines=full_graph_baselines,
         full_graph_tuned_epochs=full_graph_tuned_epochs,
+        coarse_model=coarse_model,
         target_node_type=target_node_type,
         train_fraction=float(train_fraction),
         val_fraction=float(val_fraction),
@@ -182,7 +185,9 @@ def evaluate_run(
             "original_nodes": original.num_nodes,
         }
     )
-    write_json(run_dir / "task_eval.json", result)
+    if write_run_json:
+        suffix = "" if str(coarse_model) == "rgcn_lite" else f"_{str(coarse_model)}"
+        write_json(run_dir / f"task_eval{suffix}.json", result)
     return result
 
 
@@ -199,6 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--refine-epochs-list", type=int, nargs="+", default=None)
     parser.add_argument("--hidden-dim", type=int, default=32)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--coarse-models", nargs="+", default=["rgcn_lite"])
     parser.add_argument(
         "--full-graph-rgcn-lite",
         "--include-full-graph-baseline",
@@ -229,6 +235,13 @@ def build_parser() -> argparse.ArgumentParser:
         default="truth_pred_union",
         choices=["truth_pred_union", "eval_present"],
     )
+    parser.add_argument(
+        "--no-write-run-json",
+        action="store_false",
+        dest="write_run_json",
+        help="Do not write per-run task_eval*.json files; useful for challenge sweeps.",
+    )
+    parser.set_defaults(write_run_json=True)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--progress", action="store_true")
     return parser
@@ -253,35 +266,43 @@ def main(argv: list[str] | None = None) -> int:
         selected.append(run_dir)
     if args.limit is not None:
         selected = selected[: int(args.limit)]
+    coarse_models = [str(model) for model in args.coarse_models]
     for index, run_dir in enumerate(selected, start=1):
-        if args.progress:
-            print(f"[task-eval] {index}/{len(selected)} {run_dir.name}", flush=True)
-        try:
-            row = evaluate_run(
-                run_dir,
-                graph_root=args.graph_root,
-                seed=args.seed,
-                epochs=args.epochs,
-                refine_epochs=args.refine_epochs,
-                refine_epochs_list=args.refine_epochs_list,
-                hidden_dim=args.hidden_dim,
-                device=args.device,
-                full_graph_rgcn_lite=args.full_graph_rgcn_lite,
-                full_graph_baselines=args.full_graph_baselines,
-                full_graph_tuned_epochs=args.full_graph_tuned_epochs,
-                target_node_type=args.target_node_type,
-                train_fraction=float(args.train_fraction),
-                val_fraction=float(args.val_fraction),
-                macro_empty_class_policy=str(args.macro_empty_class_policy),
-                official_ogbn_split_root=args.official_ogbn_split_root,
-            )
-        except Exception as exc:
-            row = {
-                "run_name": run_dir.name,
-                "status": "failed",
-                "failure_reason": str(exc),
-            }
-        rows.append(row)
+        for coarse_model in coarse_models:
+            if args.progress:
+                print(
+                    f"[task-eval] {index}/{len(selected)} {run_dir.name} coarse_model={coarse_model}",
+                    flush=True,
+                )
+            try:
+                row = evaluate_run(
+                    run_dir,
+                    graph_root=args.graph_root,
+                    seed=args.seed,
+                    epochs=args.epochs,
+                    refine_epochs=args.refine_epochs,
+                    refine_epochs_list=args.refine_epochs_list,
+                    hidden_dim=args.hidden_dim,
+                    device=args.device,
+                    full_graph_rgcn_lite=args.full_graph_rgcn_lite,
+                    full_graph_baselines=args.full_graph_baselines,
+                    full_graph_tuned_epochs=args.full_graph_tuned_epochs,
+                    coarse_model=coarse_model,
+                    target_node_type=args.target_node_type,
+                    train_fraction=float(args.train_fraction),
+                    val_fraction=float(args.val_fraction),
+                    macro_empty_class_policy=str(args.macro_empty_class_policy),
+                    official_ogbn_split_root=args.official_ogbn_split_root,
+                    write_run_json=bool(args.write_run_json),
+                )
+            except Exception as exc:
+                row = {
+                    "run_name": run_dir.name,
+                    "status": "failed",
+                    "failure_reason": str(exc),
+                    "coarse_model": coarse_model,
+                }
+            rows.append(row)
     output = args.output or (args.runs_root / "task_eval_summary.csv")
     write_csv(output, rows)
     return 0 if all(str(row.get("status", "success")) != "failed" for row in rows) else 1

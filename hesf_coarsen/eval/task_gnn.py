@@ -312,19 +312,28 @@ def evaluate_rgcn_task(
     full_graph_rgcn_lite: bool = False,
     full_graph_baselines: Iterable[str] | None = None,
     full_graph_tuned_epochs: int | None = None,
+    coarse_model: str = "rgcn_lite",
     target_node_type: str | int | None = None,
     train_fraction: float = 0.6,
     val_fraction: float = 0.2,
     macro_empty_class_policy: str = "truth_pred_union",
     official_split_nodes: Mapping[str, np.ndarray] | None = None,
 ) -> TaskEvalResult:
+    coarse_model_name = str(coarse_model).lower().replace("-", "_")
+    if coarse_model_name in {"hgt_small", "full_graph_hgt_small"}:
+        coarse_model_name = "hgt_lite"
+    if coarse_model_name in {"han", "full_graph_han_small"}:
+        coarse_model_name = "han_small"
+    if coarse_model_name in {"rgcn", "full_graph_rgcn_lite_default"}:
+        coarse_model_name = "rgcn_lite"
     try:
         import torch
         from torch import nn
     except Exception as exc:  # pragma: no cover - exercised only without torch installed.
         return TaskEvalResult(
             {
-                "model": "rgcn_lite",
+                "model": coarse_model_name,
+                "coarse_model": coarse_model_name,
                 "skipped": True,
                 "skip_reason": f"torch_unavailable: {exc}",
             }
@@ -351,7 +360,8 @@ def evaluate_rgcn_task(
     if len(train_nodes) == 0 or len(test_nodes) == 0:
         return TaskEvalResult(
             {
-                "model": "rgcn_lite",
+                "model": coarse_model_name,
+                "coarse_model": coarse_model_name,
                 "skipped": True,
                 "skip_reason": "not_enough_labeled_nodes",
                 **task_protocol,
@@ -613,6 +623,15 @@ def evaluate_rgcn_task(
     coarse_train = torch.as_tensor(coarse_train_nodes, dtype=torch.long, device=dev)
     original_train = torch.as_tensor(train_nodes, dtype=torch.long, device=dev)
 
+    def task_model_factory(name: str, graph: HeteroGraph):
+        if name == "rgcn_lite":
+            return RGCNLite(graph, model_hidden_dim=int(hidden_dim), dropout=0.2)
+        if name == "han_small":
+            return HANSmall(graph, model_hidden_dim=max(int(hidden_dim), 32), dropout=0.25)
+        if name == "hgt_lite":
+            return HGTLite(graph, model_hidden_dim=max(int(hidden_dim), 32), dropout=0.25)
+        raise ValueError(f"unsupported coarse_model: {coarse_model}")
+
     def train_model(
         model: Any,
         data: dict[str, Any],
@@ -692,7 +711,7 @@ def evaluate_rgcn_task(
                 }
         return scores, float(elapsed)
 
-    model = RGCNLite(coarse).to(dev)
+    model = task_model_factory(coarse_model_name, coarse).to(dev)
     train_time = train_model(model, coarse_data, coarse_y, coarse_train, int(epochs))
     coarse_pred = eval_model(model, coarse_data)
     coarse_train_f1 = f1_scores(
@@ -707,7 +726,7 @@ def evaluate_rgcn_task(
         macro_empty_class_policy=macro_empty_class_policy,
     )
 
-    refine_model = RGCNLite(original).to(dev)
+    refine_model = task_model_factory(coarse_model_name, original).to(dev)
     refine_model.load_state_dict(model.state_dict(), strict=False)
     checkpoint_metrics: dict[int, dict[str, float]] = {}
     if refine_epochs_list is None:
@@ -745,13 +764,16 @@ def evaluate_rgcn_task(
     primary_metric = refined_f1["macro_f1"]
 
     metrics = {
-        "model": "rgcn_lite",
+        "model": coarse_model_name,
+        "coarse_model": coarse_model_name,
         "skipped": False,
         "device": device_name,
         "train_on": "coarse_train_labels_only",
         "eval_on": "original_test_refined",
         "projection_eval_on": "original_test_projected",
         "refine_eval_on": "original_test_refined",
+        "train_fraction": float(train_fraction),
+        "val_fraction": float(val_fraction),
         "num_classes": int(num_classes),
         "train_labeled_nodes": int(len(train_nodes)),
         "val_labeled_nodes": int(len(val_nodes)),
@@ -769,11 +791,11 @@ def evaluate_rgcn_task(
         "primary_task_metric": primary_metric,
         "micro_f1": refined_f1["micro_f1"],
         "macro_f1": refined_f1["macro_f1"],
-            "train_time": float(train_time),
-            "refine_time": float(refine_time),
-            "total_time": float(train_time + refine_time),
-            **refine_curve_summary(checkpoint_metrics),
-        }
+        "train_time": float(train_time),
+        "refine_time": float(refine_time),
+        "total_time": float(train_time + refine_time),
+        **refine_curve_summary(checkpoint_metrics),
+    }
     for checkpoint, values in sorted(checkpoint_metrics.items()):
         suffix = f"@{checkpoint}"
         metrics[f"refined_original_micro_f1{suffix}"] = values["micro_f1"]

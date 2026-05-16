@@ -13,15 +13,47 @@ class BoundedCandidateStore:
     fixed-size arrays or mmap buffers for the large-scale path.
     """
 
-    def __init__(self, node_type: np.ndarray, K: int, same_type_only: bool = True):
+    _PRIORITY_OFFSET = {
+        "high": -1.0e12,
+        "medium": 0.0,
+        "normal": 0.0,
+        "low": 1.0e12,
+    }
+
+    def __init__(
+        self,
+        node_type: np.ndarray,
+        K: int,
+        same_type_only: bool = True,
+        source_policies: dict | None = None,
+    ):
         self.node_type = np.asarray(node_type, dtype=np.int32)
         self.K = int(K)
         self.same_type_only = bool(same_type_only)
+        self.source_policies = source_policies if isinstance(source_policies, dict) else {}
         self._per_node: list[dict[int, tuple[float, str]]] = [
             {} for _ in range(len(self.node_type))
         ]
         self._pairs: dict[tuple[int, int], tuple[float, str]] = {}
         self._source_counts: Counter[str] = Counter()
+
+    def _policy(self, source: str) -> dict:
+        policy = self.source_policies.get(str(source), {})
+        return policy if isinstance(policy, dict) else {}
+
+    def _retention_score(self, score: float, source: str) -> float:
+        priority = str(self._policy(source).get("priority", "normal")).lower()
+        return float(score) + float(self._PRIORITY_OFFSET.get(priority, 0.0))
+
+    def _source_cap_allows(self, node: int, source: str, other: int) -> bool:
+        cap = self._policy(source).get("topk_per_node")
+        if cap is None:
+            return True
+        current = self._per_node[node]
+        if other in current and current[other][1] == source:
+            return True
+        used = sum(1 for _score, current_source in current.values() if current_source == source)
+        return used < int(cap)
 
     def _key(self, i: int, j: int) -> tuple[int, int]:
         return (i, j) if i < j else (j, i)
@@ -61,8 +93,11 @@ class BoundedCandidateStore:
             raise IndexError("candidate endpoint out of bounds")
         if self.same_type_only and self.node_type[i] != self.node_type[j]:
             return
-        score = float(score)
+        source = str(source)
+        score = self._retention_score(float(score), source)
         key = self._key(i, j)
+        if not self._source_cap_allows(i, source, j) or not self._source_cap_allows(j, source, i):
+            return
 
         if key in self._pairs:
             old_score, old_source = self._pairs[key]

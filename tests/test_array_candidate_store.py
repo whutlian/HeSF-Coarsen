@@ -1,6 +1,7 @@
 import numpy as np
 
 from hesf_coarsen.candidates.array_store import ArrayCandidateStore
+from hesf_coarsen.candidates.bounded_heap import BoundedCandidateStore
 from hesf_coarsen.candidates.bucket import generate_bucket_candidates_chunked
 from hesf_coarsen.candidates import capped_twohop as capped_twohop_module
 from hesf_coarsen.candidates.capped_twohop import generate_capped_twohop_candidates_chunked
@@ -22,6 +23,13 @@ def _sort_pairs(pairs):
         return pairs
     order = np.lexsort((pairs[:, 2], pairs[:, 1], pairs[:, 0]))
     return pairs[order]
+
+
+def _source_policy():
+    return {
+        "bucket": {"priority": "high", "topk_per_node": 8},
+        "onehop": {"priority": "medium", "topk_per_node": 1},
+    }
 
 
 def test_array_candidate_store_bounds_dedupes_and_can_use_memmap(tmp_path):
@@ -88,6 +96,20 @@ def test_array_candidate_store_removes_reciprocal_slot_on_eviction():
 
     assert (0, 1) not in pairs
     assert store.counts()[1] == 0
+
+
+def test_candidate_stores_apply_source_topk_and_priority():
+    for store_cls in (ArrayCandidateStore, BoundedCandidateStore):
+        node_type = np.zeros(4, dtype=np.int32)
+        store = store_cls(node_type, K=1, source_policies=_source_policy())
+
+        store.add(0, 1, 0.1, "onehop")
+        store.add(0, 2, 0.2, "onehop")
+        store.add(0, 3, 100.0, "bucket")
+
+        assert store.source_for_pair(0, 3) == "bucket"
+        assert store.source_for_pair(0, 1) is None
+        assert store.source_counts() == {"bucket": 1}
 
 
 def test_chunked_onehop_candidates_use_array_store():

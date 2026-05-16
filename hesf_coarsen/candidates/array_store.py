@@ -21,6 +21,12 @@ class ArrayCandidateStore:
         "fallback": 4,
         "partition_ann": 5,
     }
+    _PRIORITY_OFFSET = {
+        "high": -1.0e12,
+        "medium": 0.0,
+        "normal": 0.0,
+        "low": 1.0e12,
+    }
 
     def __init__(
         self,
@@ -28,6 +34,7 @@ class ArrayCandidateStore:
         K: int,
         same_type_only: bool = True,
         mmap_dir: str | Path | None = None,
+        source_policies: dict | None = None,
     ):
         if K <= 0:
             raise ValueError("K must be positive")
@@ -35,6 +42,7 @@ class ArrayCandidateStore:
         self.K = int(K)
         self.same_type_only = bool(same_type_only)
         self.mmap_dir = Path(mmap_dir) if mmap_dir is not None else None
+        self.source_policies = source_policies if isinstance(source_policies, dict) else {}
         shape = (len(self.node_type), self.K)
 
         if self.mmap_dir is None:
@@ -83,6 +91,26 @@ class ArrayCandidateStore:
             if value == int(code):
                 return name
         return "unknown"
+
+    def _policy(self, source: str) -> dict:
+        policy = self.source_policies.get(str(source), {})
+        return policy if isinstance(policy, dict) else {}
+
+    def _retention_score(self, score: float, source: str) -> float:
+        priority = str(self._policy(source).get("priority", "normal")).lower()
+        return float(score) + float(self._PRIORITY_OFFSET.get(priority, 0.0))
+
+    def _source_cap_allows(self, node: int, source_code: int, other: int) -> bool:
+        source = self._source_name(source_code)
+        cap = self._policy(source).get("topk_per_node")
+        if cap is None:
+            return True
+        existing = self._existing_slot(node, other)
+        if existing is not None and int(self.candidate_sources[node, existing]) == int(source_code):
+            return True
+        used = int(self._counts[node])
+        count = int(np.count_nonzero(self.candidate_sources[node, :used] == int(source_code)))
+        return count < int(cap)
 
     def _existing_slot(self, node: int, other: int) -> int | None:
         used = int(self._counts[node])
@@ -147,8 +175,11 @@ class ArrayCandidateStore:
             raise IndexError("candidate endpoint out of bounds")
         if self.same_type_only and self.node_type[i] != self.node_type[j]:
             return
-        score = float(score)
+        source = str(source)
+        score = self._retention_score(float(score), source)
         source_code = self._source_code(source)
+        if not self._source_cap_allows(i, source_code, j) or not self._source_cap_allows(j, source_code, i):
+            return
         existing_i = self._existing_slot(i, j)
         existing_j = self._existing_slot(j, i)
         if existing_i is not None or existing_j is not None:
