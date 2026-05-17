@@ -21,9 +21,29 @@ Optional robustness configs:
 - `configs/paper/hgb_hesf_lvc_s_spectral_guard.yaml`
 - `configs/paper/hgb_hesf_lvc_p_sourceaware_auto.yaml`
 - `configs/paper/hgb_hesf_lvc_s_sourceaware_auto.yaml`
+- `configs/paper/hgb_hesf_lvc_p_spectral_guard_plus_sourceaware_auto.yaml`
+- `configs/paper/hgb_hesf_lvc_s_spectral_guard_plus_sourceaware_auto.yaml`
 
 System/protocol config:
 
 - `configs/paper/ogbn_mag_next9_opt_aggregation.yaml`
 
 The method story is relation-preserving heterogeneous fused operators, randomized low-pass sketches, and type-compatible small-cluster LVC. `lambda_conv` and `lambda_rel` are not core contributions in the main configs.
+
+Main method definition:
+
+```yaml
+HeSF-LVC-P:
+  role: default / Pareto variant
+  lambda_spec: 0.25
+  lambda_conv: 0.0
+  lambda_rel: 0.0
+
+HeSF-LVC-S:
+  role: spectral-safe variant
+  lambda_spec: 0.5
+  lambda_conv: 0.0
+  lambda_rel: 0.0
+```
+
+`lambda_conv`, `lambda_rel`, spectral guard, and source-aware guard belong in appendix ablations or future safeguards. They should not be described as the core method contribution.

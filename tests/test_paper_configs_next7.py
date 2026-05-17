@@ -102,6 +102,8 @@ NEXT9_PAPER_CONFIGS = {
     "hgb_hesf_lvc_s_spectral_guard.yaml",
     "hgb_hesf_lvc_p_sourceaware_auto.yaml",
     "hgb_hesf_lvc_s_sourceaware_auto.yaml",
+    "hgb_hesf_lvc_p_spectral_guard_plus_sourceaware_auto.yaml",
+    "hgb_hesf_lvc_s_spectral_guard_plus_sourceaware_auto.yaml",
     "ogbn_mag_next9_opt_aggregation.yaml",
 }
 

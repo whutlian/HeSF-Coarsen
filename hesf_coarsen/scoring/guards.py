@@ -222,6 +222,12 @@ def apply_source_aware_auto_guard(
             "onehop_avg_delta_spec_ratio_to_bucket": ratio,
             "onehop_delta_spec_tail": onehop_tail,
             "bucket_delta_spec_q95": bucket_q95,
+            "onehop_high_delta_selected_share_before": float(
+                np.count_nonzero(onehop_mask & (spec > bucket_q95)) / max(len(sources), 1)
+            ),
+            "onehop_high_delta_selected_share": float(
+                np.count_nonzero(onehop_mask & (spec > bucket_q95)) / max(len(sources), 1)
+            ),
             "guard_triggered": triggered,
         }
     )
@@ -252,12 +258,19 @@ def apply_source_aware_auto_guard(
     rejected = int(np.count_nonzero(~keep))
     after_sources = sources[keep]
     after_spec = spec[keep]
+    after_onehop = after_sources == "onehop"
     diag.update(
         {
             "trigger_reason": "onehop spectral pollution",
             "pairs_after": int(np.count_nonzero(keep)),
             "source_selected_share_after": _source_share(after_sources),
             "source_avg_delta_spec_after": _source_avg(after_spec, after_sources),
+            "onehop_high_delta_selected_share_after": float(
+                np.count_nonzero(after_onehop & (after_spec > bucket_q95)) / max(int(after_sources.shape[0]), 1)
+            ),
+            "onehop_high_delta_selected_share": float(
+                np.count_nonzero(after_onehop & (after_spec > bucket_q95)) / max(int(after_sources.shape[0]), 1)
+            ),
             "rejected_by_spec_count": rejected,
             "rejected_by_spec_share": float(rejected / max(int(scored.shape[0]), 1)),
         }

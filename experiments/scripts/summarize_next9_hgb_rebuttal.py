@@ -6,7 +6,7 @@ import math
 import sys
 from collections import defaultdict
 from pathlib import Path
-from statistics import mean
+from statistics import mean, pstdev
 from typing import Any, Mapping, Sequence
 
 if __package__ in {None, ""}:
@@ -14,6 +14,7 @@ if __package__ in {None, ""}:
 
 from experiments.scripts._common import markdown_table, write_csv
 from experiments.scripts.summarize_next9_hgb_paper_final import _plot_scatter
+from hesf_coarsen.io.edge_list import load_graph
 
 
 METHODS = {"HeSF-LVC-P", "HeSF-LVC-S", "flatten-sum", "H6-no-spec", "H0-mutual-best"}
@@ -51,6 +52,14 @@ def _fmt(value: Any, digits: int = 6) -> str:
     return f"{number:.{digits}f}".rstrip("0").rstrip(".")
 
 
+def _first(row: Mapping[str, Any], keys: Sequence[str], default: Any = "") -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value not in {None, ""}:
+            return value
+    return default
+
+
 def _method_from_row(row: Mapping[str, Any]) -> str:
     method = str(row.get("method", "") or "")
     if method in METHODS:
@@ -60,7 +69,12 @@ def _method_from_row(row: Mapping[str, Any]) -> str:
         return "H0-mutual-best"
     if variant in {"H6", "H6-no-spec"}:
         return "H6-no-spec"
-    if variant in {"flatten-sum", "flatten_sum"}:
+    if variant in {"flatten-sum", "flatten_sum", "H2-single-relation-sum"}:
+        return "flatten-sum"
+    operator_mode = str(
+        row.get("fusion.relation_operator_mode", row.get("config.fusion.relation_operator_mode", ""))
+    )
+    if operator_mode == "single_relation_sum":
         return "flatten-sum"
     lambda_spec = _as_float(row.get("lambda_spec", row.get("config.scoring.lambda_spec")), None)
     lambda_conv = _as_float(row.get("lambda_conv", row.get("config.scoring.lambda_conv")), None)
@@ -71,6 +85,10 @@ def _method_from_row(row: Mapping[str, Any]) -> str:
         if lambda_spec == 0.5:
             return "HeSF-LVC-S"
     return method or variant
+
+
+def _std(values: Sequence[float]) -> str:
+    return _fmt(pstdev(values), 6) if len(values) > 1 else "0"
 
 
 def _relation_ids(row: Mapping[str, Any], prefix: str) -> list[str]:
@@ -211,11 +229,250 @@ def _edge_collapse_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
                     "coarse_edge_uniqueness_ratio": _fmt(uniqueness),
                     "self_loop_share": "",
                     "duplicate_collapse_ratio": _fmt(max(0.0, 1.0 - uniqueness)),
+                    "run_dir": row.get("run_dir", ""),
                     "edge_weight_original_sum": _fmt(before_w),
                     "edge_weight_coarse_sum": _fmt(after_w),
                     "edge_weight_abs_error": _fmt(abs(before_w - after_w)),
                 }
             )
+    return out
+
+
+def _aggregate_metric_by_dataset(
+    rows: Sequence[Mapping[str, Any]],
+    metric: str,
+    output_metric: str,
+) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        groups[(str(row.get("method", "")), str(row.get("dataset", "")))].append(row)
+    out = []
+    for (method, dataset), group in sorted(groups.items()):
+        values = [value for value in (_as_float(row.get(metric), None) for row in group) if value is not None]
+        out.append(
+            {
+                "method": method,
+                "dataset": dataset,
+                f"{output_metric}_mean": _fmt(mean(values)) if values else "",
+                f"{output_metric}_std": _std(values) if values else "",
+                "valid_n": len(values),
+                "missing_n": len(group) - len(values),
+                "n_rows": len(group),
+            }
+        )
+    return out
+
+
+def _collapse_by_dataset(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        groups[(str(row.get("method", "")), str(row.get("dataset", "")))].append(row)
+    out = []
+    for (method, dataset), group in sorted(groups.items()):
+        values = [
+            value
+            for value in (_as_float(row.get("duplicate_collapse_ratio"), None) for row in group)
+            if value is not None
+        ]
+        before = sum(_as_float(row.get("coarse_edges_before_dedup"), 0.0) or 0.0 for row in group)
+        after = sum(_as_float(row.get("coarse_edges_after_dedup"), 0.0) or 0.0 for row in group)
+        out.append(
+            {
+                "method": method,
+                "dataset": dataset,
+                "duplicate_collapse_ratio_mean": _fmt(mean(values)) if values else "",
+                "duplicate_collapse_ratio_std": _std(values) if values else "",
+                "duplicate_collapse_ratio_from_edge_sums": _fmt(1.0 - after / before) if before > 0 else "",
+                "coarse_edges_before_dedup_sum": _fmt(before),
+                "coarse_edges_after_dedup_sum": _fmt(after),
+                "valid_n": len(values),
+                "missing_n": len(group) - len(values),
+            }
+        )
+    return out
+
+
+def _final_level_dir(run_dir: Path) -> Path | None:
+    levels = []
+    if not run_dir.exists():
+        return None
+    for child in run_dir.glob("level_*"):
+        if not child.is_dir():
+            continue
+        try:
+            level = int(child.name.removeprefix("level_"))
+        except ValueError:
+            continue
+        if (child / "schema.json").exists():
+            levels.append((level, child))
+    return max(levels, default=(0, None))[1]
+
+
+def _self_loop_rows(collapse_rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    per_run: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    graph_cache: dict[str, Any | None] = {}
+    for row in collapse_rows:
+        key = (
+            str(row.get("method", "")),
+            str(row.get("dataset", "")),
+            str(row.get("seed", "")),
+            str(row.get("relation_id", "")),
+        )
+        run_dir = str(row.get("run_dir", "") or "")
+        relation_id = str(row.get("relation_id", ""))
+        status = "not_available"
+        share = ""
+        count = ""
+        denom = _as_float(row.get("coarse_edges_after_dedup"), None)
+        if run_dir:
+            if run_dir not in graph_cache:
+                level_dir = _final_level_dir(Path(run_dir))
+                try:
+                    graph_cache[run_dir] = load_graph(level_dir) if level_dir is not None else None
+                except Exception:
+                    graph_cache[run_dir] = None
+            graph = graph_cache[run_dir]
+            if graph is not None:
+                try:
+                    rel = graph.relations[int(relation_id)]
+                    self_loops = int((rel.src == rel.dst).sum())
+                    edge_count = int(rel.num_edges)
+                    count = self_loops
+                    share = _fmt(self_loops / max(edge_count, 1))
+                    status = "computed_from_final_coarse_graph"
+                except Exception:
+                    status = "relation_not_found"
+        per_run[key] = {
+            "method": row.get("method", ""),
+            "dataset": row.get("dataset", ""),
+            "seed": row.get("seed", ""),
+            "relation_id": relation_id,
+            "self_loop_count": count,
+            "coarse_edges_after_dedup": int(denom) if denom is not None else "",
+            "self_loop_share": share,
+            "status": status,
+        }
+    return list(per_run.values())
+
+
+def _group_by_relation(
+    rows: Sequence[Mapping[str, Any]],
+    metric: str,
+    output_metric: str,
+) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        groups[
+            (
+                str(row.get("method", "")),
+                str(row.get("dataset", "")),
+                str(row.get("relation_id", "")),
+            )
+        ].append(row)
+    out = []
+    for (method, dataset, relation_id), group in sorted(
+        groups.items(),
+        key=lambda item: (
+            item[0][0],
+            item[0][1],
+            int(item[0][2]) if item[0][2].isdigit() else item[0][2],
+        ),
+    ):
+        values = [value for value in (_as_float(row.get(metric), None) for row in group) if value is not None]
+        out.append(
+            {
+                "method": method,
+                "dataset": dataset,
+                "relation_id": relation_id,
+                f"{output_metric}_mean": _fmt(mean(values)) if values else "",
+                f"{output_metric}_std": _std(values) if values else "",
+                "valid_n": len(values),
+                "missing_n": len(group) - len(values),
+            }
+        )
+    return out
+
+
+def _checkpoint_curve_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str, str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        groups[
+            (
+                str(row.get("method", "")),
+                str(row.get("dataset", "")),
+                str(row.get("checkpoint", "")),
+                str(row.get("checkpoint_index", "")),
+            )
+        ].append(row)
+    out = []
+    for (method, dataset, checkpoint, checkpoint_index), group in sorted(groups.items()):
+        item: dict[str, Any] = {
+            "method": method,
+            "dataset": dataset,
+            "checkpoint": checkpoint,
+            "checkpoint_index": checkpoint_index,
+            "seed_count": len({str(row.get("seed", "")) for row in group}),
+        }
+        for metric in ("macro_f1", "delta_vs_projected", "delta_vs_best"):
+            values = [value for value in (_as_float(row.get(metric), None) for row in group) if value is not None]
+            item[f"{metric}_mean"] = _fmt(mean(values)) if values else ""
+            item[f"{metric}_std"] = _std(values) if values else ""
+        out.append(item)
+    return out
+
+
+def _task_aggregate_rows(next8_rows: Sequence[Mapping[str, Any]]) -> dict[tuple[str, str], dict[str, str]]:
+    groups: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in next8_rows:
+        method = str(row.get("method", ""))
+        if method in METHODS:
+            groups[(method, str(row.get("dataset", "")))].append(row)
+    out: dict[tuple[str, str], dict[str, str]] = {}
+    for key, group in groups.items():
+        item = {}
+        for metric in ("DEE", "projected_macro_f1", "refined_macro_f1@5", "best_macro_f1"):
+            source_keys = (metric, metric.lower()) if metric == "DEE" else (metric,)
+            values = [
+                value
+                for value in (
+                    _as_float(_first(row, source_keys), None)
+                    for row in group
+                )
+                if value is not None
+            ]
+            item[f"{metric}_mean"] = _fmt(mean(values)) if values else ""
+        out[key] = item
+    return out
+
+
+def _paper_rebuttal_rows(
+    summary_rows: Sequence[Mapping[str, Any]],
+    drift_js_rows: Sequence[Mapping[str, Any]],
+    task_rows: Mapping[tuple[str, str], Mapping[str, str]],
+) -> list[dict[str, Any]]:
+    js_lookup = {
+        (str(row.get("method", "")), str(row.get("dataset", ""))): row
+        for row in drift_js_rows
+    }
+    out = []
+    for row in summary_rows:
+        key = (str(row.get("method", "")), str(row.get("dataset", "")))
+        task = task_rows.get(key, {})
+        js = js_lookup.get(key, {})
+        out.append(
+            {
+                "method": key[0],
+                "dataset": key[1],
+                "DEE_mean": task.get("DEE_mean", ""),
+                "relation_mass_l1_drift_mean": row.get("relation_mass_l1_drift_mean", ""),
+                "relation_mass_js_drift_mean": js.get("relation_mass_js_drift_mean", ""),
+                "relation_energy_error_mean": row.get("relation_energy_error_mean", ""),
+                "duplicate_collapse_ratio_mean": row.get("duplicate_collapse_ratio_mean", ""),
+                "projected_macro_f1_mean": task.get("projected_macro_f1_mean", ""),
+                "refined_macro_f1@5_mean": task.get("refined_macro_f1@5_mean", ""),
+                "best_macro_f1_mean": row.get("best_macro_f1_mean", task.get("best_macro_f1_mean", "")),
+            }
+        )
     return out
 
 
@@ -333,6 +590,39 @@ def summarize_next9_hgb_rebuttal(
     metapath_rows = _metapath_rows(run_rows)
     checkpoint_rows = _checkpoint_rows(next8_rows)
     summary_rows = _summary_rows(energy_rows, drift_rows, collapse_rows, next8_rows)
+    relation_mass_by_dataset = _aggregate_metric_by_dataset(
+        drift_rows,
+        "relation_mass_l1_drift",
+        "relation_mass_l1_drift",
+    )
+    relation_js_by_dataset = _aggregate_metric_by_dataset(
+        drift_rows,
+        "relation_mass_js_drift",
+        "relation_mass_js_drift",
+    )
+    relation_energy_by_dataset = _aggregate_metric_by_dataset(
+        energy_rows,
+        "relation_energy_error",
+        "relation_energy_error",
+    )
+    collapse_by_dataset = _collapse_by_dataset(collapse_rows)
+    self_loop_rows = _self_loop_rows(collapse_rows)
+    self_loop_by_relation = _group_by_relation(
+        self_loop_rows,
+        "self_loop_share",
+        "self_loop_share",
+    )
+    duplicate_by_relation = _group_by_relation(
+        collapse_rows,
+        "duplicate_collapse_ratio",
+        "duplicate_collapse_ratio",
+    )
+    checkpoint_curve = _checkpoint_curve_rows(checkpoint_rows)
+    paper_rows = _paper_rebuttal_rows(
+        summary_rows,
+        relation_js_by_dataset,
+        _task_aggregate_rows(next8_rows),
+    )
 
     write_csv(output / "relation_energy_error_by_relation.csv", energy_rows)
     write_csv(output / "relation_distribution_drift.csv", drift_rows)
@@ -340,6 +630,14 @@ def summarize_next9_hgb_rebuttal(
     write_csv(output / "metapath_connectivity_sampled.csv", metapath_rows)
     write_csv(output / "checkpoint_refine_masking.csv", checkpoint_rows)
     write_csv(output / "flatten_h6_rebuttal_summary.csv", summary_rows)
+    write_csv(output / "relation_mass_drift_by_dataset.csv", relation_mass_by_dataset)
+    write_csv(output / "relation_js_drift_by_dataset.csv", relation_js_by_dataset)
+    write_csv(output / "relation_energy_error_by_dataset.csv", relation_energy_by_dataset)
+    write_csv(output / "coarse_edge_collapse_by_dataset.csv", collapse_by_dataset)
+    write_csv(output / "self_loop_share_by_relation.csv", self_loop_by_relation)
+    write_csv(output / "duplicate_collapse_ratio_by_relation.csv", duplicate_by_relation)
+    write_csv(output / "checkpoint_refine_masking_curve.csv", checkpoint_curve)
+    write_csv(output / "paper_rebuttal_table.csv", paper_rows)
 
     _plot_scatter(energy_rows, "relation_id", "relation_energy_error", output / "figures" / "relation_energy_error_heatmap.png")
     _plot_scatter(drift_rows, "relation_id", "relation_mass_l1_drift", output / "figures" / "relation_mass_drift_by_method.png")
@@ -353,19 +651,24 @@ def summarize_next9_hgb_rebuttal(
         "Legacy run summaries do not contain bounded metapath samples; the metapath CSV records that limitation explicitly.",
         "",
         markdown_table(
-            summary_rows[:20],
+            paper_rows[:20],
             [
                 "method",
                 "dataset",
-                "relation_energy_error_mean",
+                "DEE_mean",
                 "relation_mass_l1_drift_mean",
+                "relation_mass_js_drift_mean",
+                "relation_energy_error_mean",
                 "duplicate_collapse_ratio_mean",
+                "projected_macro_f1_mean",
+                "refined_macro_f1@5_mean",
                 "best_macro_f1_mean",
             ],
         ),
         "",
         "Interpretation: use relation energy, distribution drift, and collapse ratios to explain structural damage even when task F1 is competitive.",
         "If flatten-sum or H6 ties/wins task on a dataset, the task win is preserved in `best_macro_f1_mean` rather than hidden.",
+        "Self-loop shares are computed from final coarse graph endpoints when the referenced run directories are available; otherwise rows are marked with missing counts.",
     ]
     if command_lines:
         summary.extend(["", "## Commands", *[f"- `{line}`" for line in command_lines]])
@@ -376,6 +679,7 @@ def summarize_next9_hgb_rebuttal(
         "coarse_edge_collapse_rows": collapse_rows,
         "checkpoint_rows": checkpoint_rows,
         "summary_rows": summary_rows,
+        "paper_rows": paper_rows,
     }
 
 

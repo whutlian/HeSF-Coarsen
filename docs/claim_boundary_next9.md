@@ -24,3 +24,24 @@ Required wording:
 Novelty wording:
 
 > relation-preserving heterogeneous fused operators + randomized low-pass sketches + type-compatible small-cluster LVC.
+
+Paper-ready final claim:
+
+> HeSF-LVC-P/S strongly preserve heterogeneous fused operator structure under 50% HGB coarsening. Compared with H0, random, GraphZoom-style, ConvMatch-style, flatten-sum, and H6-no-spec, P/S reduce operator and relation-structure distortion. Task recovery is competitive under compression, but full tuned RGCN remains stronger on pure task F1. flatten-sum and H6 can remain task-competitive after refinement, but their operator distortion is substantially larger. OGBN-MAG is used for scalability and profiling, not task-quality claims.
+
+Method boundary:
+
+- Main method: `HeSF-LVC-P`, default/Pareto variant, `lambda_spec=0.25`, `lambda_conv=0`, `lambda_rel=0`.
+- Spectral-safe main variant: `HeSF-LVC-S`, `lambda_spec=0.5`, `lambda_conv=0`, `lambda_rel=0`.
+- Appendix / future safeguards only: `lambda_conv`, `lambda_rel`, spectral guard, and source-aware guard.
+
+Formula wording:
+
+```text
+core score = normalized Delta_spec
+           + typed feature / boundary constraints
+
+optional diagnostics / ablations:
+           + lambda_conv Delta_conv
+           + lambda_rel Delta_rel
+```

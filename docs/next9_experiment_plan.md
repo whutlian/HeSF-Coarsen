@@ -12,6 +12,38 @@ P4 builds quality-cost Pareto outputs with task, spectral/operator, runtime, mem
 
 P5 updates configs and claim-boundary docs so the repository matches the paper claim.
 
+Final paper experiment structure:
+
+```text
+E1. HGB main table:
+    P, S, H0, random, GraphZoom-style, ConvMatch-style, flatten-sum, H6, full graph references
+
+E2. Flatten/H6 rebuttal:
+    relation drift, energy error, collapse, masking/refine curve
+
+E3. Ablation:
+    no-spec, spectral-only, lambda_rel=0, optional conv/rel
+
+E4. Quality-cost:
+    task vs wall-clock/RSS/graph size
+
+E5. OGBN system:
+    scale + aggregation bottleneck breakdown
+
+Appendix:
+    guard ablation
+    bounded metapath
+    aggressive 0.25
+```
+
+Next10 completion pass:
+
+- P0 extracts paper-ready rebuttal tables from `outputs/exp_next9_hgb_flatten_h6_rebuttal_20260517_summary`.
+- P2 reruns the minimal HGB quality-cost set with resource logging.
+- P3 reruns the complete guard ablation only as appendix validation.
+- P4 reruns OGBN aggregation with fresh instrumentation.
+- P5 keeps the claim boundary aligned with the generated evidence.
+
 Local command pattern:
 
 ```powershell
