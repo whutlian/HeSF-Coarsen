@@ -37,6 +37,20 @@ _AGGREGATION_TIMING_KEYS = (
     "aggregation_label_sec",
 )
 
+_AGGREGATION_EXCLUSIVE_TIMING_KEYS = (
+    "exclusive_relation_loop_compute_sec",
+    "exclusive_assignment_map_sec",
+    "exclusive_key_build_sec",
+    "exclusive_sort_sec",
+    "exclusive_reduce_sec",
+    "exclusive_shard_write_sec",
+    "exclusive_kway_merge_sec",
+    "exclusive_output_write_sec",
+    "total_aggregation_sec",
+    "exclusive_timing_sum_sec",
+    "exclusive_timing_residual_sec",
+)
+
 
 def _current_rss_gb() -> float | None:
     try:
@@ -52,9 +66,13 @@ def _init_aggregation_diagnostics(diagnostics: dict | None, reducer: str) -> dic
         return None
     for key in _AGGREGATION_TIMING_KEYS:
         diagnostics.setdefault(key, 0.0)
+    for key in _AGGREGATION_EXCLUSIVE_TIMING_KEYS:
+        diagnostics.setdefault(key, 0.0)
     diagnostics["aggregation_reducer"] = str(reducer)
     diagnostics["aggregation_python_dict_used"] = bool(reducer == "hash")
     diagnostics["aggregation_packed_key_backend"] = bool(reducer == "packed_key_sort")
+    diagnostics["aggregation_local_prededup_backend"] = bool(reducer == "local_prededup_sort")
+    diagnostics["timing_inclusive_fields_present"] = True
     diagnostics.setdefault("aggregation_by_relation", [])
     return diagnostics
 
@@ -62,6 +80,32 @@ def _init_aggregation_diagnostics(diagnostics: dict | None, reducer: str) -> dic
 def _add_time(diagnostics: dict | None, key: str, elapsed: float) -> None:
     if diagnostics is not None:
         diagnostics[key] = float(diagnostics.get(key, 0.0) + float(elapsed))
+
+
+def _finalize_exclusive_timing(diagnostics: dict | None) -> None:
+    if diagnostics is None:
+        return
+    mapping = {
+        "exclusive_assignment_map_sec": "aggregation_assignment_map_sec",
+        "exclusive_key_build_sec": "aggregation_key_build_sec",
+        "exclusive_sort_sec": "aggregation_sort_sec",
+        "exclusive_reduce_sec": "aggregation_reduce_sec",
+        "exclusive_shard_write_sec": "aggregation_shard_write_sec",
+        "exclusive_kway_merge_sec": "aggregation_kway_merge_sec",
+        "exclusive_output_write_sec": "aggregation_output_write_sec",
+    }
+    child_sum = 0.0
+    for exclusive_key, inclusive_key in mapping.items():
+        value = max(float(diagnostics.get(inclusive_key, 0.0)), 0.0)
+        diagnostics[exclusive_key] = value
+        child_sum += value
+    relation_total = float(diagnostics.get("aggregation_relation_loop_sec", 0.0))
+    diagnostics["exclusive_relation_loop_compute_sec"] = max(relation_total - child_sum, 0.0)
+    total = float(diagnostics.get("aggregation_total_sec", 0.0))
+    diagnostics["total_aggregation_sec"] = total
+    exclusive_sum = float(diagnostics["exclusive_relation_loop_compute_sec"] + child_sum)
+    diagnostics["exclusive_timing_sum_sec"] = min(exclusive_sum, total)
+    diagnostics["exclusive_timing_residual_sec"] = max(total - exclusive_sum, 0.0)
 
 
 def _incident_weight_mass(graph: HeteroGraph) -> np.ndarray:
@@ -317,8 +361,8 @@ def coarsen_graph_chunked(
     diagnostics = _init_aggregation_diagnostics(aggregation_diagnostics, reducer)
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
-    if reducer not in {"sort", "hash", "packed_key_sort"}:
-        raise ValueError("reducer must be one of: 'sort', 'hash', 'packed_key_sort'")
+    if reducer not in {"sort", "hash", "packed_key_sort", "local_prededup_sort"}:
+        raise ValueError("reducer must be one of: 'sort', 'hash', 'packed_key_sort', 'local_prededup_sort'")
     if assignment.assignment.shape != (graph.num_nodes,):
         raise ValueError("assignment length must equal graph.num_nodes")
     spill_root = None
@@ -434,6 +478,7 @@ def coarsen_graph_chunked(
     )
     validate_schema(coarse)
     _add_time(diagnostics, "aggregation_total_sec", perf_counter() - total_start)
+    _finalize_exclusive_timing(diagnostics)
     return coarse
 
 
