@@ -1,0 +1,13 @@
+paper:
+  method: AH-UGC-style-sweep
+  variant: next12-sweep-spec
+
+hash_bits: [8, 12, 16, 20]
+bucket_topk: [4, 8, 16]
+assignment_source:
+  - raw_feature
+  - chebheat_sketch
+  - feature_plus_sketch
+same_type_only: true
+same_partition_only: true
+target_ratio: 0.5

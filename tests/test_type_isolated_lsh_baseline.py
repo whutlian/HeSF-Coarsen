@@ -19,3 +19,31 @@ def test_type_isolated_lsh_preserves_type_and_schema():
     assert diagnostics["target_ratio"] == 0.5
     assert np.isfinite(diagnostics["final_ratio"])
 
+
+def test_type_isolated_lsh_supports_assignment_sources_and_bucket_topk():
+    graph = generate_synthetic_graph(num_users=20, num_items=10, num_tags=6, seed=8)
+
+    coarse_raw, assignment_raw, raw_diag = coarsen_type_isolated_lsh(
+        graph,
+        target_ratio=0.5,
+        seed=7,
+        hash_bits=8,
+        bucket_topk=2,
+        assignment_source="raw_feature",
+    )
+    coarse_sketch, assignment_sketch, sketch_diag = coarsen_type_isolated_lsh(
+        graph,
+        target_ratio=0.5,
+        seed=7,
+        hash_bits=12,
+        bucket_topk=3,
+        assignment_source="feature_plus_sketch",
+    )
+
+    validate_schema(coarse_raw)
+    validate_schema(coarse_sketch)
+    assert raw_diag["assignment_source"] == "raw_feature"
+    assert sketch_diag["assignment_source"] == "feature_plus_sketch"
+    assert raw_diag["bucket_topk"] == 2
+    assert sketch_diag["hash_bits"] == 12
+    assert assignment_raw.assignment.shape == assignment_sketch.assignment.shape

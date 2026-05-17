@@ -54,6 +54,7 @@ def _init_aggregation_diagnostics(diagnostics: dict | None, reducer: str) -> dic
         diagnostics.setdefault(key, 0.0)
     diagnostics["aggregation_reducer"] = str(reducer)
     diagnostics["aggregation_python_dict_used"] = bool(reducer == "hash")
+    diagnostics["aggregation_packed_key_backend"] = bool(reducer == "packed_key_sort")
     diagnostics.setdefault("aggregation_by_relation", [])
     return diagnostics
 
@@ -316,8 +317,8 @@ def coarsen_graph_chunked(
     diagnostics = _init_aggregation_diagnostics(aggregation_diagnostics, reducer)
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
-    if reducer not in {"sort", "hash"}:
-        raise ValueError("reducer must be either 'sort' or 'hash'")
+    if reducer not in {"sort", "hash", "packed_key_sort"}:
+        raise ValueError("reducer must be one of: 'sort', 'hash', 'packed_key_sort'")
     if assignment.assignment.shape != (graph.num_nodes,):
         raise ValueError("assignment length must equal graph.num_nodes")
     spill_root = None
@@ -349,6 +350,15 @@ def coarsen_graph_chunked(
                 rel,
                 assignment,
                 chunk_size,
+                diagnostics=diagnostics,
+            )
+        elif reducer == "packed_key_sort":
+            relation_spill_dir = None if spill_root is None else spill_root / f"relation_{relation_id}"
+            src, dst, weight = _aggregate_relation_packed_key_sort(
+                rel,
+                assignment,
+                chunk_size,
+                output_dir=relation_spill_dir,
                 diagnostics=diagnostics,
             )
         else:
@@ -490,6 +500,24 @@ def _encode_coarse_keys(
     return coarse_src * np.int64(num_supernodes) + coarse_dst
 
 
+def _encode_relation_local_packed_keys(
+    src_local: np.ndarray,
+    dst_local: np.ndarray,
+    num_dst_coarse: int | np.integer,
+) -> np.ndarray:
+    if len(src_local) == 0:
+        return np.empty(0, dtype=np.int64)
+    num_dst = int(num_dst_coarse)
+    max_src = int(np.asarray(src_local, dtype=np.int64).max(initial=0))
+    max_dst = int(np.asarray(dst_local, dtype=np.int64).max(initial=0))
+    max_int64 = np.iinfo(np.int64).max
+    if num_dst <= 0:
+        raise ValueError("num_dst_coarse must be positive")
+    if max_src > (max_int64 - max_dst) // num_dst:
+        raise OverflowError("relation-local packed edge key encoding would overflow int64")
+    return np.asarray(src_local, dtype=np.int64) * np.int64(num_dst) + np.asarray(dst_local, dtype=np.int64)
+
+
 def _iter_merged_sorted_chunks(
     chunks: list[tuple[np.ndarray, np.ndarray]],
 ) -> Iterator[tuple[int, float]]:
@@ -575,6 +603,58 @@ def _merge_sorted_chunks(
     return src, dst, weight
 
 
+def _merge_packed_key_chunks(
+    chunks: list[tuple[np.ndarray, np.ndarray]],
+    src_supernodes: np.ndarray,
+    dst_supernodes: np.ndarray,
+    output_dir: Path | None,
+    diagnostics: dict | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    merge_start = perf_counter()
+    count = sum(1 for _key, _weight in _iter_merged_sorted_chunks(chunks))
+    _add_time(diagnostics, "aggregation_kway_merge_sec", perf_counter() - merge_start)
+    if output_dir is None:
+        src = np.empty(count, dtype=np.int64)
+        dst = np.empty(count, dtype=np.int64)
+        weight = np.empty(count, dtype=np.float32)
+    else:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        src = np.lib.format.open_memmap(
+            output_dir / "final_src.npy",
+            mode="w+",
+            dtype=np.int64,
+            shape=(count,),
+        )
+        dst = np.lib.format.open_memmap(
+            output_dir / "final_dst.npy",
+            mode="w+",
+            dtype=np.int64,
+            shape=(count,),
+        )
+        weight = np.lib.format.open_memmap(
+            output_dir / "final_weight.npy",
+            mode="w+",
+            dtype=np.float32,
+            shape=(count,),
+        )
+
+    num_dst = int(len(dst_supernodes))
+    write_start = perf_counter()
+    for pos, (key, merged_weight) in enumerate(_iter_merged_sorted_chunks(chunks)):
+        src[pos] = src_supernodes[int(key) // num_dst]
+        dst[pos] = dst_supernodes[int(key) % num_dst]
+        weight[pos] = np.float32(merged_weight)
+    _add_time(diagnostics, "aggregation_output_write_sec", perf_counter() - write_start)
+
+    flush_start = perf_counter()
+    for array in (src, dst, weight):
+        flush = getattr(array, "flush", None)
+        if callable(flush):
+            flush()
+    _add_time(diagnostics, "aggregation_flush_sec", perf_counter() - flush_start)
+    return src, dst, weight
+
+
 def _write_sorted_chunk_shard(
     chunk_dir: Path,
     chunk_id: int,
@@ -640,3 +720,82 @@ def _aggregate_relation_sort(
         ]
         _add_time(diagnostics, "aggregation_shard_read_sec", perf_counter() - read_start)
     return _merge_sorted_chunks(chunks, num_supernodes, output_dir, diagnostics=diagnostics)
+
+
+def _aggregate_relation_packed_key_sort(
+    rel: RelationAdj,
+    assignment: Assignment,
+    chunk_size: int,
+    output_dir: Path | None = None,
+    diagnostics: dict | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    src_supernodes = np.flatnonzero(assignment.supernode_type == int(rel.src_type)).astype(np.int64)
+    dst_supernodes = np.flatnonzero(assignment.supernode_type == int(rel.dst_type)).astype(np.int64)
+    if len(src_supernodes) == 0 or len(dst_supernodes) == 0:
+        return (
+            np.empty(0, dtype=np.int64),
+            np.empty(0, dtype=np.int64),
+            np.empty(0, dtype=np.float32),
+        )
+    chunks: list[tuple[np.ndarray, np.ndarray]] = []
+    chunk_paths: list[tuple[Path, Path]] = []
+    chunk_dir = None
+    if output_dir is not None:
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        chunk_dir = output_dir / "chunks"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+
+    num_dst = int(len(dst_supernodes))
+    for start in range(0, rel.num_edges, chunk_size):
+        stop = min(start + chunk_size, rel.num_edges)
+        map_start = perf_counter()
+        coarse_src = assignment.assignment[rel.src[start:stop]].astype(np.int64, copy=False)
+        coarse_dst = assignment.assignment[rel.dst[start:stop]].astype(np.int64, copy=False)
+        src_local = np.searchsorted(src_supernodes, coarse_src).astype(np.int64, copy=False)
+        dst_local = np.searchsorted(dst_supernodes, coarse_dst).astype(np.int64, copy=False)
+        if (
+            np.any(src_local < 0)
+            or np.any(src_local >= len(src_supernodes))
+            or np.any(src_supernodes[src_local] != coarse_src)
+            or np.any(dst_local < 0)
+            or np.any(dst_local >= len(dst_supernodes))
+            or np.any(dst_supernodes[dst_local] != coarse_dst)
+        ):
+            raise ValueError("packed_key_sort relation endpoints do not match relation type cluster spaces")
+        _add_time(diagnostics, "aggregation_assignment_map_sec", perf_counter() - map_start)
+        key_start = perf_counter()
+        keys = _encode_relation_local_packed_keys(src_local, dst_local, num_dst)
+        _add_time(diagnostics, "aggregation_key_build_sec", perf_counter() - key_start)
+        reduced_keys, reduced_weights = _reduce_sorted_keys(
+            keys,
+            rel.weight[start:stop],
+            diagnostics=diagnostics,
+        )
+        if chunk_dir is None:
+            chunks.append((reduced_keys, reduced_weights))
+        else:
+            chunk_id = len(chunk_paths)
+            shard_start = perf_counter()
+            chunk_paths.append(
+                _write_sorted_chunk_shard(chunk_dir, chunk_id, reduced_keys, reduced_weights)
+            )
+            _add_time(diagnostics, "aggregation_shard_write_sec", perf_counter() - shard_start)
+
+    if chunk_paths:
+        read_start = perf_counter()
+        chunks = [
+            (
+                np.load(key_path, mmap_mode="r"),
+                np.load(weight_path, mmap_mode="r"),
+            )
+            for key_path, weight_path in chunk_paths
+        ]
+        _add_time(diagnostics, "aggregation_shard_read_sec", perf_counter() - read_start)
+    return _merge_packed_key_chunks(
+        chunks,
+        src_supernodes,
+        dst_supernodes,
+        output_dir,
+        diagnostics=diagnostics,
+    )

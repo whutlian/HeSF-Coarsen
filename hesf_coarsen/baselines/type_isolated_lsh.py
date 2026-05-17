@@ -9,9 +9,10 @@ import numpy as np
 from hesf_coarsen.coarsen.aggregate_edges import coarsen_graph
 from hesf_coarsen.coarsen.assignment import Assignment
 from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
+from hesf_coarsen.sketch.lowpass import compute_lowpass_sketch
 
 
-def _node_embedding(graph: HeteroGraph, seed: int, dim: int) -> np.ndarray:
+def _raw_node_embedding(graph: HeteroGraph, seed: int, dim: int) -> np.ndarray:
     rng = np.random.default_rng(int(seed))
     embedding = np.zeros((graph.num_nodes, max(int(dim), 1)), dtype=np.float32)
     if graph.features:
@@ -31,6 +32,48 @@ def _node_embedding(graph: HeteroGraph, seed: int, dim: int) -> np.ndarray:
     return embedding
 
 
+def _node_embedding(
+    graph: HeteroGraph,
+    seed: int,
+    dim: int,
+    assignment_source: str,
+) -> np.ndarray:
+    source = str(assignment_source).lower()
+    if source == "raw_feature":
+        return _raw_node_embedding(graph, seed, dim)
+    if source == "chebheat_sketch":
+        return compute_lowpass_sketch(
+            graph,
+            {
+                "seed": int(seed),
+                "sketch": {
+                    "dim": max(int(dim), 1),
+                    "order": 2,
+                    "num_scales": 1,
+                    "dtype": "float32",
+                },
+                "acceleration": {"dense_backend": "numpy"},
+            },
+        ).astype(np.float32, copy=False)
+    if source == "feature_plus_sketch":
+        raw = _raw_node_embedding(graph, seed, dim)
+        sketch = compute_lowpass_sketch(
+            graph,
+            {
+                "seed": int(seed) + 17,
+                "sketch": {
+                    "dim": max(int(dim), 1),
+                    "order": 2,
+                    "num_scales": 1,
+                    "dtype": "float32",
+                },
+                "acceleration": {"dense_backend": "numpy"},
+            },
+        ).astype(np.float32, copy=False)
+        return np.concatenate([raw, sketch], axis=1).astype(np.float32, copy=False)
+    raise ValueError("assignment_source must be one of: raw_feature, chebheat_sketch, feature_plus_sketch")
+
+
 def _signatures(embedding: np.ndarray, seed: int, bits: int) -> np.ndarray:
     rng = np.random.default_rng(int(seed) + 7919)
     planes = rng.standard_normal((embedding.shape[1], max(int(bits), 1))).astype(np.float32)
@@ -48,13 +91,17 @@ def coarsen_type_isolated_lsh(
     seed: int = 12345,
     max_cluster_size: int = 4,
     hash_bits: int = 8,
+    bucket_topk: int | None = None,
+    assignment_source: str = "raw_feature",
     same_partition_only: bool = True,
 ) -> tuple[HeteroGraph, Assignment, dict[str, Any]]:
+    if bucket_topk is not None:
+        max_cluster_size = int(bucket_topk)
     target_nodes = max(1, int(ceil(graph.num_nodes * float(target_ratio) - 1.0e-12)))
     merges_remaining = max(0, graph.num_nodes - target_nodes)
     assignment = np.full(graph.num_nodes, -1, dtype=np.int64)
     super_types: list[int] = []
-    embedding = _node_embedding(graph, int(seed), dim=8)
+    embedding = _node_embedding(graph, int(seed), dim=8, assignment_source=assignment_source)
     signatures = _signatures(embedding, int(seed), int(hash_bits))
     buckets: dict[tuple[int, int, int], list[int]] = defaultdict(list)
     partitions = graph.partitions if graph.partitions is not None and same_partition_only else np.zeros(graph.num_nodes, dtype=np.int32)
@@ -93,9 +140,10 @@ def coarsen_type_isolated_lsh(
         "final_ratio": float(coarse.num_nodes / max(graph.num_nodes, 1)),
         "target_hit": bool(abs(float(coarse.num_nodes / max(graph.num_nodes, 1)) - float(target_ratio)) <= 0.02),
         "hash_bits": int(hash_bits),
+        "bucket_topk": int(max_cluster_size),
+        "assignment_source": str(assignment_source),
         "max_cluster_size": int(max_cluster_size),
         "same_partition_only": bool(same_partition_only),
         "cluster_size_hist": {str(k): int(v) for k, v in sorted(cluster_hist.items())},
     }
     return coarse, assign, diagnostics
-
