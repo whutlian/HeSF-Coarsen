@@ -1,0 +1,14 @@
+accuracy_branch:
+  name: hesf_acc_hybridB_selecttarget_distill
+  variant: A5_hybridB_distill
+target:
+  mode: select
+  keep_train_targets: true
+distillation:
+  enabled: true
+  teacher: deterministic_proxy
+  logits_distill: true
+  feature_distill: false
+eval:
+  main_protocol: mode_b_full_target_inference
+  adapter_mode: approximate

@@ -1,0 +1,17 @@
+accuracy_branch:
+  name: hesf_acc_hybridB_selecttarget
+  variant: A3_hybridB_selecttarget
+target:
+  mode: select
+  keep_train_targets: true
+  scoring:
+    confidence: 0.35
+    margin: 0.10
+    coverage: 0.25
+    diversity: 0.20
+    balance: 0.10
+support:
+  coarsening: HeSF-style
+eval:
+  main_protocol: mode_b_full_target_inference
+  adapter_mode: approximate

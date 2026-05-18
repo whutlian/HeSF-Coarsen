@@ -1,0 +1,11 @@
+accuracy_branch:
+  name: hesf_acc_hybridA_keepall
+  variant: A2_hybridA_keepall
+target:
+  mode: keep_all
+support:
+  base_method: HeSF-LVC-P/S
+  coarsening: HeSF-style
+eval:
+  main_protocol: mode_b_full_target_inference
+  compare_protocol: mode_a_coarse_transfer

@@ -1,0 +1,17 @@
+accuracy_branch:
+  name: target_preserve_support_coarsen
+  variant: A1_target_preserve
+  eval_modes:
+    - coarse_transfer
+    - full_target_inference
+target:
+  mode: keep_all
+  preserve_train_val_test: true
+support:
+  base_method: HeSF-LVC-P
+  coarsening: HeSF-style
+  same_type_only: true
+protocol:
+  official_repo: no
+  official_preprocess: no
+  adapter_mode: approximate

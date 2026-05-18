@@ -1,0 +1,20 @@
+name: hgb_hesf_acc_distill
+branch: HeSF-Acc
+variant: A5_hybridB_distill
+lambda_spec: 0.25
+lambda_conv: 0.0
+lambda_rel: 0.0
+selection:
+  keep_train_targets: true
+  mode: uncertainty_aware
+  global_target_ratio: 0.024
+support:
+  coarsening: HeSF-LVC
+objective:
+  meta_recon: true
+  distillation:
+    logits: true
+    feature: optional
+protocol:
+  primary: full_target_inference
+  transfer_baseline: true
