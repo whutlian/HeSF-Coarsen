@@ -8,6 +8,8 @@ from hesf_coarsen.eval.hettree_task import evaluate_hettree_task
 from hesf_coarsen.eval.sehgnn_task import evaluate_sehgnn_task
 from hesf_coarsen.eval.task_gnn import TaskEvalResult
 from hesf_coarsen.io.schema import HeteroGraph, nodes_of_type
+from hesf_coarsen.accuracy.full_target_protocol import make_protocol_row
+from hesf_coarsen.accuracy.model_fidelity_registry import fidelity_record
 
 
 def validate_target_preserve_adapter(
@@ -69,20 +71,38 @@ def evaluate_full_target_inference(
         original_to_hybrid,
         target_node_type=int(target_node_type),
     )
-    mode_b_macro = metrics.get("projected_original_macro_f1", metrics.get("macro_f1", 0.0))
-    mode_b_micro = metrics.get("projected_original_micro_f1", metrics.get("micro_f1", 0.0))
-    mode_b_accuracy = metrics.get("projected_original_accuracy", metrics.get("accuracy", mode_b_micro))
+    fidelity = fidelity_record(model)
+    real_row = make_protocol_row(
+        metrics,
+        eval_mode="real_full_target_inference",
+        model_name=model,
+        model_fidelity=fidelity["model_fidelity"],
+        official_repo=fidelity["official_repo"],
+        official_preprocess=fidelity["official_preprocess"],
+        adapter_mode="target_preserve_direct",
+        path_set=fidelity["path_set"],
+        split_policy=str(metrics.get("task_split_policy", fidelity["split_policy"])),
+        max_hops=metrics.get("max_hops", fidelity["max_hops"]),
+    )
+    mode_b_macro = real_row["macro_f1"]
+    mode_b_micro = real_row["micro_f1"]
+    mode_b_accuracy = real_row["accuracy"]
     metrics.update(
         {
             **adapter,
             "model_name": model,
             "task_eval_protocol": "compressed_support_train_full_target_inference",
-            "task_eval_mode": "mode_b_full_target_inference",
-            "eval_mode": "full_target_inference",
-            "official_repo": "no",
-            "official_preprocess": "no",
-            "adapter_mode": "approximate",
-            "path_set": "lite",
+            "task_eval_mode": "real_full_target_inference",
+            "eval_mode": "real_full_target_inference",
+            "official_repo": fidelity["official_repo"],
+            "official_preprocess": fidelity["official_preprocess"],
+            "adapter_mode": "target_preserve_direct",
+            "path_set": fidelity["path_set"],
+            "target_domain": real_row["target_domain"],
+            "support_domain": real_row["support_domain"],
+            "inference_domain": real_row["inference_domain"],
+            "metric_source": real_row["metric_source"],
+            "model_fidelity": fidelity["model_fidelity"],
             "full_target_inference": True,
             "mode_b_original_macro_f1": mode_b_macro,
             "mode_b_original_micro_f1": mode_b_micro,

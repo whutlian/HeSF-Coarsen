@@ -30,7 +30,10 @@ def test_full_target_inference_reports_mode_b_protocol_tags():
         device="cpu",
     ).metrics
 
-    assert metrics["eval_mode"] == "full_target_inference"
+    assert metrics["eval_mode"] == "real_full_target_inference"
     assert metrics["full_target_inference"] is True
     assert metrics["model_name"] == "sehgnn_lite"
+    assert metrics["metric_source"] == "hybrid_target_original"
+    assert metrics["target_domain"] == "original_target_nodes"
+    assert metrics["inference_domain"] == "full_original_target_set"
     assert "macro_f1" in metrics

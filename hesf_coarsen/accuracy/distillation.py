@@ -1,3 +1,9 @@
+"""Experimental proxy distillation helpers for deprecated Next17 A5.
+
+The deterministic teacher logits are not a trained teacher and must not be used
+as evidence for a real distillation contribution.
+"""
+
 from __future__ import annotations
 
 import numpy as np

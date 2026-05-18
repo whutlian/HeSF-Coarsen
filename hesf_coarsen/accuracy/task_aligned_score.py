@@ -1,3 +1,5 @@
+"""Bookkeeping score for deprecated Next17 task-aligned diagnostics."""
+
 from __future__ import annotations
 
 

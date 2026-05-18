@@ -1,3 +1,9 @@
+"""Deprecated Next17 Hybrid-B target-anchor heuristic.
+
+Next18 keeps this module only for loading and documenting old A3/A4/A5 outputs.
+It is not part of the serious accuracy-branch validation path.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

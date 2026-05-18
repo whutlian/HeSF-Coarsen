@@ -1,3 +1,9 @@
+"""Experimental proxy diagnostic for deprecated Next17 A4.
+
+Next18 treats this as an appendix-only approximation, not as a validated
+task-aligned objective.
+"""
+
 from __future__ import annotations
 
 import numpy as np

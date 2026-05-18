@@ -404,6 +404,7 @@ def evaluate_hettree_task(
         projected_pred,
         macro_empty_class_policy=macro_empty_class_policy,
     )
+    hybrid_target_scores = projected_scores
 
     coarse_train_scores = _classification_scores(
         coarse_labels[coarse_tree.target_nodes[coarse_train_local]],
@@ -445,6 +446,10 @@ def evaluate_hettree_task(
             "projected_original_micro_f1": projected_scores["micro_f1"],
             "projected_original_macro_f1": projected_scores["macro_f1"],
             "projected_original_accuracy": projected_scores["accuracy"],
+            "hybrid_target_original_micro_f1": hybrid_target_scores["micro_f1"],
+            "hybrid_target_original_macro_f1": hybrid_target_scores["macro_f1"],
+            "hybrid_target_original_accuracy": hybrid_target_scores["accuracy"],
+            "hybrid_target_metric_source": "target_preserved_hybrid_predictions",
             "transfer_original_micro_f1": transfer_scores["micro_f1"],
             "transfer_original_macro_f1": transfer_scores["macro_f1"],
             "transfer_original_accuracy": transfer_scores["accuracy"],
