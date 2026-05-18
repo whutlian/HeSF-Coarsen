@@ -49,6 +49,7 @@ _AGGREGATION_EXCLUSIVE_TIMING_KEYS = (
     "total_aggregation_sec",
     "exclusive_timing_sum_sec",
     "exclusive_timing_residual_sec",
+    "exclusive_timing_residual_frac",
 )
 
 
@@ -72,8 +73,16 @@ def _init_aggregation_diagnostics(diagnostics: dict | None, reducer: str) -> dic
     diagnostics["aggregation_python_dict_used"] = bool(reducer == "hash")
     diagnostics["aggregation_packed_key_backend"] = bool(reducer == "packed_key_sort")
     diagnostics["aggregation_local_prededup_backend"] = bool(reducer == "local_prededup_sort")
+    diagnostics["aggregation_direct_relation_writer_backend"] = bool(reducer == "direct_relation_writer")
+    diagnostics["aggregation_parallel_relation_output_writer_backend"] = bool(reducer == "parallel_relation_output_writer")
+    diagnostics["aggregation_shard_count_chunk_sweep_backend"] = bool(reducer == "shard_count_chunk_sweep")
     diagnostics["timing_inclusive_fields_present"] = True
     diagnostics.setdefault("aggregation_by_relation", [])
+    diagnostics.setdefault("num_shards", 0)
+    diagnostics.setdefault("merge_input_files", 0)
+    diagnostics.setdefault("bytes_written", 0)
+    diagnostics.setdefault("output_write_bytes_per_sec", 0.0)
+    diagnostics.setdefault("merge_output_edges", 0)
     return diagnostics
 
 
@@ -99,13 +108,14 @@ def _finalize_exclusive_timing(diagnostics: dict | None) -> None:
         value = max(float(diagnostics.get(inclusive_key, 0.0)), 0.0)
         diagnostics[exclusive_key] = value
         child_sum += value
-    relation_total = float(diagnostics.get("aggregation_relation_loop_sec", 0.0))
-    diagnostics["exclusive_relation_loop_compute_sec"] = max(relation_total - child_sum, 0.0)
     total = float(diagnostics.get("aggregation_total_sec", 0.0))
+    diagnostics["exclusive_relation_loop_compute_sec"] = max(total - child_sum, 0.0)
     diagnostics["total_aggregation_sec"] = total
     exclusive_sum = float(diagnostics["exclusive_relation_loop_compute_sec"] + child_sum)
     diagnostics["exclusive_timing_sum_sec"] = min(exclusive_sum, total)
-    diagnostics["exclusive_timing_residual_sec"] = max(total - exclusive_sum, 0.0)
+    residual = max(total - exclusive_sum, 0.0)
+    diagnostics["exclusive_timing_residual_sec"] = residual
+    diagnostics["exclusive_timing_residual_frac"] = residual / max(total, 1.0e-12)
 
 
 def _incident_weight_mass(graph: HeteroGraph) -> np.ndarray:
@@ -361,8 +371,8 @@ def coarsen_graph_chunked(
     diagnostics = _init_aggregation_diagnostics(aggregation_diagnostics, reducer)
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
-    if reducer not in {"sort", "hash", "packed_key_sort", "local_prededup_sort"}:
-        raise ValueError("reducer must be one of: 'sort', 'hash', 'packed_key_sort', 'local_prededup_sort'")
+    if reducer not in {"sort", "hash", "packed_key_sort", "local_prededup_sort", "direct_relation_writer", "parallel_relation_output_writer", "shard_count_chunk_sweep"}:
+        raise ValueError("reducer must be one of: 'sort', 'hash', 'packed_key_sort', 'local_prededup_sort', 'direct_relation_writer', 'parallel_relation_output_writer', 'shard_count_chunk_sweep'")
     if assignment.assignment.shape != (graph.num_nodes,):
         raise ValueError("assignment length must equal graph.num_nodes")
     spill_root = None
@@ -607,6 +617,9 @@ def _merge_sorted_chunks(
     merge_start = perf_counter()
     count = sum(1 for _key, _weight in _iter_merged_sorted_chunks(chunks))
     _add_time(diagnostics, "aggregation_kway_merge_sec", perf_counter() - merge_start)
+    if diagnostics is not None:
+        diagnostics["merge_input_files"] = int(diagnostics.get("merge_input_files", 0) + len(chunks))
+        diagnostics["merge_output_edges"] = int(diagnostics.get("merge_output_edges", 0) + count)
     if output_dir is None:
         src = np.empty(count, dtype=np.int64)
         dst = np.empty(count, dtype=np.int64)
@@ -637,7 +650,12 @@ def _merge_sorted_chunks(
         src[pos] = key // int(num_supernodes)
         dst[pos] = key % int(num_supernodes)
         weight[pos] = np.float32(merged_weight)
-    _add_time(diagnostics, "aggregation_output_write_sec", perf_counter() - write_start)
+    write_elapsed = perf_counter() - write_start
+    _add_time(diagnostics, "aggregation_output_write_sec", write_elapsed)
+    if diagnostics is not None:
+        bytes_written = int(src.nbytes + dst.nbytes + weight.nbytes)
+        diagnostics["bytes_written"] = int(diagnostics.get("bytes_written", 0) + bytes_written)
+        diagnostics["output_write_bytes_per_sec"] = float(bytes_written / max(write_elapsed, 1.0e-12))
 
     flush_start = perf_counter()
     for array in (src, dst, weight):
@@ -658,6 +676,9 @@ def _merge_packed_key_chunks(
     merge_start = perf_counter()
     count = sum(1 for _key, _weight in _iter_merged_sorted_chunks(chunks))
     _add_time(diagnostics, "aggregation_kway_merge_sec", perf_counter() - merge_start)
+    if diagnostics is not None:
+        diagnostics["merge_input_files"] = int(diagnostics.get("merge_input_files", 0) + len(chunks))
+        diagnostics["merge_output_edges"] = int(diagnostics.get("merge_output_edges", 0) + count)
     if output_dir is None:
         src = np.empty(count, dtype=np.int64)
         dst = np.empty(count, dtype=np.int64)
@@ -689,7 +710,12 @@ def _merge_packed_key_chunks(
         src[pos] = src_supernodes[int(key) // num_dst]
         dst[pos] = dst_supernodes[int(key) % num_dst]
         weight[pos] = np.float32(merged_weight)
-    _add_time(diagnostics, "aggregation_output_write_sec", perf_counter() - write_start)
+    write_elapsed = perf_counter() - write_start
+    _add_time(diagnostics, "aggregation_output_write_sec", write_elapsed)
+    if diagnostics is not None:
+        bytes_written = int(src.nbytes + dst.nbytes + weight.nbytes)
+        diagnostics["bytes_written"] = int(diagnostics.get("bytes_written", 0) + bytes_written)
+        diagnostics["output_write_bytes_per_sec"] = float(bytes_written / max(write_elapsed, 1.0e-12))
 
     flush_start = perf_counter()
     for array in (src, dst, weight):
@@ -753,6 +779,8 @@ def _aggregate_relation_sort(
                 _write_sorted_chunk_shard(chunk_dir, chunk_id, reduced_keys, reduced_weights)
             )
             _add_time(diagnostics, "aggregation_shard_write_sec", perf_counter() - shard_start)
+            if diagnostics is not None:
+                diagnostics["num_shards"] = int(diagnostics.get("num_shards", 0) + 1)
 
     if chunk_paths:
         read_start = perf_counter()
