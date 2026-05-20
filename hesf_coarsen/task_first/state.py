@@ -11,7 +11,11 @@ from hesf_coarsen.task_first.probes import (
     compute_target_conditioned_filter_bank,
 )
 from hesf_coarsen.task_first.relation_response import compute_relation_target_responses
-from hesf_coarsen.task_first.support_coverage import build_anchor_neighborhoods
+from hesf_coarsen.task_first.relation_response import build_support_relation_footprints
+from hesf_coarsen.task_first.support_coverage import (
+    build_anchor_neighborhoods,
+    build_support_anchor_memberships,
+)
 from hesf_coarsen.task_first.support_purity import build_support_class_footprints
 
 
@@ -23,8 +27,21 @@ class TaskFirstState:
     target_seed_matrix: np.ndarray
     target_filter_responses: dict[float, np.ndarray]
     relation_target_responses: dict[str, np.ndarray]
+    support_relation_footprints: np.ndarray
     support_class_footprints: np.ndarray
     anchor_neighborhoods: dict[tuple[int, str], np.ndarray]
+    support_anchor_memberships: dict[int, dict[tuple[int, str], tuple[float, float]]]
+    feature_node_positions: dict[int, dict[int, int]]
+
+
+def _feature_node_positions(graph: HeteroGraph) -> dict[int, dict[int, int]]:
+    return {
+        int(type_id): {
+            int(node): int(pos)
+            for pos, node in enumerate(np.flatnonzero(graph.node_type == int(type_id)).astype(np.int64))
+        }
+        for type_id in sorted(int(value) for value in np.unique(graph.node_type))
+    }
 
 
 def build_task_first_state(
@@ -53,8 +70,10 @@ def build_task_first_state(
         target_seed_matrix,
         cfg,
     )
+    support_relation_footprints = build_support_relation_footprints(graph, cfg)
     support_class_footprints = build_support_class_footprints(graph, labels, train_mask, cfg)
     anchor_neighborhoods = build_anchor_neighborhoods(graph, train_target_nodes, cfg)
+    support_anchor_memberships = build_support_anchor_memberships(anchor_neighborhoods, cfg)
     return TaskFirstState(
         target_nodes=target_nodes,
         support_nodes=support_nodes,
@@ -62,6 +81,9 @@ def build_task_first_state(
         target_seed_matrix=target_seed_matrix,
         target_filter_responses=target_filter_responses,
         relation_target_responses=relation_target_responses,
+        support_relation_footprints=support_relation_footprints,
         support_class_footprints=support_class_footprints,
         anchor_neighborhoods=anchor_neighborhoods,
+        support_anchor_memberships=support_anchor_memberships,
+        feature_node_positions=_feature_node_positions(graph),
     )

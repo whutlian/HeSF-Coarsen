@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import ceil
 
 import numpy as np
 
@@ -66,8 +67,50 @@ def build_target_preserve_assignment_template(
     )
 
 
-def _greedy_cluster_config(cfg: TaskFirstConfig) -> dict:
+def task_first_support_merge_budget(graph: HeteroGraph, cfg: TaskFirstConfig) -> dict:
+    target_count = int(np.sum(graph.node_type == int(cfg.target_node_type)))
+    support_count = int(graph.num_nodes - target_count)
+    requested_ratio = cfg.target_ratio
+    requested_support_ratio = cfg.support_ratio
+    explicit_merges = cfg.max_support_merges
+    desired_total_nodes = int(graph.num_nodes)
+    desired_support_nodes = support_count
+    infeasible = False
+    if explicit_merges is not None:
+        max_merges = max(0, min(support_count, int(explicit_merges)))
+        desired_support_nodes = int(support_count - max_merges)
+        desired_total_nodes = int(target_count + desired_support_nodes)
+    elif requested_support_ratio is not None:
+        ratio = min(max(float(requested_support_ratio), 0.0), 1.0)
+        desired_support_nodes = max(0, min(support_count, int(ceil(support_count * ratio - 1.0e-12))))
+        max_merges = int(support_count - desired_support_nodes)
+        desired_total_nodes = int(target_count + desired_support_nodes)
+    elif requested_ratio is not None:
+        ratio = min(max(float(requested_ratio), 0.0), 1.0)
+        requested_total = max(0, min(int(graph.num_nodes), int(ceil(graph.num_nodes * ratio - 1.0e-12))))
+        infeasible = requested_total < target_count
+        desired_total_nodes = max(target_count, requested_total)
+        desired_support_nodes = max(0, min(support_count, desired_total_nodes - target_count))
+        max_merges = int(support_count - desired_support_nodes)
+    else:
+        max_merges = None
+    realized_floor_ratio = float(target_count / max(int(graph.num_nodes), 1))
     return {
+        "target_nodes": target_count,
+        "support_nodes": support_count,
+        "requested_target_ratio": None if requested_ratio is None else float(requested_ratio),
+        "requested_support_ratio": None if requested_support_ratio is None else float(requested_support_ratio),
+        "requested_ratio_infeasible": bool(infeasible),
+        "target_preserve_floor_ratio": realized_floor_ratio,
+        "desired_total_nodes": int(desired_total_nodes),
+        "desired_support_nodes": int(desired_support_nodes),
+        "max_support_merges": None if max_merges is None else int(max_merges),
+    }
+
+
+def _greedy_cluster_config(graph: HeteroGraph, cfg: TaskFirstConfig) -> dict:
+    budget = task_first_support_merge_budget(graph, cfg)
+    coarsening = {
         "coarsening": {
             "matching_method": "greedy_cluster",
             "same_type_only": bool(cfg.same_type_only),
@@ -75,6 +118,9 @@ def _greedy_cluster_config(cfg: TaskFirstConfig) -> dict:
             "max_cluster_size": 4,
         }
     }
+    if budget["max_support_merges"] is not None:
+        coarsening["coarsening"]["max_matched_pairs"] = int(budget["max_support_merges"])
+    return coarsening
 
 
 def _target_first_assignment_from_support_clusters(
@@ -160,10 +206,11 @@ def build_support_only_task_first_coarsening(
         scored_rows.append([float(u), float(v), float(delta.score_task_first)])
     scored = np.asarray(scored_rows, dtype=np.float64).reshape(-1, 3)
     source_lookup = getattr(base_candidates, "source_for_pair", None)
+    budget = task_first_support_merge_budget(original, cfg)
     raw_assignment = run_greedy_cluster_matching(
         original,
         scored,
-        _greedy_cluster_config(cfg),
+        _greedy_cluster_config(original, cfg),
         partition_id=original.partitions,
         source_lookup=source_lookup if callable(source_lookup) else None,
     )
@@ -173,6 +220,7 @@ def build_support_only_task_first_coarsening(
     diagnostics = {
         "matching_method": "greedy_cluster",
         "pipeline_steps": list(PIPELINE_STEPS),
+        **budget,
         "target_node_type": int(cfg.target_node_type),
         "target_nodes_preserved": True,
         "target_preserve_template_supernodes": int(template.num_supernodes),

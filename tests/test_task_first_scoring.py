@@ -1,6 +1,7 @@
 import numpy as np
+from dataclasses import replace
 
-from hesf_coarsen.task_first.config import TaskFirstConfig
+from hesf_coarsen.task_first.config import TaskFirstConfig, TaskFirstScoringConfig
 from hesf_coarsen.task_first.constraints import allow_task_first_merge
 from hesf_coarsen.task_first.relation_response import delta_relation_response_for_merge
 from hesf_coarsen.task_first.scoring import compute_task_first_delta, score_task_first_delta
@@ -78,3 +79,27 @@ def test_delta_relation_response_for_merge_accepts_support_pair_interface():
     delta = delta_relation_response_for_merge(graph, 2, 3, state, cfg)
 
     assert delta >= 0.0
+
+
+def test_local_surrogate_delta_uses_fast_nonnegative_terms_and_same_score_formula():
+    graph = make_target_support_graph()
+    labels = np.asarray(graph.labels)
+    train_mask = np.array([True, True, False, False, False])
+    cfg = TaskFirstConfig(
+        target_node_type=0,
+        scoring=TaskFirstScoringConfig(pair_delta_mode="local_surrogate"),
+    )
+    state = build_task_first_state(graph, labels, train_mask, cfg)
+
+    delta = compute_task_first_delta(graph, 2, 3, state, cfg)
+
+    expected = (
+        cfg.scoring.lambda_target_spec * delta.delta_target_spec
+        + cfg.scoring.lambda_rel_response * delta.delta_rel_response
+        + cfg.scoring.lambda_support_coverage * delta.delta_support_coverage
+        + cfg.scoring.lambda_support_purity * delta.delta_support_purity
+        + cfg.scoring.lambda_feat * delta.delta_feat
+    )
+    assert delta.delta_target_spec >= 0.0
+    assert delta.delta_rel_response >= 0.0
+    assert delta.score_task_first == expected

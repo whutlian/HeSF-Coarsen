@@ -10,6 +10,7 @@ from hesf_coarsen.task_first.pipeline import (
     SupportCompressedGraph,
     build_support_only_task_first_coarsening,
     build_target_preserve_assignment_template,
+    task_first_support_merge_budget,
 )
 from hesf_coarsen.task_first.state import TaskFirstState, build_task_first_state
 
@@ -25,4 +26,5 @@ __all__ = [
     "build_support_only_task_first_coarsening",
     "build_target_preserve_assignment_template",
     "build_task_first_state",
+    "task_first_support_merge_budget",
 ]

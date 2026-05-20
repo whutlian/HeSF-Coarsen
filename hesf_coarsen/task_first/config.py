@@ -39,6 +39,7 @@ class TaskFirstScoringConfig:
     lambda_support_coverage: float = 0.75
     lambda_support_purity: float = 0.75
     lambda_feat: float = 0.1
+    pair_delta_mode: Literal["exact", "local_surrogate"] = "exact"
     normalization: Literal["p95", "none"] = "p95"
 
 
@@ -47,6 +48,9 @@ class TaskFirstConfig:
     target_node_type: int
     keep_all_target_nodes: bool = True
     support_only_coarsening: bool = True
+    target_ratio: float | None = None
+    support_ratio: float | None = None
+    max_support_merges: int | None = None
     same_type_only: bool = True
     same_partition_only: bool = True
     target_spec: TargetConditionedSpecConfig = field(default_factory=TargetConditionedSpecConfig)

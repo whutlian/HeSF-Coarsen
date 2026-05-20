@@ -47,17 +47,29 @@ def assignment_with_pair_merged(graph: HeteroGraph, u: int, v: int, cfg: TaskFir
     return Assignment(assignment, np.asarray(super_types, dtype=np.int32))
 
 
-def _feature_delta(graph: HeteroGraph, u: int, v: int) -> float:
+def _feature_delta(graph: HeteroGraph, u: int, v: int, state=None) -> float:
     if graph.features is None:
         return 0.0
     type_id = int(graph.node_type[int(u)])
     feature = graph.features.get(type_id)
     if feature is None:
         return 0.0
-    typed_nodes = np.flatnonzero(graph.node_type == type_id).astype(np.int64)
-    local = {int(node): idx for idx, node in enumerate(typed_nodes)}
+    if state is not None and hasattr(state, "feature_node_positions"):
+        local = state.feature_node_positions.get(type_id, {})
+    else:
+        typed_nodes = np.flatnonzero(graph.node_type == type_id).astype(np.int64)
+        local = {int(node): idx for idx, node in enumerate(typed_nodes)}
     left = feature[local[int(u)]].astype(np.float64)
     right = feature[local[int(v)]].astype(np.float64)
+    denom = max(float(np.sum(left * left) + np.sum(right * right)), 1.0e-8)
+    return float(np.sum((left - right) ** 2) / denom)
+
+
+def _row_distance(values: np.ndarray, u: int, v: int) -> float:
+    if values.size == 0:
+        return 0.0
+    left = values[int(u)].astype(np.float64)
+    right = values[int(v)].astype(np.float64)
     denom = max(float(np.sum(left * left) + np.sum(right * right)), 1.0e-8)
     return float(np.sum((left - right) ** 2) / denom)
 
@@ -69,13 +81,25 @@ def compute_task_first_delta(
     state,
     cfg: TaskFirstConfig,
 ) -> TaskFirstDelta:
+    mode = str(cfg.scoring.pair_delta_mode).lower()
+    if mode == "local_surrogate":
+        delta = TaskFirstDelta(
+            delta_target_spec=_row_distance(state.support_class_footprints, int(u), int(v)),
+            delta_rel_response=_row_distance(state.support_relation_footprints, int(u), int(v)),
+            delta_support_coverage=delta_support_coverage_for_merge(int(u), int(v), state, cfg),
+            delta_support_purity=delta_support_purity_for_merge(int(u), int(v), state, cfg),
+            delta_feat=_feature_delta(graph, int(u), int(v), state),
+        )
+        return score_task_first_delta(delta, cfg)
+    if mode != "exact":
+        raise ValueError(f"unsupported TaskFirst pair_delta_mode: {cfg.scoring.pair_delta_mode}")
     pair_assignment = assignment_with_pair_merged(graph, int(u), int(v), cfg)
     delta = TaskFirstDelta(
         delta_target_spec=target_conditioned_response_error(graph, pair_assignment, state, cfg),
         delta_rel_response=relation_response_error(graph, pair_assignment, state, cfg),
         delta_support_coverage=delta_support_coverage_for_merge(int(u), int(v), state, cfg),
         delta_support_purity=delta_support_purity_for_merge(int(u), int(v), state, cfg),
-        delta_feat=_feature_delta(graph, int(u), int(v)),
+        delta_feat=_feature_delta(graph, int(u), int(v), state),
     )
     return score_task_first_delta(delta, cfg)
 

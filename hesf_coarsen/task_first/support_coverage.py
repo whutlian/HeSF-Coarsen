@@ -40,6 +40,22 @@ def build_anchor_neighborhoods(
     return out
 
 
+def build_support_anchor_memberships(
+    anchor_neighborhoods: dict[tuple[int, str], np.ndarray],
+    cfg: TaskFirstConfig,
+) -> dict[int, dict[tuple[int, str], tuple[float, float]]]:
+    memberships: dict[int, dict[tuple[int, str], tuple[float, float]]] = {}
+    for key, rows in anchor_neighborhoods.items():
+        if rows.size == 0:
+            continue
+        nodes = rows[:, 0].astype(np.int64)
+        weights = rows[:, 1].astype(np.float64)
+        norm = max(float(np.sum(weights * weights)), cfg.support_coverage.epsilon)
+        for node, weight in zip(nodes, weights):
+            memberships.setdefault(int(node), {})[key] = (float(weight), norm)
+    return memberships
+
+
 def delta_support_coverage_for_merge(
     u: int,
     v: int,
@@ -48,6 +64,19 @@ def delta_support_coverage_for_merge(
 ) -> float:
     u = int(u)
     v = int(v)
+    memberships = getattr(state, "support_anchor_memberships", None)
+    if memberships is not None:
+        left = memberships.get(u, {})
+        right = memberships.get(v, {})
+        common = set(left) & set(right)
+        if not common:
+            return 0.0
+        penalties = []
+        for key in common:
+            wu, norm = left[key]
+            wv, _right_norm = right[key]
+            penalties.append(float((wu * wu + wv * wv) / norm))
+        return float(np.mean(penalties))
     penalties = []
     for rows in state.anchor_neighborhoods.values():
         if rows.size == 0:

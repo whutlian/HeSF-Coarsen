@@ -83,6 +83,30 @@ def compute_relation_target_responses(
     }
 
 
+def build_support_relation_footprints(graph: HeteroGraph, cfg: TaskFirstConfig) -> np.ndarray:
+    relation_ids = (
+        _target_relevant_relation_ids(graph, cfg)
+        if cfg.relation_response.use_target_support_relations_only
+        else sorted(int(relation_id) for relation_id in graph.relations)
+    )
+    if not relation_ids:
+        return np.zeros((graph.num_nodes, 0), dtype=np.float32)
+    positions = {int(relation_id): idx for idx, relation_id in enumerate(relation_ids)}
+    footprint = np.zeros((graph.num_nodes, len(relation_ids) * 2), dtype=np.float32)
+    target_type = int(cfg.target_node_type)
+    for relation_id in relation_ids:
+        rel = graph.relations[int(relation_id)]
+        pos = positions[int(relation_id)]
+        src_support = graph.node_type[rel.src] != target_type
+        dst_support = graph.node_type[rel.dst] != target_type
+        if np.any(src_support):
+            np.add.at(footprint[:, pos], rel.src[src_support], rel.weight[src_support])
+        if np.any(dst_support):
+            np.add.at(footprint[:, pos + len(relation_ids)], rel.dst[dst_support], rel.weight[dst_support])
+    denom = np.maximum(np.sum(footprint, axis=1, keepdims=True), 1.0e-12)
+    return (footprint / denom).astype(np.float32)
+
+
 def relation_response_error(
     original: HeteroGraph,
     assignment: Assignment,
