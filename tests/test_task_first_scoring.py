@@ -2,6 +2,7 @@ import numpy as np
 
 from hesf_coarsen.task_first.config import TaskFirstConfig
 from hesf_coarsen.task_first.constraints import allow_task_first_merge
+from hesf_coarsen.task_first.relation_response import delta_relation_response_for_merge
 from hesf_coarsen.task_first.scoring import compute_task_first_delta, score_task_first_delta
 from hesf_coarsen.task_first.state import build_task_first_state
 from hesf_coarsen.task_first.support_coverage import delta_support_coverage_for_merge
@@ -65,3 +66,15 @@ def test_task_first_delta_contains_all_terms_and_weighted_score():
     assert scored.delta_support_purity >= 0.0
     assert scored.delta_feat >= 0.0
     assert scored.score_task_first > 0.0
+
+
+def test_delta_relation_response_for_merge_accepts_support_pair_interface():
+    graph = make_target_support_graph()
+    labels = np.asarray(graph.labels)
+    train_mask = np.array([True, True, False, False, False])
+    cfg = TaskFirstConfig(target_node_type=0)
+    state = build_task_first_state(graph, labels, train_mask, cfg)
+
+    delta = delta_relation_response_for_merge(graph, 2, 3, state, cfg)
+
+    assert delta >= 0.0

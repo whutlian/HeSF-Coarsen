@@ -10,6 +10,30 @@ from hesf_coarsen.task_first.config import TaskFirstConfig
 from hesf_coarsen.task_first.probes import lift_target_seed
 
 
+def _assignment_with_pair_merged(graph: HeteroGraph, u: int, v: int, cfg: TaskFirstConfig) -> Assignment:
+    target_nodes = np.flatnonzero(graph.node_type == int(cfg.target_node_type)).astype(np.int64)
+    target_set = set(int(node) for node in target_nodes)
+    assignment = np.full(graph.num_nodes, -1, dtype=np.int64)
+    super_types: list[int] = []
+    for node in target_nodes:
+        assignment[int(node)] = len(super_types)
+        super_types.append(int(graph.node_type[int(node)]))
+    u = int(u)
+    v = int(v)
+    if u in target_set or v in target_set:
+        raise ValueError("TaskFirst relation-response merge requires support nodes")
+    pair_supernode = len(super_types)
+    assignment[u] = pair_supernode
+    assignment[v] = pair_supernode
+    super_types.append(int(graph.node_type[u]))
+    for node in range(graph.num_nodes):
+        if assignment[node] >= 0:
+            continue
+        assignment[node] = len(super_types)
+        super_types.append(int(graph.node_type[node]))
+    return Assignment(assignment, np.asarray(super_types, dtype=np.int32))
+
+
 def _target_relevant_relation_ids(graph: HeteroGraph, cfg: TaskFirstConfig) -> list[int]:
     target_type = int(cfg.target_node_type)
     return [
@@ -97,8 +121,21 @@ def relation_response_error(
 
 def delta_relation_response_for_merge(
     original: HeteroGraph,
-    assignment: Assignment,
-    state,
-    cfg: TaskFirstConfig,
+    u_or_assignment,
+    v_or_state,
+    state_or_cfg=None,
+    cfg: TaskFirstConfig | None = None,
 ) -> float:
-    return relation_response_error(original, assignment, state, cfg)
+    if isinstance(u_or_assignment, Assignment):
+        assignment = u_or_assignment
+        state = v_or_state
+        actual_cfg = state_or_cfg
+    else:
+        if cfg is None:
+            raise TypeError("cfg is required when passing merge endpoints")
+        assignment = _assignment_with_pair_merged(original, int(u_or_assignment), int(v_or_state), cfg)
+        state = state_or_cfg
+        actual_cfg = cfg
+    if actual_cfg is None:
+        raise TypeError("TaskFirstConfig is required")
+    return relation_response_error(original, assignment, state, actual_cfg)

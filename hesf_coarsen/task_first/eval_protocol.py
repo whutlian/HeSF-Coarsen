@@ -25,6 +25,35 @@ class TaskEvalSummary:
     metrics: dict
 
 
+def _backbone_fidelity(backbone: FullTargetBackbone) -> str:
+    return str(getattr(backbone, "fidelity", ""))
+
+
+def evaluate_coarse_transfer_protocol(
+    compressed_graph: HeteroGraph,
+    backbone: FullTargetBackbone,
+) -> TaskEvalSummary:
+    del compressed_graph
+    return TaskEvalSummary(
+        protocol=COARSE_TRANSFER,
+        backbone_fidelity=_backbone_fidelity(backbone),
+        metrics={"status": "not_run_interface_only"},
+    )
+
+
+def evaluate_approx_full_target_adapter_protocol(
+    original_graph: HeteroGraph,
+    compressed_support_graph: HeteroGraph,
+    backbone: FullTargetBackbone,
+) -> TaskEvalSummary:
+    del original_graph, compressed_support_graph
+    return TaskEvalSummary(
+        protocol=APPROX_FULL_TARGET_ADAPTER,
+        backbone_fidelity=_backbone_fidelity(backbone),
+        metrics={"status": "not_run_interface_only"},
+    )
+
+
 def evaluate_real_full_target_protocol(
     original_graph: HeteroGraph,
     compressed_support_graph: HeteroGraph,
@@ -33,7 +62,7 @@ def evaluate_real_full_target_protocol(
 ) -> TaskEvalSummary:
     del original_graph, compressed_support_graph
     allowed = {"official", "faithful"}
-    fidelity = str(getattr(backbone, "fidelity", ""))
+    fidelity = _backbone_fidelity(backbone)
     if fidelity not in allowed:
         raise ValueError(
             "real_full_target_inference requires an official or faithful backbone; "

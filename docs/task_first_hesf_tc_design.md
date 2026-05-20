@@ -30,8 +30,10 @@ Target nodes of `target_node_type` are never merged. The full assignment is bloc
 - Anchor support-neighborhood coverage delta.
 - One-hop train-label support class footprints.
 - Mandatory JS threshold purity block.
-- Support-only coarsening pipeline using existing `Assignment` and `coarsen_graph`.
-- Strict `real_full_target_inference` protocol gate that rejects `lite` backbones.
+- Target-preserve assignment template with target nodes in the leading identity block.
+- Support-only coarsening pipeline that scores support candidate pairs, runs the existing `greedy_cluster` matcher on those support-only pairs, then reindexes the assignment as target identity plus support `Q`.
+- Explicit `coarse_transfer`, `approx_full_target_adapter`, and `real_full_target_inference` protocol interfaces.
+- Strict `real_full_target_inference` protocol gate that rejects `lite` and `adapter` backbones.
 
 ## Deferred To V2
 
