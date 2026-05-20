@@ -56,12 +56,88 @@ def build_support_anchor_memberships(
     return memberships
 
 
+def _anchor_ids(memberships: dict[tuple[int, str], tuple[float, float]]) -> set[int]:
+    return {int(anchor) for anchor, _relation in memberships}
+
+
+def _jaccard_distance(left: set[int], right: set[int]) -> float:
+    if not left and not right:
+        return 0.0
+    union = len(left | right)
+    if union == 0:
+        return 0.0
+    return float(1.0 - len(left & right) / union)
+
+
+def _js_divergence(p: np.ndarray, q: np.ndarray) -> float:
+    eps = 1.0e-12
+    p = np.asarray(p, dtype=np.float64)
+    q = np.asarray(q, dtype=np.float64)
+    p = p / max(float(p.sum()), eps)
+    q = q / max(float(q.sum()), eps)
+    m = 0.5 * (p + q)
+    total = 0.0
+    for value, base in ((p, m), (q, m)):
+        mask = value > 0.0
+        if np.any(mask):
+            total += 0.5 * float(np.sum(value[mask] * np.log((value[mask] + eps) / (base[mask] + eps))))
+    return float(total)
+
+
+def coverage_components_for_merge(
+    u: int,
+    v: int,
+    state,
+    cfg: TaskFirstConfig,
+) -> dict[str, float]:
+    u = int(u)
+    v = int(v)
+    memberships = getattr(state, "support_anchor_memberships", None) or {}
+    left = memberships.get(u, {})
+    right = memberships.get(v, {})
+    common = set(left) & set(right)
+    same_anchor = 0.0
+    if common:
+        penalties = []
+        for key in common:
+            wu, norm = left[key]
+            wv, _right_norm = right[key]
+            penalties.append(float((wu * wu + wv * wv) / max(float(norm), cfg.support_coverage.epsilon)))
+        same_anchor = float(np.mean(penalties))
+    left_anchors = _anchor_ids(left)
+    right_anchors = _anchor_ids(right)
+    class_context = _js_divergence(
+        state.support_class_footprints[u],
+        state.support_class_footprints[v],
+    )
+    cross_anchor = float(_jaccard_distance(left_anchors, right_anchors) * class_context)
+    return {
+        "same_anchor_loss": same_anchor,
+        "cross_anchor_collision_loss": cross_anchor,
+        "class_context_collision_loss": class_context,
+    }
+
+
 def delta_support_coverage_for_merge(
     u: int,
     v: int,
     state,
     cfg: TaskFirstConfig,
 ) -> float:
+    mode = str(getattr(cfg.support_coverage, "mode", "old_common_anchor_only"))
+    if mode != "old_common_anchor_only":
+        components = coverage_components_for_merge(int(u), int(v), state, cfg)
+        if mode == "cross_anchor_collision":
+            return float(components["cross_anchor_collision_loss"])
+        if mode == "class_context_collision":
+            return float(components["class_context_collision_loss"])
+        if mode == "combined":
+            return float(
+                components["same_anchor_loss"]
+                + components["cross_anchor_collision_loss"]
+                + components["class_context_collision_loss"]
+            )
+        raise ValueError(f"unsupported support coverage mode: {cfg.support_coverage.mode}")
     u = int(u)
     v = int(v)
     memberships = getattr(state, "support_anchor_memberships", None)

@@ -22,6 +22,12 @@ class RelationResponseConfig:
 class SupportCoverageConfig:
     anchor_source: Literal["all_train_targets", "train_plus_confident"] = "all_train_targets"
     topk: int = 32
+    mode: Literal[
+        "old_common_anchor_only",
+        "cross_anchor_collision",
+        "class_context_collision",
+        "combined",
+    ] = "old_common_anchor_only"
     epsilon: float = 1.0e-8
 
 
@@ -30,6 +36,12 @@ class SupportPurityConfig:
     enabled: bool = True
     footprint_source: Literal["onehop_train_labels", "teacher_probs"] = "onehop_train_labels"
     js_merge_block_threshold: float = 0.35
+    zero_policy: Literal[
+        "zero_as_no_conflict",
+        "unknown_blocks_known",
+        "unknown_propagated",
+        "unknown_only_merge",
+    ] = "zero_as_no_conflict"
 
 
 @dataclass(frozen=True)
@@ -39,7 +51,13 @@ class TaskFirstScoringConfig:
     lambda_support_coverage: float = 0.75
     lambda_support_purity: float = 0.75
     lambda_feat: float = 0.1
-    pair_delta_mode: Literal["exact", "local_surrogate"] = "exact"
+    pair_delta_mode: Literal[
+        "exact",
+        "exact_pair_isolated",
+        "local_surrogate",
+        "response_signature",
+        "stateful_approx",
+    ] = "exact"
     normalization: Literal["p95", "none"] = "p95"
 
 

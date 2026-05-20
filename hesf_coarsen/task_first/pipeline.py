@@ -14,11 +14,13 @@ from hesf_coarsen.task_first.constraints import allow_task_first_merge
 from hesf_coarsen.task_first.probes import target_conditioned_response_error
 from hesf_coarsen.task_first.relation_response import relation_response_error
 from hesf_coarsen.task_first.scoring import compute_task_first_delta, normalize_task_first_deltas
+from hesf_coarsen.task_first.scoring import task_first_delta_distribution
 from hesf_coarsen.task_first.state import build_task_first_state
-from hesf_coarsen.task_first.support_coverage import delta_support_coverage_for_merge
+from hesf_coarsen.task_first.support_coverage import coverage_components_for_merge, delta_support_coverage_for_merge
 from hesf_coarsen.task_first.support_purity import (
     delta_support_purity_for_merge,
     merge_is_purity_allowed,
+    support_purity_pair_kind,
 )
 
 
@@ -106,6 +108,31 @@ def task_first_support_merge_budget(graph: HeteroGraph, cfg: TaskFirstConfig) ->
         "desired_support_nodes": int(desired_support_nodes),
         "max_support_merges": None if max_merges is None else int(max_merges),
     }
+
+
+def task_first_budget_stop_reason(
+    *,
+    current_support_nodes: int,
+    desired_support_nodes: int,
+    max_support_merges: int | None,
+    candidate_pair_count: int,
+    eligible_candidate_pair_count: int,
+    selected_support_merges: int,
+    max_levels_reached: bool = False,
+) -> tuple[str, str]:
+    if current_support_nodes <= desired_support_nodes:
+        return "reached_requested_support_ratio", ""
+    if max_levels_reached:
+        return "max_levels_reached", "multilevel loop hit configured max_levels"
+    if max_support_merges is not None and int(max_support_merges) <= 0:
+        return "merge_budget_floor", "computed max_support_merges <= 0"
+    if candidate_pair_count <= 0:
+        return "candidate_exhaustion", "candidate source emitted no pairs"
+    if eligible_candidate_pair_count <= 0:
+        return "constraint_blocked_all_candidates", "purity/support constraints rejected all candidates"
+    if selected_support_merges <= 0:
+        return "no_selected_merges", "greedy cluster selected zero merges"
+    return "not_stopped", ""
 
 
 def _greedy_cluster_config(graph: HeteroGraph, cfg: TaskFirstConfig) -> dict:
@@ -217,6 +244,38 @@ def build_support_only_task_first_coarsening(
     assignment = _target_first_assignment_from_support_clusters(original, raw_assignment, template, cfg)
     coarse = coarsen_graph(original, assignment)
     selected_pairs = assignment.diagnostics.get("_selected_merge_pairs", np.empty((0, 2), dtype=np.int64))
+    selected_set = {tuple(sorted((int(u), int(v)))) for u, v in np.asarray(selected_pairs, dtype=np.int64).reshape(-1, 2)}
+    selected_deltas = [
+        delta
+        for pair, delta in zip(scored_pairs, normalized)
+        if tuple(sorted((int(pair[0]), int(pair[1])))) in selected_set
+    ]
+    selected_raw = [
+        delta
+        for pair, delta in zip(scored_pairs, deltas)
+        if tuple(sorted((int(pair[0]), int(pair[1])))) in selected_set
+    ]
+    coverage_components = [
+        coverage_components_for_merge(int(u), int(v), state, cfg)
+        for u, v in np.asarray(selected_pairs, dtype=np.int64).reshape(-1, 2)
+    ]
+    purity_kind_counts: dict[str, int] = {}
+    for u, v in np.asarray(scored_pairs, dtype=np.int64).reshape(-1, 2) if scored_pairs else np.empty((0, 2), dtype=np.int64):
+        kind = support_purity_pair_kind(int(u), int(v), state)
+        purity_kind_counts[f"candidate_{kind}_count"] = purity_kind_counts.get(f"candidate_{kind}_count", 0) + 1
+    selected_purity_kind_counts: dict[str, int] = {}
+    for u, v in np.asarray(selected_pairs, dtype=np.int64).reshape(-1, 2):
+        kind = support_purity_pair_kind(int(u), int(v), state)
+        selected_purity_kind_counts[f"selected_{kind}_count"] = selected_purity_kind_counts.get(f"selected_{kind}_count", 0) + 1
+    candidate_pair_count = int(getattr(base_candidates, "pair_count", lambda: 0)())
+    stop_reason, floor_reason = task_first_budget_stop_reason(
+        current_support_nodes=int(np.sum(original.node_type != int(cfg.target_node_type))),
+        desired_support_nodes=int(budget.get("desired_support_nodes", 0)),
+        max_support_merges=None if budget.get("max_support_merges") is None else int(budget["max_support_merges"]),
+        candidate_pair_count=candidate_pair_count,
+        eligible_candidate_pair_count=int(evaluated),
+        selected_support_merges=int(len(selected_pairs)),
+    )
     diagnostics = {
         "matching_method": "greedy_cluster",
         "pipeline_steps": list(PIPELINE_STEPS),
@@ -230,7 +289,27 @@ def build_support_only_task_first_coarsening(
         "num_support_candidates_rejected_by_purity": int(rejected_purity),
         "num_support_candidates_rejected_by_constraints": int(rejected_constraints),
         "selected_support_merges": int(len(selected_pairs)),
+        "selected_pair_keys": [f"{int(u)}-{int(v)}" for u, v in np.asarray(selected_pairs, dtype=np.int64).reshape(-1, 2)],
         "selected_merges_by_source": dict(assignment.diagnostics.get("selected_merges_by_source", {})),
+        "candidate_pair_count": candidate_pair_count,
+        "eligible_candidate_pair_count": int(evaluated),
+        "stop_reason": stop_reason,
+        "floor_reason": floor_reason,
+        "stateful_approx_status": "not_implemented",
+        **task_first_delta_distribution(deltas, normalized, cfg),
+        **{f"selected_{key}": value for key, value in task_first_delta_distribution(selected_raw, selected_deltas, cfg).items()},
+        **purity_kind_counts,
+        **selected_purity_kind_counts,
+        "coverage_same_anchor_loss_mean": float(np.mean([item["same_anchor_loss"] for item in coverage_components])) if coverage_components else 0.0,
+        "coverage_cross_anchor_collision_loss_mean": float(np.mean([item["cross_anchor_collision_loss"] for item in coverage_components])) if coverage_components else 0.0,
+        "coverage_class_context_collision_loss_mean": float(np.mean([item["class_context_collision_loss"] for item in coverage_components])) if coverage_components else 0.0,
+        "coverage_zero_delta_pair_share": float(np.mean([delta.delta_support_coverage <= 1.0e-12 for delta in normalized])) if normalized else 0.0,
+        "coverage_positive_delta_pair_share": float(np.mean([delta.delta_support_coverage > 1.0e-12 for delta in normalized])) if normalized else 0.0,
+        "selected_cross_anchor_collision_share": float(np.mean([item["cross_anchor_collision_loss"] > 1.0e-12 for item in coverage_components])) if coverage_components else 0.0,
+        "selected_high_context_collision_share": float(np.mean([item["class_context_collision_loss"] > 0.25 for item in coverage_components])) if coverage_components else 0.0,
+        "known_footprint_count": int(np.count_nonzero(getattr(state, "support_footprint_states", np.empty(0)) == 0)),
+        "unknown_target_connected_count": int(np.count_nonzero(getattr(state, "support_footprint_states", np.empty(0)) == 1)),
+        "unknown_isolated_count": int(np.count_nonzero(getattr(state, "support_footprint_states", np.empty(0)) == 2)),
         "target_spec_error": target_conditioned_response_error(original, assignment, state, cfg),
         "relation_response_error": relation_response_error(original, assignment, state, cfg),
         "support_coverage_error": float(

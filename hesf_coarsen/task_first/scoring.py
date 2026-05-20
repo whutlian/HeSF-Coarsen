@@ -74,6 +74,10 @@ def _row_distance(values: np.ndarray, u: int, v: int) -> float:
     return float(np.sum((left - right) ** 2) / denom)
 
 
+def _response_signature_distance(state, u: int, v: int) -> float:
+    return _row_distance(state.support_response_signatures, int(u), int(v))
+
+
 def compute_task_first_delta(
     graph: HeteroGraph,
     u: int,
@@ -91,7 +95,18 @@ def compute_task_first_delta(
             delta_feat=_feature_delta(graph, int(u), int(v), state),
         )
         return score_task_first_delta(delta, cfg)
-    if mode != "exact":
+    if mode == "response_signature":
+        delta = TaskFirstDelta(
+            delta_target_spec=_response_signature_distance(state, int(u), int(v)),
+            delta_rel_response=_row_distance(state.support_relation_footprints, int(u), int(v)),
+            delta_support_coverage=delta_support_coverage_for_merge(int(u), int(v), state, cfg),
+            delta_support_purity=delta_support_purity_for_merge(int(u), int(v), state, cfg),
+            delta_feat=_feature_delta(graph, int(u), int(v), state),
+        )
+        return score_task_first_delta(delta, cfg)
+    if mode == "stateful_approx":
+        raise NotImplementedError("stateful_approx is not implemented; Gate13 reports stateful_approx_status=not_implemented")
+    if mode not in {"exact", "exact_pair_isolated"}:
         raise ValueError(f"unsupported TaskFirst pair_delta_mode: {cfg.scoring.pair_delta_mode}")
     pair_assignment = assignment_with_pair_merged(graph, int(u), int(v), cfg)
     delta = TaskFirstDelta(
@@ -156,3 +171,32 @@ def normalize_task_first_deltas(
             )
         )
     return normalized
+
+
+def task_first_delta_distribution(
+    raw_deltas: list[TaskFirstDelta],
+    normalized_deltas: list[TaskFirstDelta],
+    cfg: TaskFirstConfig,
+) -> dict[str, float]:
+    del cfg
+    out: dict[str, float] = {}
+    fields = (
+        "delta_target_spec",
+        "delta_rel_response",
+        "delta_support_coverage",
+        "delta_support_purity",
+        "delta_feat",
+        "score_task_first",
+    )
+    for prefix, deltas in (("raw", raw_deltas), ("norm", normalized_deltas)):
+        if not deltas:
+            continue
+        for field in fields:
+            values = np.asarray([float(getattr(delta, field)) for delta in deltas], dtype=np.float64)
+            out[f"{prefix}_{field}_p50"] = float(np.percentile(values, 50))
+            out[f"{prefix}_{field}_p95"] = float(np.percentile(values, 95))
+            out[f"{prefix}_{field}_max"] = float(np.max(values))
+    if normalized_deltas:
+        rel = np.asarray([float(delta.delta_rel_response) for delta in normalized_deltas], dtype=np.float64)
+        out["norm_rel_response_nonzero_share"] = float(np.mean(np.abs(rel) > 1.0e-12))
+    return out

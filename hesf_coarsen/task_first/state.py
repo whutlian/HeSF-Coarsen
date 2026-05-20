@@ -5,10 +5,12 @@ from dataclasses import dataclass
 import numpy as np
 
 from hesf_coarsen.io.schema import HeteroGraph
+from hesf_coarsen.ops.fused_operator import apply_fused_smoothing
 from hesf_coarsen.task_first.config import TaskFirstConfig
 from hesf_coarsen.task_first.probes import (
     build_target_seed_matrix,
     compute_target_conditioned_filter_bank,
+    lift_target_seed,
 )
 from hesf_coarsen.task_first.relation_response import compute_relation_target_responses
 from hesf_coarsen.task_first.relation_response import build_support_relation_footprints
@@ -17,6 +19,7 @@ from hesf_coarsen.task_first.support_coverage import (
     build_support_anchor_memberships,
 )
 from hesf_coarsen.task_first.support_purity import build_support_class_footprints
+from hesf_coarsen.task_first.support_purity import classify_support_footprints
 
 
 @dataclass
@@ -29,6 +32,8 @@ class TaskFirstState:
     relation_target_responses: dict[str, np.ndarray]
     support_relation_footprints: np.ndarray
     support_class_footprints: np.ndarray
+    support_response_signatures: np.ndarray
+    support_footprint_states: np.ndarray
     anchor_neighborhoods: dict[tuple[int, str], np.ndarray]
     support_anchor_memberships: dict[int, dict[tuple[int, str], tuple[float, float]]]
     feature_node_positions: dict[int, dict[int, int]]
@@ -42,6 +47,30 @@ def _feature_node_positions(graph: HeteroGraph) -> dict[int, dict[int, int]]:
         }
         for type_id in sorted(int(value) for value in np.unique(graph.node_type))
     }
+
+
+def _support_response_signatures(
+    graph: HeteroGraph,
+    target_nodes: np.ndarray,
+    target_seed_matrix: np.ndarray,
+    support_class_footprints: np.ndarray,
+    support_relation_footprints: np.ndarray,
+    cfg: TaskFirstConfig,
+) -> np.ndarray:
+    blocks = [
+        np.asarray(support_class_footprints, dtype=np.float32),
+        np.asarray(support_relation_footprints, dtype=np.float32),
+    ]
+    full_response = lift_target_seed(graph, target_nodes, target_seed_matrix)
+    for temperature in cfg.target_spec.temperatures:
+        steps = max(2, int(np.ceil(float(temperature) * 2.0)))
+        response = np.asarray(full_response, dtype=np.float32)
+        for _ in range(steps):
+            response = apply_fused_smoothing(graph, response)
+        blocks.append(response.astype(np.float32, copy=False))
+    signature = np.concatenate(blocks, axis=1).astype(np.float32, copy=False)
+    norms = np.maximum(np.linalg.norm(signature, axis=1, keepdims=True), 1.0e-12)
+    return (signature / norms).astype(np.float32)
 
 
 def build_task_first_state(
@@ -74,6 +103,19 @@ def build_task_first_state(
     support_class_footprints = build_support_class_footprints(graph, labels, train_mask, cfg)
     anchor_neighborhoods = build_anchor_neighborhoods(graph, train_target_nodes, cfg)
     support_anchor_memberships = build_support_anchor_memberships(anchor_neighborhoods, cfg)
+    support_response_signatures = _support_response_signatures(
+        graph,
+        target_nodes,
+        target_seed_matrix,
+        support_class_footprints,
+        support_relation_footprints,
+        cfg,
+    )
+    support_footprint_states = classify_support_footprints(
+        support_class_footprints,
+        support_relation_footprints,
+        support_anchor_memberships,
+    )
     return TaskFirstState(
         target_nodes=target_nodes,
         support_nodes=support_nodes,
@@ -83,6 +125,8 @@ def build_task_first_state(
         relation_target_responses=relation_target_responses,
         support_relation_footprints=support_relation_footprints,
         support_class_footprints=support_class_footprints,
+        support_response_signatures=support_response_signatures,
+        support_footprint_states=support_footprint_states,
         anchor_neighborhoods=anchor_neighborhoods,
         support_anchor_memberships=support_anchor_memberships,
         feature_node_positions=_feature_node_positions(graph),
