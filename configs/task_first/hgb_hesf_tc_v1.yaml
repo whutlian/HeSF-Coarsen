@@ -1,0 +1,32 @@
+task_first:
+  enabled: true
+  target_node_type: 3
+  keep_all_target_nodes: true
+  support_only_coarsening: true
+  same_type_only: true
+  same_partition_only: true
+
+  target_spec:
+    temperatures: [0.25, 1.0, 4.0]
+    probe_source: train_labels
+
+  relation_response:
+    enabled: true
+    use_target_support_relations_only: true
+
+  support_coverage:
+    anchor_source: all_train_targets
+    topk: 32
+
+  support_purity:
+    enabled: true
+    footprint_source: onehop_train_labels
+    js_merge_block_threshold: 0.35
+
+  scoring:
+    lambda_target_spec: 1.0
+    lambda_rel_response: 0.5
+    lambda_support_coverage: 0.75
+    lambda_support_purity: 0.75
+    lambda_feat: 0.1
+    normalization: p95
