@@ -5,13 +5,7 @@ from typing import Any
 import numpy as np
 
 from hesf_coarsen.task_first.selection.config import SupportSelectorConfig
-
-
-def _budget_count(total: int, support_ratio: float) -> int:
-    ratio = min(max(float(support_ratio), 0.0), 1.0)
-    if total <= 0 or ratio <= 0.0:
-        return 0
-    return max(1, min(int(total), int(np.ceil(total * ratio - 1.0e-12))))
+from hesf_coarsen.task_first.selection.budget import budget_diagnostics, desired_support_count
 
 
 def _class_ids(class_footprint: np.ndarray) -> np.ndarray:
@@ -89,6 +83,57 @@ def _diverse_order(
     return selected
 
 
+def _argmax_or_unknown(values: np.ndarray) -> np.ndarray:
+    if values.size == 0 or values.shape[1] == 0:
+        return np.full(values.shape[0], -1, dtype=np.int64)
+    ids = np.argmax(values, axis=1).astype(np.int64)
+    ids[np.sum(values, axis=1) <= 1.0e-12] = -1
+    return ids
+
+
+def _block_keys(support_features: dict[str, Any]) -> list[tuple[int, int, int, int]]:
+    nodes = np.asarray(support_features["support_nodes"], dtype=np.int64)
+    types = np.asarray(support_features["support_node_types"], dtype=np.int64)
+    components = support_features["component_matrices"]
+    relation_bucket = _argmax_or_unknown(components.get("relation_profile", np.empty((len(nodes), 0))))
+    anchor_bucket = _argmax_or_unknown(components.get("anchor_distribution", np.empty((len(nodes), 0))))
+    class_bucket = _argmax_or_unknown(components.get("class_footprint", np.empty((len(nodes), 0))))
+    return [
+        (int(types[idx]), int(relation_bucket[idx]), int(anchor_bucket[idx]), int(class_bucket[idx]))
+        for idx in range(len(nodes))
+    ]
+
+
+def _block_order(
+    support_features: dict[str, Any],
+    importance: np.ndarray,
+    budget: int,
+) -> list[int]:
+    nodes = np.asarray(support_features["support_nodes"], dtype=np.int64)
+    keys = _block_keys(support_features)
+    block_scores: dict[tuple[int, int, int, int], float] = {}
+    for idx, key in enumerate(keys):
+        block_scores[key] = block_scores.get(key, 0.0) + float(importance[idx])
+    ordered_blocks = sorted(block_scores, key=lambda key: (-block_scores[key], key))
+    selected: list[int] = []
+    selected_set: set[int] = set()
+    for key in ordered_blocks:
+        members = [idx for idx, item in enumerate(keys) if item == key and idx not in selected_set]
+        for idx in sorted(members, key=lambda item: (-float(importance[item]), int(nodes[item]))):
+            selected.append(int(idx))
+            selected_set.add(int(idx))
+            if len(selected) >= budget:
+                return selected
+    if len(selected) < budget:
+        for idx in _topk_order(nodes, importance):
+            if idx in selected_set:
+                continue
+            selected.append(int(idx))
+            if len(selected) >= budget:
+                break
+    return selected
+
+
 def select_support_nodes(
     support_features: dict[str, Any],
     support_importance: np.ndarray,
@@ -99,12 +144,14 @@ def select_support_nodes(
     importance = np.asarray(support_importance, dtype=np.float32).reshape(-1)
     if importance.shape != (len(support_nodes),):
         raise ValueError("support_importance must have one score per support node")
-    budget = _budget_count(len(support_nodes), float(support_ratio))
+    budget = desired_support_count(len(support_nodes), float(support_ratio))
     selector = str(cfg.selector)
     if budget == 0:
         selected_local: list[int] = []
-    elif selector in {"teacher_diverse_topk", "validation_greedy", "hybrid_teacher_response"}:
+    elif selector in {"teacher_diverse_topk", "validation_greedy", "validation_proxy_diverse", "hybrid_teacher_response"}:
         selected_local = _diverse_order(support_features, importance, budget, cfg)
+    elif selector in {"sensitivity_block_selector", "true_validation_block_greedy"}:
+        selected_local = _block_order(support_features, importance, budget)
     elif selector in {"teacher_topk", "mlp_importance"}:
         selected_local = _topk_order(support_nodes, importance)[:budget]
     else:
@@ -113,19 +160,35 @@ def select_support_nodes(
     class_fp = support_features["component_matrices"].get("class_footprint", np.empty((len(support_nodes), 0)))
     relation = support_features["component_matrices"].get("relation_profile", np.empty((len(support_nodes), 0)))
     anchor = support_features["component_matrices"].get("anchor_distribution", np.empty((len(support_nodes), 0)))
+    relation_bucket = _argmax_or_unknown(relation)
+    anchor_bucket = _argmax_or_unknown(anchor)
     class_ids = _class_ids(class_fp)
     type_values, type_counts = np.unique(
         support_features["support_node_types"][selected_local] if selected_local else np.empty(0, dtype=np.int32),
         return_counts=True,
     )
+    selector_family = "proxy_selector_baseline"
+    if selector in {"sensitivity_block_selector", "true_validation_block_greedy"}:
+        selector_family = "validation_sensitivity_selector"
     diagnostics = {
         "selected_support_count": int(len(selected_nodes)),
-        "requested_support_ratio": float(support_ratio),
-        "realized_support_ratio": float(len(selected_nodes) / max(len(support_nodes), 1)),
+        **budget_diagnostics(
+            num_support=len(support_nodes),
+            support_ratio=float(support_ratio),
+            realized_support_count=len(selected_nodes),
+        ),
         "selected_by_type": {str(int(t)): int(c) for t, c in zip(type_values, type_counts)},
         "selected_by_class_footprint": {
             str(int(label)): int(np.count_nonzero(class_ids[selected_local] == int(label)))
             for label in sorted(set(int(value) for value in class_ids[selected_local])) if selected_local
+        },
+        "selected_by_anchor": {
+            str(int(label)): int(np.count_nonzero(anchor_bucket[selected_local] == int(label)))
+            for label in sorted(set(int(value) for value in anchor_bucket[selected_local])) if selected_local
+        },
+        "selected_by_relation_bucket": {
+            str(int(label)): int(np.count_nonzero(relation_bucket[selected_local] == int(label)))
+            for label in sorted(set(int(value) for value in relation_bucket[selected_local])) if selected_local
         },
         "anchor_coverage_before": _coverage_count(anchor),
         "anchor_coverage_after": _coverage_count(anchor[selected_local]) if selected_local else 0,
@@ -134,6 +197,14 @@ def select_support_nodes(
         "relation_channel_coverage_before": _coverage_count(relation),
         "relation_channel_coverage_after": _coverage_count(relation[selected_local]) if selected_local else 0,
         "context_collision_rate": _context_collision(class_ids, selected_local),
+        "selector_family": selector_family,
+        "selector_uses_true_validation_feedback": bool(selector == "true_validation_block_greedy"),
+        "validation_greedy_steps": int(len(set(_block_keys(support_features)[idx] for idx in selected_local)))
+        if selector == "true_validation_block_greedy" and selected_local
+        else 0,
+        "validation_greedy_candidate_pool_size": int(cfg.candidate_pool_size),
+        "validation_greedy_short_eval_epochs": int(cfg.short_eval_epochs),
+        "validation_greedy_best_gain_mean": 0.0,
         "selector_uses_test_labels": False,
     }
     score_rows = [

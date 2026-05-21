@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Literal, Mapping
 
 import numpy as np
 
@@ -214,6 +214,20 @@ def evaluate_hettree_task(
     val_fraction: float = 0.2,
     macro_empty_class_policy: str = "truth_pred_union",
     official_split_nodes: Mapping[str, np.ndarray] | None = None,
+    primary_eval_mode: Literal[
+        "compressed_projected",
+        "original_transfer",
+        "hybrid_target",
+        "both",
+    ] = "compressed_projected",
+    early_stopping: bool = True,
+    patience: int = 30,
+    min_delta: float = 1.0e-6,
+    monitor: Literal[
+        "projected_val_macro_f1",
+        "transfer_val_macro_f1",
+        "coarse_train_loss",
+    ] = "projected_val_macro_f1",
 ) -> TaskEvalResult:
     try:
         import torch
@@ -374,15 +388,97 @@ def evaluate_hettree_task(
         weight_decay=float(weight_decay),
     )
     loss_fn = nn.CrossEntropyLoss()
+    mode = str(primary_eval_mode)
+    if mode not in {"compressed_projected", "original_transfer", "hybrid_target", "both"}:
+        raise ValueError(f"unsupported primary_eval_mode: {primary_eval_mode}")
+    monitor_name = str(monitor)
+    if monitor_name not in {"projected_val_macro_f1", "transfer_val_macro_f1", "coarse_train_loss"}:
+        raise ValueError(f"unsupported hettree early-stopping monitor: {monitor}")
+
+    def _state_dict_cpu() -> dict[str, Any]:
+        return {name: tensor.detach().cpu().clone() for name, tensor in model.state_dict().items()}
+
+    def _load_state_dict_cpu(state: dict[str, Any]) -> None:
+        model.load_state_dict({name: tensor.to(dev) for name, tensor in state.items()})
+
+    def _projected_scores_from_coarse_pred(
+        coarse_pred_local_values: np.ndarray,
+        nodes: np.ndarray,
+    ) -> dict[str, float]:
+        if len(nodes) == 0:
+            return {"micro_f1": 0.0, "macro_f1": 0.0, "accuracy": 0.0}
+        coarse_pred_full = np.full(coarse.num_nodes, -1, dtype=np.int64)
+        coarse_pred_full[coarse_tree.target_nodes] = np.asarray(coarse_pred_local_values, dtype=np.int64)
+        projected = coarse_pred_full[np.asarray(original_to_coarse, dtype=np.int64)[nodes]]
+        return _classification_scores(
+            labels[nodes],
+            projected,
+            macro_empty_class_policy=macro_empty_class_policy,
+        )
+
+    def _transfer_scores_from_original_pred(
+        original_pred_local_values: np.ndarray,
+        local_indices: np.ndarray,
+        nodes: np.ndarray,
+    ) -> dict[str, float]:
+        if len(local_indices) == 0 or len(nodes) == 0:
+            return {"micro_f1": 0.0, "macro_f1": 0.0, "accuracy": 0.0}
+        targets = original_tree.target_nodes[local_indices]
+        return _classification_scores(
+            labels[targets],
+            np.asarray(original_pred_local_values, dtype=np.int64)[local_indices],
+            macro_empty_class_policy=macro_empty_class_policy,
+        )
+
     train_start = perf_counter()
-    model.train()
-    for _epoch in range(max(0, int(epochs))):
+    best_state: dict[str, Any] | None = None
+    best_epoch = -1
+    best_validation_macro_f1 = 0.0
+    best_monitor_score = -float("inf")
+    patience_left = max(1, int(patience))
+    early_stopped = False
+    use_early_stopping = bool(early_stopping) and len(original_val_local) > 0 and int(epochs) > 0
+    for epoch in range(max(0, int(epochs))):
+        model.train()
         optimizer.zero_grad(set_to_none=True)
         logits = model(coarse_x)
         loss = loss_fn(logits[train_idx], coarse_y[train_idx])
         loss.backward()
         optimizer.step()
+        if use_early_stopping:
+            model.eval()
+            with torch.no_grad():
+                epoch_coarse_logits = model(coarse_x)
+                epoch_coarse_pred = epoch_coarse_logits.argmax(dim=1).detach().cpu().numpy()
+                projected_val = _projected_scores_from_coarse_pred(epoch_coarse_pred, val_nodes)
+                if monitor_name == "projected_val_macro_f1":
+                    monitor_score = float(projected_val["macro_f1"])
+                elif monitor_name == "transfer_val_macro_f1":
+                    epoch_original_pred = model(original_x).argmax(dim=1).detach().cpu().numpy()
+                    transfer_val = _transfer_scores_from_original_pred(
+                        epoch_original_pred,
+                        original_val_local,
+                        val_nodes,
+                    )
+                    monitor_score = float(transfer_val["macro_f1"])
+                else:
+                    monitor_score = -float(loss.detach().cpu().item())
+            if monitor_score > best_monitor_score + float(min_delta):
+                best_monitor_score = monitor_score
+                best_validation_macro_f1 = float(projected_val["macro_f1"])
+                best_epoch = int(epoch)
+                best_state = _state_dict_cpu()
+                patience_left = max(1, int(patience))
+            else:
+                patience_left -= 1
+                if patience_left <= 0:
+                    early_stopped = True
+                    break
     train_time = float(perf_counter() - train_start)
+    if best_state is not None:
+        _load_state_dict_cpu(best_state)
+    elif int(epochs) > 0:
+        best_epoch = max(0, int(epochs) - 1)
 
     model.eval()
     with torch.no_grad():
@@ -396,16 +492,6 @@ def evaluate_hettree_task(
         transfer_pred,
         macro_empty_class_policy=macro_empty_class_policy,
     )
-    if len(original_val_local):
-        original_val_targets = original_tree.target_nodes[original_val_local]
-        validation_scores = _classification_scores(
-            labels[original_val_targets],
-            original_pred_local[original_val_local],
-            macro_empty_class_policy=macro_empty_class_policy,
-        )
-    else:
-        validation_scores = {"micro_f1": 0.0, "macro_f1": 0.0, "accuracy": 0.0}
-
     coarse_pred_full = np.full(coarse.num_nodes, -1, dtype=np.int64)
     coarse_pred_full[coarse_tree.target_nodes] = coarse_pred_local
     projected_pred = coarse_pred_full[np.asarray(original_to_coarse, dtype=np.int64)[test_nodes]]
@@ -415,12 +501,33 @@ def evaluate_hettree_task(
         macro_empty_class_policy=macro_empty_class_policy,
     )
     hybrid_target_scores = projected_scores
+    projected_val_scores = _projected_scores_from_coarse_pred(coarse_pred_local, val_nodes)
+    transfer_val_scores = _transfer_scores_from_original_pred(original_pred_local, original_val_local, val_nodes)
+    hybrid_target_val_scores = projected_val_scores
+    if not use_early_stopping:
+        best_validation_macro_f1 = float(projected_val_scores["macro_f1"])
 
     coarse_train_scores = _classification_scores(
         coarse_labels[coarse_tree.target_nodes[coarse_train_local]],
         coarse_pred_local[coarse_train_local],
         macro_empty_class_policy=macro_empty_class_policy,
     )
+    if mode == "compressed_projected":
+        primary_scores = projected_scores
+        primary_val_scores = projected_val_scores
+        primary_name = "projected_original_macro_f1"
+    elif mode == "original_transfer":
+        primary_scores = transfer_scores
+        primary_val_scores = transfer_val_scores
+        primary_name = "transfer_original_macro_f1"
+    elif mode == "hybrid_target":
+        primary_scores = hybrid_target_scores
+        primary_val_scores = hybrid_target_val_scores
+        primary_name = "hybrid_target_original_macro_f1"
+    else:
+        primary_scores = projected_scores
+        primary_val_scores = projected_val_scores
+        primary_name = "projected_original_macro_f1"
     peak_vram_mb = 0.0
     if torch.cuda.is_available():
         peak_vram_mb = float(torch.cuda.max_memory_allocated() / (1024 * 1024))
@@ -434,6 +541,9 @@ def evaluate_hettree_task(
             "train_on": "coarse_train_labels_only",
             "eval_on": "original_test_transfer",
             "projection_eval_on": "original_test_projected",
+            "transfer_eval_on": "original_test_transfer",
+            "primary_eval_on": "original_test_projected" if mode != "original_transfer" else "original_test_transfer",
+            "primary_eval_mode": mode,
             "target_node_type_id": int(target_type),
             "train_fraction": float(train_fraction),
             "val_fraction": float(val_fraction),
@@ -456,21 +566,35 @@ def evaluate_hettree_task(
             "projected_original_micro_f1": projected_scores["micro_f1"],
             "projected_original_macro_f1": projected_scores["macro_f1"],
             "projected_original_accuracy": projected_scores["accuracy"],
+            "projected_original_val_micro_f1": projected_val_scores["micro_f1"],
+            "projected_original_val_macro_f1": projected_val_scores["macro_f1"],
+            "projected_original_val_accuracy": projected_val_scores["accuracy"],
             "hybrid_target_original_micro_f1": hybrid_target_scores["micro_f1"],
             "hybrid_target_original_macro_f1": hybrid_target_scores["macro_f1"],
             "hybrid_target_original_accuracy": hybrid_target_scores["accuracy"],
+            "hybrid_target_original_val_micro_f1": hybrid_target_val_scores["micro_f1"],
+            "hybrid_target_original_val_macro_f1": hybrid_target_val_scores["macro_f1"],
+            "hybrid_target_original_val_accuracy": hybrid_target_val_scores["accuracy"],
             "hybrid_target_metric_source": "target_preserved_hybrid_predictions",
             "transfer_original_micro_f1": transfer_scores["micro_f1"],
             "transfer_original_macro_f1": transfer_scores["macro_f1"],
             "transfer_original_accuracy": transfer_scores["accuracy"],
-            "validation_micro_f1": validation_scores["micro_f1"],
-            "validation_macro_f1": validation_scores["macro_f1"],
-            "validation_accuracy": validation_scores["accuracy"],
-            "micro_f1": transfer_scores["micro_f1"],
-            "macro_f1": transfer_scores["macro_f1"],
-            "accuracy": transfer_scores["accuracy"],
-            "primary_task_metric_name": "transfer_original_macro_f1",
-            "primary_task_metric": transfer_scores["macro_f1"],
+            "transfer_original_val_micro_f1": transfer_val_scores["micro_f1"],
+            "transfer_original_val_macro_f1": transfer_val_scores["macro_f1"],
+            "transfer_original_val_accuracy": transfer_val_scores["accuracy"],
+            "validation_micro_f1": primary_val_scores["micro_f1"],
+            "validation_macro_f1": primary_val_scores["macro_f1"],
+            "validation_accuracy": primary_val_scores["accuracy"],
+            "micro_f1": primary_scores["micro_f1"],
+            "macro_f1": primary_scores["macro_f1"],
+            "accuracy": primary_scores["accuracy"],
+            "primary_task_metric_name": primary_name,
+            "primary_task_metric": primary_scores["macro_f1"],
+            "projected_vs_transfer_macro_gap": float(projected_scores["macro_f1"] - transfer_scores["macro_f1"]),
+            "projected_vs_transfer_accuracy_gap": float(projected_scores["accuracy"] - transfer_scores["accuracy"]),
+            "best_epoch": int(best_epoch),
+            "best_validation_macro_f1": float(best_validation_macro_f1),
+            "early_stopped": bool(early_stopped),
             "feature_time": feature_time,
             "train_time": train_time,
             "total_time": float(feature_time + train_time),

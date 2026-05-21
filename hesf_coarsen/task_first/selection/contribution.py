@@ -85,6 +85,50 @@ def compute_validation_occlusion_importance(
     }
 
 
+def compute_sensitivity_block_importance(
+    support_features: dict[str, Any],
+    teacher_outputs: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    teacher = compute_teacher_support_importance(support_features, teacher_outputs)
+    relation = support_features["component_matrices"].get(
+        "relation_profile",
+        np.empty((len(teacher["importance"]), 0)),
+    )
+    anchor = support_features["component_matrices"].get(
+        "anchor_distribution",
+        np.empty((len(teacher["importance"]), 0)),
+    )
+    class_fp = support_features["component_matrices"].get(
+        "class_footprint",
+        np.empty((len(teacher["importance"]), 0)),
+    )
+    relation_mass = np.sum(relation, axis=1) if relation.size else np.zeros(len(teacher["importance"]))
+    anchor_mass = np.sum(anchor, axis=1) if anchor.size else np.zeros(len(teacher["importance"]))
+    class_margin = np.zeros(len(teacher["importance"]), dtype=np.float32)
+    if class_fp.size:
+        sorted_fp = np.sort(class_fp, axis=1)
+        if sorted_fp.shape[1] >= 2:
+            class_margin = (sorted_fp[:, -1] - sorted_fp[:, -2]).astype(np.float32)
+        elif sorted_fp.shape[1] == 1:
+            class_margin = sorted_fp[:, -1].astype(np.float32)
+    diversity_bonus = np.linalg.norm(anchor, axis=1) if anchor.size else np.zeros(len(teacher["importance"]))
+    importance = (
+        1.0 * teacher["importance"]
+        + 0.2 * _scale(relation_mass)
+        + 0.2 * _scale(class_margin)
+        + 0.1 * _scale(diversity_bonus + anchor_mass)
+    )
+    return {
+        "importance": _scale(importance).astype(np.float32),
+        "components": {
+            **teacher["components"],
+            "sensitivity_relation_mass": np.asarray(relation_mass, dtype=np.float32),
+            "sensitivity_class_margin": np.asarray(class_margin, dtype=np.float32),
+            "sensitivity_diversity_bonus": np.asarray(diversity_bonus, dtype=np.float32),
+        },
+    }
+
+
 def compute_support_importance(
     support_features: dict[str, Any],
     teacher_outputs: dict[str, Any] | None = None,
@@ -95,8 +139,10 @@ def compute_support_importance(
     mode = str(mode)
     if mode in {"teacher_topk", "teacher_diverse_topk", "mlp_importance"}:
         return compute_teacher_support_importance(support_features, teacher_outputs)
-    if mode == "validation_greedy":
+    if mode in {"validation_greedy", "validation_proxy_diverse"}:
         return compute_validation_occlusion_importance(support_features, teacher_outputs)
+    if mode in {"sensitivity_block_selector", "true_validation_block_greedy"}:
+        return compute_sensitivity_block_importance(support_features, teacher_outputs)
     if mode == "hybrid_teacher_response":
         teacher = compute_teacher_support_importance(support_features, teacher_outputs)
         response = compute_response_support_importance(support_features)

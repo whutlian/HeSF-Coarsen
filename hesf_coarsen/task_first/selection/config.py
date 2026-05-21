@@ -34,6 +34,19 @@ class TeacherConfig:
     tune_full_graph_lite: bool = True
     save_logits: bool = True
     save_embeddings: bool = True
+    epochs_grid: tuple[int, ...] = (100, 200, 300)
+    hidden_dim_grid: tuple[int, ...] = (64, 128)
+    lr_grid: tuple[float, ...] = (0.001, 0.003, 0.005)
+    dropout_grid: tuple[float, ...] = (0.1, 0.25, 0.5)
+    weight_decay_grid: tuple[float, ...] = (1.0e-5, 1.0e-4)
+    restarts: int = 3
+    patience: int = 30
+    monitor: str = "projected_val_macro_f1"
+    proxy_logits_mode: Literal[
+        "disabled",
+        "diagnostic_only",
+        "fallback_if_no_trained_logits",
+    ] = "diagnostic_only"
 
 
 @dataclass(frozen=True)
@@ -42,6 +55,9 @@ class SupportSelectorConfig:
         "teacher_topk",
         "teacher_diverse_topk",
         "validation_greedy",
+        "validation_proxy_diverse",
+        "true_validation_block_greedy",
+        "sensitivity_block_selector",
         "mlp_importance",
         "hybrid_teacher_response",
     ] = "teacher_diverse_topk"
@@ -50,7 +66,21 @@ class SupportSelectorConfig:
     anchor_diversity: bool = True
     max_context_collision_js: float = 0.35
     allow_background_bucket: bool = True
-    background_strategy: Literal["drop", "dummy", "typed_background"] = "typed_background"
+    background_strategy: Literal[
+        "drop",
+        "dummy",
+        "typed_background",
+        "class_anchor_relation_prototype",
+    ] = "class_anchor_relation_prototype"
+    candidate_pool_size: int = 16
+    short_eval_epochs: int = 5
+    warm_start: bool = False
+    min_gain: float = -1.0
+    max_prototypes_per_type: int = 64
+    max_prototypes_per_class_anchor_relation: int = 4
+    min_nodes_per_prototype: int = 1
+    prototype_feature_aggregation: Literal["mean", "degree_weighted_mean"] = "degree_weighted_mean"
+    prototype_edge_aggregation: Literal["sum", "mean"] = "sum"
 
 
 @dataclass(frozen=True)
