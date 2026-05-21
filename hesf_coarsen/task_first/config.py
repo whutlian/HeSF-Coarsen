@@ -24,10 +24,15 @@ class SupportCoverageConfig:
     topk: int = 32
     mode: Literal[
         "old_common_anchor_only",
+        "coverage_v1_legacy",
         "cross_anchor_collision",
         "class_context_collision",
         "combined",
+        "coverage_v2",
     ] = "old_common_anchor_only"
+    w_anchor: float = 1.0
+    w_class: float = 1.0
+    w_div: float = 1.0
     epsilon: float = 1.0e-8
 
 
@@ -35,13 +40,24 @@ class SupportCoverageConfig:
 class SupportPurityConfig:
     enabled: bool = True
     footprint_source: Literal["onehop_train_labels", "teacher_probs"] = "onehop_train_labels"
+    support_footprint_mode: Literal[
+        "onehop_train",
+        "onehop_train_labels",
+        "twohop_propagated",
+        "hybrid_propagated",
+    ] = "onehop_train"
     js_merge_block_threshold: float = 0.35
     zero_policy: Literal[
         "zero_as_no_conflict",
         "unknown_blocks_known",
         "unknown_propagated",
         "unknown_only_merge",
+        "purity_v2",
     ] = "zero_as_no_conflict"
+    footprint_mass_threshold: float = 1.0e-12
+    footprint_confidence_threshold: float = 0.0
+    propagated_confidence_threshold: float = 0.35
+    hybrid_alpha: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -57,6 +73,7 @@ class TaskFirstScoringConfig:
         "local_surrogate",
         "response_signature",
         "stateful_approx",
+        "stateful_signature",
     ] = "exact"
     normalization: Literal["p95", "none"] = "p95"
 

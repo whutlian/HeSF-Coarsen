@@ -35,9 +35,12 @@ from hesf_coarsen.partition.type_partition import default_partition
 from hesf_coarsen.sketch.lowpass import compute_lowpass_sketch
 from hesf_coarsen.sketch.simhash import compute_simhash_buckets
 from hesf_coarsen.task_first.candidates import (
+    build_hybrid_task_aware_candidates,
     build_class_footprint_knn_candidates,
+    build_relation_response_knn_candidates,
     build_target_anchor_co_support_candidates,
     build_target_response_knn_candidates,
+    build_target_response_signature_knn_candidates,
 )
 from hesf_coarsen.task_first.config import (
     SupportCoverageConfig,
@@ -83,9 +86,10 @@ def task_first_config(
     js_threshold: float = 0.35,
     lambda_rel_response: float | None = None,
 ) -> TaskFirstConfig:
-    base_method = str(method).replace("-response", "")
+    method_name = str(method)
+    base_method = method_name.replace("-response", "").replace("-static", "")
     scoring = TaskFirstScoringConfig(pair_delta_mode=pair_delta_mode)
-    if base_method in {"HeSF-TC-S", "HeSF-TC-S-response"}:
+    if base_method.startswith("HeSF-TC-S"):
         scoring = replace(
             scoring,
             lambda_target_spec=2.0,
@@ -94,15 +98,23 @@ def task_first_config(
             lambda_support_purity=1.0,
             lambda_feat=0.1,
         )
-    elif base_method in {"HeSF-TC-no-rel"}:
+    elif "no-rel" in base_method:
         scoring = replace(scoring, lambda_rel_response=0.0)
-    elif base_method in {"HeSF-TC-no-target-spec"}:
+    elif "no-target-spec" in base_method:
         scoring = replace(scoring, lambda_target_spec=0.0)
-    elif base_method in {"HeSF-TC-no-coverage"}:
+    elif "no-coverage" in base_method:
         scoring = replace(scoring, lambda_support_coverage=0.0)
-    elif base_method in {"HeSF-TC-no-purity"}:
+    elif "no-purity" in base_method:
         scoring = replace(scoring, lambda_support_purity=0.0)
-    elif base_method not in {"HeSF-TC-P", "HeSF-TC-P-response"}:
+    elif not base_method.startswith("HeSF-TC-P") and base_method not in {
+        "HeSF-TC-coverage-v2",
+        "HeSF-TC-purity-v2",
+        "HeSF-TC-coverage-v2-purity-v2",
+        "HeSF-TC-stateful-v1",
+        "HeSF-TC-stateful-v1-coverage-v2",
+        "HeSF-TC-stateful-v1-purity-v2",
+        "HeSF-TC-stateful-v1-coverage-v2-purity-v2",
+    }:
         raise ValueError(f"unsupported HeSF-TC method: {method}")
     if lambda_rel_response is not None:
         scoring = replace(scoring, lambda_rel_response=float(lambda_rel_response))
@@ -117,7 +129,8 @@ def task_first_config(
         target_node_type=int(target_type),
         support_coverage=SupportCoverageConfig(mode=coverage_mode),
         support_purity=SupportPurityConfig(
-            zero_policy=purity_policy,
+            zero_policy="purity_v2" if "purity-v2" in base_method else purity_policy,
+            support_footprint_mode="hybrid_propagated" if "purity-v2" in base_method else "onehop_train",
             js_merge_block_threshold=float(js_threshold),
         ),
         scoring=scoring,
@@ -233,12 +246,20 @@ def build_gate13_candidates(
         return build_random_support_candidates(graph, target_type=target_type, seed=seed, candidate_k=candidate_k)
     if source == "sketch":
         return build_sketch_candidates(graph, seed=seed, candidate_k=candidate_k)
+    if source == "graph_sketch":
+        return build_sketch_candidates(graph, seed=seed, candidate_k=candidate_k, candidate_source="graph_sketch")
     if source == "target_anchor_co_support":
         return build_target_anchor_co_support_candidates(graph, state, target_type=target_type, candidate_k=candidate_k)
     if source == "class_footprint_knn":
         return build_class_footprint_knn_candidates(graph, state, target_type=target_type, candidate_k=candidate_k)
     if source == "target_response_knn":
         return build_target_response_knn_candidates(graph, state, target_type=target_type, candidate_k=candidate_k)
+    if source == "target_response_signature_knn":
+        return build_target_response_signature_knn_candidates(graph, state, target_type=target_type, candidate_k=candidate_k)
+    if source == "relation_response_knn":
+        return build_relation_response_knn_candidates(graph, state, target_type=target_type, candidate_k=candidate_k)
+    if source == "hybrid_task_aware":
+        return build_hybrid_task_aware_candidates(graph, state, target_type=target_type, candidate_k=candidate_k)
     raise ValueError(f"unsupported candidate_source: {candidate_source}")
 
 
@@ -424,6 +445,10 @@ def evaluate_graph(
     task_epochs: int,
     task_hidden_dim: int,
     device: str,
+    lr: float = 0.005,
+    dropout: float = 0.25,
+    max_hops: int = 2,
+    max_paths: int | None = 32,
 ) -> dict[str, Any]:
     return evaluate_hettree_task(
         original,
@@ -432,6 +457,10 @@ def evaluate_graph(
         seed=int(seed),
         epochs=int(task_epochs),
         hidden_dim=int(task_hidden_dim),
+        lr=float(lr),
+        dropout=float(dropout),
+        max_hops=int(max_hops),
+        max_paths=None if max_paths is None else int(max_paths),
         device=str(device),
     ).metrics
 
@@ -454,6 +483,10 @@ def run_full_graph_ceiling_row(args: argparse.Namespace, dataset: str, seed: int
         seed=int(seed),
         task_epochs=int(args.task_epochs),
         task_hidden_dim=int(args.task_hidden_dim),
+        lr=float(getattr(args, "task_lr", 0.005)),
+        dropout=float(getattr(args, "task_dropout", 0.25)),
+        max_hops=int(getattr(args, "task_max_hops", 2)),
+        max_paths=int(getattr(args, "task_max_paths", 32)),
         device=str(args.device),
     )
     row = {
@@ -464,6 +497,9 @@ def run_full_graph_ceiling_row(args: argparse.Namespace, dataset: str, seed: int
         "macro_f1": task.get("macro_f1"),
         "micro_f1": task.get("micro_f1"),
         "accuracy": task.get("accuracy"),
+        "validation_macro_f1": task.get("validation_macro_f1"),
+        "validation_micro_f1": task.get("validation_micro_f1"),
+        "validation_accuracy": task.get("validation_accuracy"),
         "train_nodes": int(len(train_nodes)),
         "val_nodes": int(len(val_nodes)),
         "test_nodes": int(len(test_nodes)),
@@ -643,6 +679,10 @@ def add_task_and_optional_spectral(
         seed=int(seed),
         task_epochs=int(args.task_epochs),
         task_hidden_dim=int(args.task_hidden_dim),
+        lr=float(getattr(args, "task_lr", 0.005)),
+        dropout=float(getattr(args, "task_dropout", 0.25)),
+        max_hops=int(getattr(args, "task_max_hops", 2)),
+        max_paths=int(getattr(args, "task_max_paths", 32)),
         device=str(args.device),
     )
     _flatten("task.", task, row)
@@ -735,6 +775,10 @@ def add_common_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument("--per-level-ratio", type=float, default=0.55)
     parser.add_argument("--task-epochs", type=int, default=10)
     parser.add_argument("--task-hidden-dim", type=int, default=32)
+    parser.add_argument("--task-lr", type=float, default=0.005)
+    parser.add_argument("--task-dropout", type=float, default=0.25)
+    parser.add_argument("--task-max-hops", type=int, default=2)
+    parser.add_argument("--task-max-paths", type=int, default=32)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--spectral", action="store_true")
     parser.add_argument("--spectral-signals", type=int, default=4)

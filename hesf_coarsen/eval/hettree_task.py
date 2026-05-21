@@ -332,6 +332,7 @@ def evaluate_hettree_task(
                 **label_protocol,
             }
         )
+    original_val_local = _local_indices(val_nodes, original_tree.target_nodes)
 
     num_classes = int(labels[labels >= 0].max(initial=0)) + 1
 
@@ -395,6 +396,15 @@ def evaluate_hettree_task(
         transfer_pred,
         macro_empty_class_policy=macro_empty_class_policy,
     )
+    if len(original_val_local):
+        original_val_targets = original_tree.target_nodes[original_val_local]
+        validation_scores = _classification_scores(
+            labels[original_val_targets],
+            original_pred_local[original_val_local],
+            macro_empty_class_policy=macro_empty_class_policy,
+        )
+    else:
+        validation_scores = {"micro_f1": 0.0, "macro_f1": 0.0, "accuracy": 0.0}
 
     coarse_pred_full = np.full(coarse.num_nodes, -1, dtype=np.int64)
     coarse_pred_full[coarse_tree.target_nodes] = coarse_pred_local
@@ -453,6 +463,9 @@ def evaluate_hettree_task(
             "transfer_original_micro_f1": transfer_scores["micro_f1"],
             "transfer_original_macro_f1": transfer_scores["macro_f1"],
             "transfer_original_accuracy": transfer_scores["accuracy"],
+            "validation_micro_f1": validation_scores["micro_f1"],
+            "validation_macro_f1": validation_scores["macro_f1"],
+            "validation_accuracy": validation_scores["accuracy"],
             "micro_f1": transfer_scores["micro_f1"],
             "macro_f1": transfer_scores["macro_f1"],
             "accuracy": transfer_scores["accuracy"],

@@ -15,7 +15,7 @@ def _normalize_rows(values: np.ndarray) -> np.ndarray:
     return (values / denom).astype(np.float32)
 
 
-def build_support_class_footprints(
+def _onehop_train_footprints(
     graph: HeteroGraph,
     labels: np.ndarray,
     train_mask: np.ndarray,
@@ -27,19 +27,63 @@ def build_support_class_footprints(
     train_targets = target_nodes[train_mask[target_nodes] & (labels[target_nodes] >= 0)]
     if len(train_targets) == 0:
         raise ValueError("TaskFirst requires train target labels for support purity")
-    num_classes = int(labels[train_targets].max(initial=0)) + 1
+    classes = sorted(int(value) for value in np.unique(labels[train_targets]) if int(value) >= 0)
+    class_to_pos = {label: index for index, label in enumerate(classes)}
+    num_classes = max(len(classes), 1)
     footprints = np.zeros((graph.num_nodes, num_classes), dtype=np.float32)
     target_train = set(int(node) for node in train_targets)
     for rel in graph.relations.values():
         if rel.src_type == int(cfg.target_node_type) and rel.dst_type != int(cfg.target_node_type):
             for src, dst, weight in zip(rel.src, rel.dst, rel.weight):
                 if int(src) in target_train:
-                    footprints[int(dst), int(labels[int(src)])] += float(weight)
+                    footprints[int(dst), class_to_pos[int(labels[int(src)])]] += float(weight)
         elif rel.dst_type == int(cfg.target_node_type) and rel.src_type != int(cfg.target_node_type):
             for src, dst, weight in zip(rel.src, rel.dst, rel.weight):
                 if int(dst) in target_train:
-                    footprints[int(src), int(labels[int(dst)])] += float(weight)
-    return _normalize_rows(footprints)
+                    footprints[int(src), class_to_pos[int(labels[int(dst)])]] += float(weight)
+    return footprints
+
+
+def _twohop_propagated_footprints(graph: HeteroGraph, onehop: np.ndarray, cfg: TaskFirstConfig) -> np.ndarray:
+    propagated = np.asarray(onehop, dtype=np.float32).copy()
+    target_type = int(cfg.target_node_type)
+    target_context = np.zeros_like(propagated)
+    for rel in graph.relations.values():
+        if rel.src_type != target_type and rel.dst_type == target_type:
+            for src, dst, weight in zip(rel.src, rel.dst, rel.weight):
+                target_context[int(dst)] += float(weight) * onehop[int(src)]
+        elif rel.src_type == target_type and rel.dst_type != target_type:
+            for src, dst, weight in zip(rel.src, rel.dst, rel.weight):
+                target_context[int(src)] += float(weight) * onehop[int(dst)]
+    for rel in graph.relations.values():
+        if rel.src_type == target_type and rel.dst_type != target_type:
+            for src, dst, weight in zip(rel.src, rel.dst, rel.weight):
+                propagated[int(dst)] += float(weight) * target_context[int(src)]
+        elif rel.dst_type == target_type and rel.src_type != target_type:
+            for src, dst, weight in zip(rel.src, rel.dst, rel.weight):
+                propagated[int(src)] += float(weight) * target_context[int(dst)]
+    return propagated.astype(np.float32)
+
+
+def build_support_class_footprints(
+    graph: HeteroGraph,
+    labels: np.ndarray,
+    train_mask: np.ndarray,
+    cfg: TaskFirstConfig,
+) -> np.ndarray:
+    mode = str(getattr(cfg.support_purity, "support_footprint_mode", "onehop_train"))
+    if mode == "onehop_train_labels":
+        mode = "onehop_train"
+    onehop = _onehop_train_footprints(graph, labels, train_mask, cfg)
+    if mode == "onehop_train":
+        return _normalize_rows(onehop)
+    twohop = _twohop_propagated_footprints(graph, onehop, cfg)
+    if mode == "twohop_propagated":
+        return _normalize_rows(twohop)
+    if mode == "hybrid_propagated":
+        hybrid = onehop + float(cfg.support_purity.hybrid_alpha) * twohop
+        return _normalize_rows(hybrid)
+    raise ValueError(f"unsupported support_footprint_mode: {cfg.support_purity.support_footprint_mode}")
 
 
 def _js_divergence(p: np.ndarray, q: np.ndarray) -> float:
@@ -67,7 +111,9 @@ def classify_support_footprints(
     footprints = np.asarray(support_class_footprints, dtype=np.float64)
     relations = np.asarray(support_relation_footprints, dtype=np.float64)
     states = np.full(footprints.shape[0], FOOTPRINT_UNKNOWN_ISOLATED_OR_WEAK, dtype=np.int8)
-    known = np.sum(footprints, axis=1) > 1.0e-12
+    masses = np.sum(footprints, axis=1)
+    confidence = np.max(footprints, axis=1) / np.maximum(masses, 1.0e-12) if footprints.size else np.zeros(len(states))
+    known = (masses > 1.0e-12) & (confidence >= 0.0)
     states[known] = FOOTPRINT_KNOWN
     relation_connected = np.sum(relations, axis=1) > 1.0e-12 if relations.size else np.zeros(len(states), dtype=bool)
     anchor_connected = np.zeros(len(states), dtype=bool)
@@ -108,6 +154,13 @@ def merge_is_purity_allowed(
 
     u_known = int(states[u]) == FOOTPRINT_KNOWN
     v_known = int(states[v]) == FOOTPRINT_KNOWN
+    if policy == "purity_v2":
+        if u_known and v_known:
+            divergence = _js_divergence(state.support_class_footprints[u], state.support_class_footprints[v])
+            return bool(divergence <= threshold)
+        if u_known ^ v_known:
+            return False
+        return bool(_row_distance(state.support_relation_footprints, u, v) <= threshold)
     if u_known and v_known:
         divergence = _js_divergence(state.support_class_footprints[u], state.support_class_footprints[v])
         return bool(divergence <= threshold)
@@ -141,6 +194,28 @@ def delta_support_purity_for_merge(
     right = state.support_class_footprints[int(v)].astype(np.float64)
     mean = 0.5 * (left + right)
     return float(0.5 * np.sum((left - mean) ** 2) + 0.5 * np.sum((right - mean) ** 2))
+
+
+def purity_v2_diagnostics(state) -> dict[str, float]:
+    support_nodes = np.asarray(getattr(state, "support_nodes", np.empty(0)), dtype=np.int64)
+    states = np.asarray(getattr(state, "support_footprint_states", np.empty(0)), dtype=np.int8)
+    footprints = np.asarray(getattr(state, "support_class_footprints", np.empty((0, 0))), dtype=np.float64)
+    if len(support_nodes) == 0 or len(states) == 0:
+        return {
+            "zero_footprint_support_share": 0.0,
+            "known_support_share": 0.0,
+            "unknown_structured_share": 0.0,
+            "unknown_weak_share": 0.0,
+        }
+    support_states = states[support_nodes]
+    masses = np.sum(footprints[support_nodes], axis=1) if footprints.size else np.zeros(len(support_nodes))
+    total = max(int(len(support_nodes)), 1)
+    return {
+        "zero_footprint_support_share": float(np.mean(masses <= 1.0e-12)),
+        "known_support_share": float(np.count_nonzero(support_states == FOOTPRINT_KNOWN) / total),
+        "unknown_structured_share": float(np.count_nonzero(support_states == FOOTPRINT_UNKNOWN_TARGET_CONNECTED) / total),
+        "unknown_weak_share": float(np.count_nonzero(support_states == FOOTPRINT_UNKNOWN_ISOLATED_OR_WEAK) / total),
+    }
 
 
 def support_purity_pair_kind(u: int, v: int, state) -> str:

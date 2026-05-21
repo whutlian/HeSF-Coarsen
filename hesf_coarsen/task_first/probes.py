@@ -20,11 +20,13 @@ def build_target_seed_matrix(
     train_targets = target_nodes[train_mask[target_nodes] & (labels[target_nodes] >= 0)]
     if len(train_targets) == 0:
         raise ValueError("TaskFirst requires at least one labeled train target node")
-    num_classes = int(labels[train_targets].max(initial=0)) + 1
+    classes = sorted(int(value) for value in np.unique(labels[train_targets]) if int(value) >= 0)
+    class_to_pos = {label: index for index, label in enumerate(classes)}
+    num_classes = max(len(classes), 1)
     seed = np.zeros((len(target_nodes), num_classes), dtype=np.float32)
     target_pos = {int(node): idx for idx, node in enumerate(target_nodes)}
     for node in train_targets:
-        seed[target_pos[int(node)], int(labels[int(node)])] = 1.0
+        seed[target_pos[int(node)], class_to_pos[int(labels[int(node)])]] = 1.0
     return seed
 
 

@@ -118,6 +118,38 @@ def coverage_components_for_merge(
     }
 
 
+def coverage_v2_components_for_merge(
+    u: int,
+    v: int,
+    state,
+    cfg: TaskFirstConfig,
+) -> dict[str, float]:
+    u = int(u)
+    v = int(v)
+    memberships = getattr(state, "support_anchor_memberships", None) or {}
+    left = memberships.get(u, {})
+    right = memberships.get(v, {})
+    left_anchors = _anchor_ids(left)
+    right_anchors = _anchor_ids(right)
+    anchor_collision = _jaccard_distance(left_anchors, right_anchors)
+    class_collision = _js_divergence(
+        state.support_class_footprints[u],
+        state.support_class_footprints[v],
+    )
+    receptive_field_diversity_loss = float(anchor_collision * class_collision)
+    weighted = (
+        float(cfg.support_coverage.w_anchor) * float(anchor_collision)
+        + float(cfg.support_coverage.w_class) * float(class_collision)
+        + float(cfg.support_coverage.w_div) * float(receptive_field_diversity_loss)
+    )
+    return {
+        "anchor_distribution_collision": float(anchor_collision),
+        "class_context_collision": float(class_collision),
+        "receptive_field_diversity_loss": float(receptive_field_diversity_loss),
+        "coverage_v2_error": float(weighted),
+    }
+
+
 def delta_support_coverage_for_merge(
     u: int,
     v: int,
@@ -125,7 +157,9 @@ def delta_support_coverage_for_merge(
     cfg: TaskFirstConfig,
 ) -> float:
     mode = str(getattr(cfg.support_coverage, "mode", "old_common_anchor_only"))
-    if mode != "old_common_anchor_only":
+    if mode == "coverage_v2":
+        return float(coverage_v2_components_for_merge(int(u), int(v), state, cfg)["coverage_v2_error"])
+    if mode not in {"old_common_anchor_only", "coverage_v1_legacy"}:
         components = coverage_components_for_merge(int(u), int(v), state, cfg)
         if mode == "cross_anchor_collision":
             return float(components["cross_anchor_collision_loss"])

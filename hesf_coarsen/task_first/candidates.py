@@ -156,3 +156,79 @@ def build_target_response_knn_candidates(
     diag["response_distance_mean"] = float(diag.get("target_response_knn_distance_mean", 0.0))
     diag["response_distance_p95"] = float(diag.get("target_response_knn_distance_p95", 0.0))
     return store, diag
+
+
+def build_target_response_signature_knn_candidates(
+    graph: HeteroGraph,
+    state,
+    *,
+    target_type: int,
+    candidate_k: int,
+) -> tuple[ArrayCandidateStore, dict[str, Any]]:
+    store, diag = _window_knn_candidates(
+        graph,
+        state.support_response_signatures,
+        target_type=int(target_type),
+        candidate_k=int(candidate_k),
+        source="target_response_signature_knn",
+    )
+    diag["response_signature_knn_pairs_emitted"] = int(diag.get("candidate_pairs_emitted", 0))
+    diag["response_signature_distance_mean"] = float(diag.get("target_response_signature_knn_distance_mean", 0.0))
+    diag["response_signature_distance_p95"] = float(diag.get("target_response_signature_knn_distance_p95", 0.0))
+    return store, diag
+
+
+def build_relation_response_knn_candidates(
+    graph: HeteroGraph,
+    state,
+    *,
+    target_type: int,
+    candidate_k: int,
+) -> tuple[ArrayCandidateStore, dict[str, Any]]:
+    store, diag = _window_knn_candidates(
+        graph,
+        state.support_relation_footprints,
+        target_type=int(target_type),
+        candidate_k=int(candidate_k),
+        source="relation_response_knn",
+    )
+    diag["relation_response_knn_pairs_emitted"] = int(diag.get("candidate_pairs_emitted", 0))
+    diag["relation_response_distance_mean"] = float(diag.get("relation_response_knn_distance_mean", 0.0))
+    diag["relation_response_distance_p95"] = float(diag.get("relation_response_knn_distance_p95", 0.0))
+    return store, diag
+
+
+def _merge_candidate_store(target: ArrayCandidateStore, source: ArrayCandidateStore) -> None:
+    for block in source.iter_pair_blocks():
+        for u, v, score in np.asarray(block):
+            source_name = source.source_for_pair(int(u), int(v)) or "unknown"
+            target.add(int(u), int(v), float(score), source_name)
+
+
+def build_hybrid_task_aware_candidates(
+    graph: HeteroGraph,
+    state,
+    *,
+    target_type: int,
+    candidate_k: int,
+) -> tuple[ArrayCandidateStore, dict[str, Any]]:
+    start = perf_counter()
+    target = ArrayCandidateStore(graph.node_type, K=max(int(candidate_k) * 3, int(candidate_k)), same_type_only=True)
+    source_diags: dict[str, Any] = {}
+    for builder in (
+        build_target_anchor_co_support_candidates,
+        build_class_footprint_knn_candidates,
+        build_target_response_signature_knn_candidates,
+    ):
+        store, diag = builder(graph, state, target_type=int(target_type), candidate_k=int(candidate_k))
+        _merge_candidate_store(target, store)
+        for key, value in diag.items():
+            if not isinstance(value, dict):
+                source_diags[f"{diag.get('candidate_source', builder.__name__)}_{key}"] = value
+    return target, {
+        "candidate_source": "hybrid_task_aware",
+        "candidate_generation_sec": float(perf_counter() - start),
+        "candidate_pairs_retained": int(target.pair_count()),
+        "source_counts": target.source_counts(),
+        **source_diags,
+    }
