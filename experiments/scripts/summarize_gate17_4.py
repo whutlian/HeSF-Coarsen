@@ -12,7 +12,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from experiments.scripts._common import markdown_table, write_csv
-from experiments.scripts.summarize_gate17 import _bool, _float, _mean, _no_test_leakage, _success, read_csv, validation_selected
+from experiments.scripts.summarize_gate17 import _bool, _float, _mean, _no_test_leakage, _success, assert_dataset_integrity, read_csv, validation_selected
 
 
 GATE17_4_SINGLE_SEED_BY_DATASET = {"ACM": 23456, "DBLP": 23456, "IMDB": 45678}
@@ -276,6 +276,7 @@ def summarize(input_dir: str | Path, output_dir: str | Path | None = None) -> di
     output_dir = Path(output_dir) if output_dir is not None else input_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = _find_raw_rows(input_dir)
+    assert_dataset_integrity(rows)
     selected = validation_selected([dict(row) for row in rows])
     selected_by_method = _aggregate_selected_by_method(selected)
     gaps = exact_budget_paired_gaps([dict(row) for row in rows])
@@ -374,6 +375,15 @@ def summarize(input_dir: str | Path, output_dir: str | Path | None = None) -> di
     }
     (output_dir / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
     _write_reports(output_dir, result, selected_by_method, gaps)
+    write_csv(output_dir / "gate17_4_validation_selected_by_method_corrected.csv", selected_by_method)
+    write_csv(output_dir / "gate17_4_exact_budget_paired_gaps_corrected.csv", gaps)
+    write_csv(output_dir / "gate17_4_by_dataset_selected_corrected.csv", selected)
+    (output_dir / "gate17_4_result_corrected.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
+    if (output_dir / "gate17_4_decision.md").exists():
+        (output_dir / "gate17_4_decision_corrected.md").write_text(
+            (output_dir / "gate17_4_decision.md").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
     return result
 
 

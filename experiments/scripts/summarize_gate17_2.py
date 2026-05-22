@@ -21,6 +21,7 @@ from experiments.scripts.summarize_gate17 import (
     _mean,
     _no_test_leakage,
     _success,
+    assert_dataset_integrity,
     read_csv,
     validation_selected,
 )
@@ -298,6 +299,7 @@ def summarize(input_dir: str | Path, output_dir: str | Path | None = None, diag_
     diag_dir.mkdir(parents=True, exist_ok=True)
 
     rows = _find_raw_rows(input_dir)
+    assert_dataset_integrity(rows)
     effective_rows = read_csv(diag_dir / "effective_budget.csv") or [row for row in rows if _gate_candidate(row)]
     candidate_rows = read_csv(diag_dir / "candidate_semantic_delta.csv") or [row for row in rows if _gate_candidate(row)]
     prototype_rows = read_csv(diag_dir / "prototype_budget_saturation.csv") or [row for row in rows if _gate_candidate(row)]

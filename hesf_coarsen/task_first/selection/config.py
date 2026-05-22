@@ -86,6 +86,10 @@ class SupportSelectorConfig:
     allow_proxy_fill: bool = True
     neutral_fill: bool = False
     neutral_fill_max_drop: float = 1.0e-4
+    allow_negative_fill: bool = False
+    negative_fill_max_drop: float = 5.0e-4
+    budget_penalty_lambda: float = 0.05
+    underfill_penalty_lambda: float = 0.10
     max_validation_greedy_steps: int = 3
     block_key_mode: Literal["class_anchor_relation", "default", "dblp_aware"] = "class_anchor_relation"
     occlusion_candidate_pool_size: int = 8

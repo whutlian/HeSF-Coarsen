@@ -60,10 +60,50 @@ REQUIRED_RESULT_FIELDS = {
 
 
 def read_csv(path: Path) -> list[dict[str, Any]]:
+    return read_csv_normalized(path)
+
+
+def _raise_csv_field_limit() -> None:
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit //= 10
+
+
+def normalize_header(name: object) -> str:
+    return str(name).replace("\ufeff", "").strip().strip('"').strip("'")
+
+
+def normalize_dataset_value(value: object) -> str:
+    return str(value).replace("\ufeff", "").strip().strip('"').strip("'")
+
+
+def normalize_row(row: dict[Any, Any]) -> dict[str, Any]:
+    return {normalize_header(key): value for key, value in row.items()}
+
+
+def read_csv_normalized(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
+    _raise_csv_field_limit()
     with path.open("r", encoding="utf-8", newline="") as handle:
-        return list(csv.DictReader(handle))
+        return [normalize_row(row) for row in csv.DictReader(handle)]
+
+
+def assert_dataset_integrity(rows: Sequence[Mapping[str, Any]], expected: set[str] | None = None) -> None:
+    if not rows:
+        raise ValueError("No rows found.")
+    first = normalize_row(dict(rows[0]))
+    if "dataset" not in first:
+        raise ValueError(f"Missing normalized dataset key. Keys: {list(first.keys())[:20]}")
+    datasets = {normalize_dataset_value(row.get("dataset")) for row in rows}
+    if "" in datasets or "None" in datasets:
+        raise ValueError(f"Invalid dataset values: {datasets}")
+    if expected is not None and not expected.issubset(datasets):
+        raise ValueError(f"Missing expected datasets. found={datasets}, expected={expected}")
 
 
 def _find_raw_rows(input_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
@@ -132,9 +172,13 @@ def _round_delta(value: float) -> float:
 
 
 def validation_selected(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    if rows:
+        assert_dataset_integrity(rows)
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         if _success(row):
+            row = normalize_row(dict(row))
+            row["dataset"] = normalize_dataset_value(row.get("dataset"))
             groups[(str(row.get("dataset")), str(row.get("seed")), str(row.get("method")))].append(row)
     selected: list[dict[str, Any]] = []
     for _key, group in groups.items():
@@ -472,6 +516,7 @@ def summarize(input_dir: str | Path, output_dir: str | Path | None = None) -> di
     output_dir = Path(output_dir) if output_dir is not None else input_dir / "gate17_tables"
     output_dir.mkdir(parents=True, exist_ok=True)
     raw_path, rows = _find_raw_rows(input_dir)
+    assert_dataset_integrity(rows)
     if rows and raw_path.resolve() != (output_dir / "gate17_raw_rows.csv").resolve():
         write_csv(output_dir / "gate17_raw_rows.csv", rows)
 

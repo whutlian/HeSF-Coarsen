@@ -13,7 +13,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from experiments.scripts._common import markdown_table, write_csv
-from experiments.scripts.summarize_gate17 import _bool, _float, _mean, _no_test_leakage, _success, read_csv, validation_selected
+from experiments.scripts.summarize_gate17 import _bool, _float, _mean, _no_test_leakage, _success, assert_dataset_integrity, read_csv, validation_selected
 
 
 GATE17_PREFIX = "HeSF-SS"
@@ -211,6 +211,7 @@ def summarize(input_dir: str | Path, output_dir: str | Path | None = None) -> di
     output_dir.mkdir(parents=True, exist_ok=True)
     diag_dir.mkdir(parents=True, exist_ok=True)
     rows = _find_raw_rows(input_dir)
+    assert_dataset_integrity(rows)
     selected = validation_selected([dict(row) for row in rows])
     selected_by_method = _aggregate_selected_by_method(selected)
     gaps = exact_budget_paired_gaps([dict(row) for row in rows])

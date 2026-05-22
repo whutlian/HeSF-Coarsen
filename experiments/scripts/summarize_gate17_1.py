@@ -21,6 +21,7 @@ from experiments.scripts.summarize_gate17 import (
     _mean,
     _no_test_leakage,
     _success,
+    assert_dataset_integrity,
     exact_only_paired_gaps,
     read_csv,
     validation_selected,
@@ -238,6 +239,7 @@ def summarize(input_dir: str | Path, output_dir: str | Path | None = None, diag_
     output_dir.mkdir(parents=True, exist_ok=True)
     diag_dir.mkdir(parents=True, exist_ok=True)
     rows = _find_raw_rows(input_dir)
+    assert_dataset_integrity(rows)
     selected = validation_selected([dict(row) for row in rows])
     selected_by_method = _aggregate_selected_by_method(selected)
     exact_gaps = exact_only_paired_gaps([dict(row) for row in rows])

@@ -171,6 +171,7 @@ def select_blocks_by_validation_feedback(
     proxy_fallback_fill_count = 0
     validation_positive_fill_count = 0
     validation_neutral_fill_count = 0
+    validation_negative_fill_count = 0
     validation_negative_rejected_count = 0
     previous_score = _eval_float(validation_evaluator(np.empty(0, dtype=np.int64)))
     score_history: list[float] = [float(previous_score)]
@@ -183,6 +184,7 @@ def select_blocks_by_validation_feedback(
         best_key: tuple[int, ...] | None = None
         best_members: list[int] = []
         best_score = -float("inf")
+        best_objective = -float("inf")
         for candidate_rank, key in enumerate(pool, start=1):
             members = [idx for idx in _node_order(block_groups[key], nodes, values) if idx not in selected_set]
             remaining_budget = int(budget) - len(selected)
@@ -199,6 +201,10 @@ def select_blocks_by_validation_feedback(
             score = _eval_float(validation_evaluator(trial_nodes))
             score_history.append(float(score))
             gain = float(score - previous_score)
+            underfill_penalty = float(getattr(cfg, "underfill_penalty_lambda", 0.0)) * abs(
+                (len(trial_nodes) - int(budget)) / max(int(budget), 1)
+            )
+            objective = float(score - underfill_penalty)
             trial_rows.append(
                 {
                     "step": int(step + 1),
@@ -208,14 +214,17 @@ def select_blocks_by_validation_feedback(
                     "trial_selected_support_count": int(len(trial_nodes)),
                     "validation_score": float(score),
                     "validation_gain": float(gain),
+                    "budget_penalty_value": float(underfill_penalty),
+                    "budget_penalized_objective": float(objective),
                     "accepted": False,
                     "trimmed_to_budget": bool(trimmed_to_budget),
                 }
             )
-            if score > best_score or (score == best_score and key < (best_key or key)):
+            if objective > best_objective or (objective == best_objective and key < (best_key or key)):
                 best_key = key
                 best_members = members
                 best_score = float(score)
+                best_objective = float(objective)
         if best_key is None:
             break
         best_gain = float(best_score - previous_score)
@@ -268,6 +277,37 @@ def select_blocks_by_validation_feedback(
                 and float(row.get("validation_gain", 0.0)) < -float(getattr(cfg, "neutral_fill_max_drop", 1.0e-4))
             )
         )
+    if bool(getattr(cfg, "allow_negative_fill", False)) and len(selected) < int(budget):
+        key_by_repr = {repr(key): key for key in block_groups}
+        negative_candidates = sorted(
+            [
+                row
+                for row in trial_rows
+                if not bool(row.get("accepted"))
+                and float(row.get("validation_gain", 0.0)) >= -float(getattr(cfg, "negative_fill_max_drop", 5.0e-4))
+            ],
+            key=lambda row: (
+                -float(row.get("budget_penalized_objective", row.get("validation_score", 0.0))),
+                -float(row.get("validation_gain", 0.0)),
+                int(row.get("candidate_rank", 0)),
+            ),
+        )
+        seen_negative: set[tuple[int, ...]] = set()
+        for row in negative_candidates:
+            if len(selected) >= int(budget):
+                break
+            key = key_by_repr.get(str(row.get("block_key")))
+            if key is None or key in seen_negative or key in accepted_blocks:
+                continue
+            seen_negative.add(key)
+            for idx in _node_order(block_groups[key], nodes, values):
+                if idx in selected_set:
+                    continue
+                selected.append(int(idx))
+                selected_set.add(int(idx))
+                validation_negative_fill_count += 1
+                if len(selected) >= int(budget):
+                    break
     if bool(getattr(cfg, "allow_proxy_fill", True)) and len(selected) < int(budget):
         for key in remaining:
             for idx in _node_order(block_groups[key], nodes, values):
@@ -315,8 +355,17 @@ def select_blocks_by_validation_feedback(
             "validation_signal_pass": bool(not real_validation_degenerate and proxy_fallback_fill_count == 0),
             "validation_positive_fill_count": int(validation_positive_fill_count),
             "validation_neutral_fill_count": int(validation_neutral_fill_count),
+            "validation_negative_fill_count": int(validation_negative_fill_count),
             "validation_negative_rejected_count": int(validation_negative_rejected_count),
+            "positive_gain_block_count": int(validation_positive_fill_count),
+            "neutral_fill_block_count": int(validation_neutral_fill_count),
+            "negative_fill_block_count": int(validation_negative_fill_count),
+            "proxy_fill_block_count": int(proxy_fallback_fill_count),
+            "underfill_ratio": float(max(0.0, (int(budget) - len(selected)) / max(int(budget), 1))),
+            "budget_penalty_value": float(getattr(cfg, "budget_penalty_lambda", 0.0)) * float(max(0.0, (int(budget) - len(selected)) / max(int(budget), 1))),
+            "validation_drop_from_fill": float(max(0.0, -min(gain_history or [0.0]))),
             "neutral_fill_max_drop": float(getattr(cfg, "neutral_fill_max_drop", 1.0e-4)),
+            "negative_fill_max_drop": float(getattr(cfg, "negative_fill_max_drop", 5.0e-4)),
         },
     }
 
