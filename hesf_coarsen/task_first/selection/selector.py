@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 
 from hesf_coarsen.task_first.selection.config import SupportSelectorConfig
 from hesf_coarsen.task_first.selection.budget import budget_diagnostics, desired_support_count
+from hesf_coarsen.task_first.selection.validation_selector import (
+    build_support_block_keys,
+    select_blocks_by_occlusion_feedback,
+    select_blocks_by_validation_feedback,
+)
 
 
 def _class_ids(class_footprint: np.ndarray) -> np.ndarray:
@@ -92,16 +98,7 @@ def _argmax_or_unknown(values: np.ndarray) -> np.ndarray:
 
 
 def _block_keys(support_features: dict[str, Any]) -> list[tuple[int, int, int, int]]:
-    nodes = np.asarray(support_features["support_nodes"], dtype=np.int64)
-    types = np.asarray(support_features["support_node_types"], dtype=np.int64)
-    components = support_features["component_matrices"]
-    relation_bucket = _argmax_or_unknown(components.get("relation_profile", np.empty((len(nodes), 0))))
-    anchor_bucket = _argmax_or_unknown(components.get("anchor_distribution", np.empty((len(nodes), 0))))
-    class_bucket = _argmax_or_unknown(components.get("class_footprint", np.empty((len(nodes), 0))))
-    return [
-        (int(types[idx]), int(relation_bucket[idx]), int(anchor_bucket[idx]), int(class_bucket[idx]))
-        for idx in range(len(nodes))
-    ]
+    return [tuple(int(value) for value in key) for key in build_support_block_keys(support_features, mode="default")]
 
 
 def _block_order(
@@ -139,6 +136,9 @@ def select_support_nodes(
     support_importance: np.ndarray,
     support_ratio: float,
     cfg: SupportSelectorConfig,
+    *,
+    validation_evaluator: Callable[[np.ndarray], float | dict[str, Any]] | None = None,
+    occlusion_evaluator: Callable[[np.ndarray], float | dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     support_nodes = np.asarray(support_features["support_nodes"], dtype=np.int64)
     importance = np.asarray(support_importance, dtype=np.float32).reshape(-1)
@@ -146,12 +146,41 @@ def select_support_nodes(
         raise ValueError("support_importance must have one score per support node")
     budget = desired_support_count(len(support_nodes), float(support_ratio))
     selector = str(cfg.selector)
+    extra_diagnostics: dict[str, Any] = {}
+    validation_trial_rows: list[dict[str, Any]] = []
+    occlusion_score_rows: list[dict[str, Any]] = []
     if budget == 0:
         selected_local: list[int] = []
     elif selector in {"teacher_diverse_topk", "validation_greedy", "validation_proxy_diverse", "hybrid_teacher_response"}:
         selected_local = _diverse_order(support_features, importance, budget, cfg)
     elif selector in {"sensitivity_block_selector", "true_validation_block_greedy"}:
         selected_local = _block_order(support_features, importance, budget)
+    elif selector == "real_validation_block_greedy":
+        if validation_evaluator is None:
+            raise ValueError("real_validation_block_greedy requires validation_evaluator")
+        feedback = select_blocks_by_validation_feedback(
+            support_features,
+            importance,
+            budget,
+            cfg,
+            validation_evaluator,
+        )
+        selected_local = [int(value) for value in feedback["selected_local_indices"]]
+        extra_diagnostics.update(feedback["diagnostics"])
+        validation_trial_rows = list(feedback.get("validation_greedy_trials", []))
+    elif selector in {"real_occlusion_block_selector", "occlusion_plus_dblp_prototype"}:
+        if occlusion_evaluator is None:
+            raise ValueError(f"{selector} requires occlusion_evaluator")
+        feedback = select_blocks_by_occlusion_feedback(
+            support_features,
+            importance,
+            budget,
+            cfg,
+            occlusion_evaluator,
+        )
+        selected_local = [int(value) for value in feedback["selected_local_indices"]]
+        extra_diagnostics.update(feedback["diagnostics"])
+        occlusion_score_rows = list(feedback.get("occlusion_block_scores", []))
     elif selector in {"teacher_topk", "mlp_importance"}:
         selected_local = _topk_order(support_nodes, importance)[:budget]
     else:
@@ -170,6 +199,10 @@ def select_support_nodes(
     selector_family = "proxy_selector_baseline"
     if selector in {"sensitivity_block_selector", "true_validation_block_greedy"}:
         selector_family = "validation_sensitivity_selector"
+    if selector == "real_validation_block_greedy":
+        selector_family = "real_validation_selector"
+    if selector in {"real_occlusion_block_selector", "occlusion_plus_dblp_prototype"}:
+        selector_family = "real_occlusion_selector"
     diagnostics = {
         "selected_support_count": int(len(selected_nodes)),
         **budget_diagnostics(
@@ -206,7 +239,9 @@ def select_support_nodes(
         "validation_greedy_short_eval_epochs": int(cfg.short_eval_epochs),
         "validation_greedy_best_gain_mean": 0.0,
         "selector_uses_test_labels": False,
+        "selection_split_source": "train_val_only" if selector in {"real_validation_block_greedy", "real_occlusion_block_selector", "occlusion_plus_dblp_prototype"} else "train_only",
     }
+    diagnostics.update(extra_diagnostics)
     score_rows = [
         {
             "support_node": int(node),
@@ -222,4 +257,6 @@ def select_support_nodes(
         "support_selection_scores": score_rows,
         "diagnostics": diagnostics,
         "selected_local_indices": np.asarray(selected_local, dtype=np.int64),
+        "validation_greedy_trials": validation_trial_rows,
+        "occlusion_block_scores": occlusion_score_rows,
     }

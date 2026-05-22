@@ -141,7 +141,14 @@ def compute_support_importance(
         return compute_teacher_support_importance(support_features, teacher_outputs)
     if mode in {"validation_greedy", "validation_proxy_diverse"}:
         return compute_validation_occlusion_importance(support_features, teacher_outputs)
-    if mode in {"sensitivity_block_selector", "true_validation_block_greedy"}:
+    if mode in {
+        "sensitivity_block_selector",
+        "true_validation_block_greedy",
+        "real_validation_block_greedy",
+        "real_occlusion_block_selector",
+        "occlusion_plus_dblp_prototype",
+        "dblp_aware_prototype",
+    }:
         return compute_sensitivity_block_importance(support_features, teacher_outputs)
     if mode == "hybrid_teacher_response":
         teacher = compute_teacher_support_importance(support_features, teacher_outputs)
