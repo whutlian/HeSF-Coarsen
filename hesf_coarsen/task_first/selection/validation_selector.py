@@ -169,6 +169,9 @@ def select_blocks_by_validation_feedback(
     block_trim_count = 0
     oversized_block_count = 0
     proxy_fallback_fill_count = 0
+    validation_positive_fill_count = 0
+    validation_neutral_fill_count = 0
+    validation_negative_rejected_count = 0
     previous_score = _eval_float(validation_evaluator(np.empty(0, dtype=np.int64)))
     score_history: list[float] = [float(previous_score)]
     max_steps = max(1, int(cfg.max_validation_greedy_steps))
@@ -222,6 +225,7 @@ def select_blocks_by_validation_feedback(
             break
         selected.extend(best_members)
         selected_set.update(best_members)
+        validation_positive_fill_count += int(len(best_members))
         accepted_blocks.append(best_key)
         gain_history.append(best_gain)
         previous_score = float(best_score)
@@ -229,6 +233,41 @@ def select_blocks_by_validation_feedback(
             if row["step"] == step + 1 and row["block_key"] == repr(best_key):
                 row["accepted"] = True
         remaining = [key for key in remaining if key != best_key]
+    if bool(getattr(cfg, "neutral_fill", False)) and len(selected) < int(budget):
+        key_by_repr = {repr(key): key for key in block_groups}
+        neutral_candidates = sorted(
+            [
+                row
+                for row in trial_rows
+                if not bool(row.get("accepted"))
+                and float(row.get("validation_gain", 0.0)) >= -float(getattr(cfg, "neutral_fill_max_drop", 1.0e-4))
+            ],
+            key=lambda row: (-float(row.get("validation_gain", 0.0)), int(row.get("candidate_rank", 0))),
+        )
+        seen_neutral: set[tuple[int, ...]] = set()
+        for row in neutral_candidates:
+            if len(selected) >= int(budget):
+                break
+            key = key_by_repr.get(str(row.get("block_key")))
+            if key is None or key in seen_neutral or key in accepted_blocks:
+                continue
+            seen_neutral.add(key)
+            for idx in _node_order(block_groups[key], nodes, values):
+                if idx in selected_set:
+                    continue
+                selected.append(int(idx))
+                selected_set.add(int(idx))
+                validation_neutral_fill_count += 1
+                if len(selected) >= int(budget):
+                    break
+        validation_negative_rejected_count = int(
+            sum(
+                1
+                for row in trial_rows
+                if not bool(row.get("accepted"))
+                and float(row.get("validation_gain", 0.0)) < -float(getattr(cfg, "neutral_fill_max_drop", 1.0e-4))
+            )
+        )
     if bool(getattr(cfg, "allow_proxy_fill", True)) and len(selected) < int(budget):
         for key in remaining:
             for idx in _node_order(block_groups[key], nodes, values):
@@ -274,6 +313,10 @@ def select_blocks_by_validation_feedback(
             "proxy_fallback_fill_count": int(proxy_fallback_fill_count),
             "real_validation_degenerate": real_validation_degenerate,
             "validation_signal_pass": bool(not real_validation_degenerate and proxy_fallback_fill_count == 0),
+            "validation_positive_fill_count": int(validation_positive_fill_count),
+            "validation_neutral_fill_count": int(validation_neutral_fill_count),
+            "validation_negative_rejected_count": int(validation_negative_rejected_count),
+            "neutral_fill_max_drop": float(getattr(cfg, "neutral_fill_max_drop", 1.0e-4)),
         },
     }
 
@@ -343,6 +386,18 @@ def select_blocks_by_occlusion_feedback(
                 "delta_teacher_kl": float(delta_kl),
                 "delta_class_recall": float(delta_recall),
                 "tree_tensor_l2_delta_when_occluded": float(masked["tree_tensor_l2_delta_when_occluded"]),
+                "occlusion_task_nonzero_delta": bool(
+                    max(
+                        abs(0.0 if np.isnan(delta_ce) else float(delta_ce)),
+                        abs(0.0 if np.isnan(delta_macro) else float(delta_macro)),
+                        abs(0.0 if np.isnan(delta_margin) else float(delta_margin)),
+                    )
+                    > 1.0e-8
+                ),
+                "occlusion_tree_nonzero_delta": bool(
+                    not np.isnan(float(masked["tree_tensor_l2_delta_when_occluded"]))
+                    and abs(float(masked["tree_tensor_l2_delta_when_occluded"])) > 1.0e-8
+                ),
                 "occlusion_metric_complete": bool(
                     all(not np.isnan(float(baseline[key])) for key in required_metric_keys)
                     and all(not np.isnan(float(masked[key])) for key in required_metric_keys)
@@ -356,9 +411,38 @@ def select_blocks_by_occlusion_feedback(
     score_rows.sort(key=lambda row: (-float(row["final_block_importance"]), -float(row["proxy_importance"]), str(row["block_key"])))
     selected: list[int] = []
     selected_set: set[int] = set()
+    positive_selected_count = 0
+    neutral_fill_count = 0
+    negative_rejected_count = 0
+    positive_rows = [
+        row
+        for row in score_rows
+        if float(row["final_block_importance"]) >= float(getattr(cfg, "min_occlusion_importance", 1.0e-6))
+    ]
+    neutral_rows = [
+        row
+        for row in score_rows
+        if row not in positive_rows
+        and bool(getattr(cfg, "neutral_fill", False))
+        and float(row["final_block_importance"]) >= -float(getattr(cfg, "neutral_fill_max_task_drop", 1.0e-4))
+        and float(row["delta_val_macro_f1"]) >= -float(getattr(cfg, "neutral_fill_max_task_drop", 1.0e-4))
+    ]
+    candidate_rows = positive_rows + neutral_rows if not bool(getattr(cfg, "allow_negative_occlusion_fill", False)) else score_rows
     for rank, row in enumerate(score_rows, start=1):
         row["rank"] = int(rank)
-        row["selected"] = len(selected) < int(budget)
+        row["selected"] = False
+    for row in candidate_rows:
+        if len(selected) >= int(budget):
+            break
+        is_positive = float(row["final_block_importance"]) >= float(getattr(cfg, "min_occlusion_importance", 1.0e-6))
+        if not is_positive and not bool(getattr(cfg, "neutral_fill", False)) and not bool(getattr(cfg, "allow_negative_occlusion_fill", False)):
+            negative_rejected_count += 1
+            continue
+        row["selected"] = True
+        if is_positive:
+            positive_selected_count += 1
+        else:
+            neutral_fill_count += 1
         for idx in row.pop("local_indices"):
             if idx in selected_set:
                 continue
@@ -384,17 +468,22 @@ def select_blocks_by_occlusion_feedback(
     margin_values = [float(row["delta_margin"]) for row in score_rows]
     kl_values = [float(row["delta_teacher_kl"]) for row in score_rows]
     tree_delta_values = [float(row["tree_tensor_l2_delta_when_occluded"]) for row in score_rows]
-    signal_values = [
+    task_signal_values = [
         value
-        for value in [*ce_values, *macro_values, *tree_delta_values]
+        for value in [*ce_values, *macro_values, *margin_values]
         if not np.isnan(float(value))
     ]
+    tree_signal_values = [value for value in tree_delta_values if not np.isnan(float(value))]
     metric_complete = bool(score_rows) and all(bool(row.get("occlusion_metric_complete")) for row in score_rows)
     nonzero_delta_count = sum(1 for value in [*ce_values, *macro_values, *margin_values, *kl_values] if not np.isnan(float(value)) and abs(float(value)) > 1.0e-12)
     nonzero_delta_den = sum(1 for value in [*ce_values, *macro_values, *margin_values, *kl_values] if not np.isnan(float(value)))
     tree_nonzero_count = sum(1 for value in tree_delta_values if not np.isnan(float(value)) and abs(float(value)) > 1.0e-12)
     tree_nonzero_den = sum(1 for value in tree_delta_values if not np.isnan(float(value)))
-    occlusion_degenerate = not any(abs(float(value)) > 1.0e-12 for value in signal_values)
+    task_nonzero_count = sum(1 for row in score_rows if bool(row.get("occlusion_task_nonzero_delta")))
+    tree_nonzero_count_rows = sum(1 for row in score_rows if bool(row.get("occlusion_tree_nonzero_delta")))
+    occlusion_task_signal_pass = bool(task_signal_values and task_nonzero_count > 0)
+    occlusion_tree_signal_pass = bool(tree_signal_values and tree_nonzero_count_rows > 0)
+    occlusion_degenerate = not occlusion_task_signal_pass
     proxy_fallback_used = bool(proxy_fallback_fill_count > 0 or occlusion_degenerate or not metric_complete)
     if not bool(getattr(cfg, "allow_proxy_fill", True)):
         proxy_fallback_used = bool(occlusion_degenerate or not metric_complete)
@@ -421,12 +510,20 @@ def select_blocks_by_occlusion_feedback(
             "occlusion_metric_complete": metric_complete,
             "occlusion_nonzero_delta_rate": float(nonzero_delta_count / max(nonzero_delta_den, 1)),
             "occlusion_tree_delta_nonzero_rate": float(tree_nonzero_count / max(tree_nonzero_den, 1)),
+            "occlusion_task_nonzero_delta_rate": float(task_nonzero_count / max(len(score_rows), 1)),
+            "occlusion_tree_nonzero_delta_rate": float(tree_nonzero_count_rows / max(len(score_rows), 1)),
+            "occlusion_task_signal_pass": bool(metric_complete and occlusion_task_signal_pass),
+            "occlusion_tree_signal_pass": bool(metric_complete and occlusion_tree_signal_pass),
+            "positive_occlusion_selected_count": int(positive_selected_count),
+            "neutral_fill_count": int(neutral_fill_count),
+            "negative_occlusion_rejected_count": int(max(negative_rejected_count, len(score_rows) - len(candidate_rows))),
+            "allow_negative_occlusion_fill": bool(getattr(cfg, "allow_negative_occlusion_fill", False)),
             "occlusion_cache_hit_count": 0,
             "occlusion_cache_miss_count": int(len(score_rows)),
             "occlusion_degenerate": occlusion_degenerate,
             "occlusion_proxy_fallback_used": proxy_fallback_used,
             "occlusion_proxy_fallback_fill_count": int(proxy_fallback_fill_count),
-            "occlusion_signal_pass": bool(metric_complete and not occlusion_degenerate and not proxy_fallback_used),
+            "occlusion_signal_pass": bool(metric_complete and occlusion_task_signal_pass and not proxy_fallback_used),
             "selector_uses_true_validation_feedback": False,
         },
     }
