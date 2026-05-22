@@ -231,7 +231,7 @@ def select_support_nodes(
         "relation_channel_coverage_after": _coverage_count(relation[selected_local]) if selected_local else 0,
         "context_collision_rate": _context_collision(class_ids, selected_local),
         "selector_family": selector_family,
-        "selector_uses_true_validation_feedback": bool(selector == "true_validation_block_greedy"),
+        "selector_uses_true_validation_feedback": False,
         "validation_greedy_steps": int(len(set(_block_keys(support_features)[idx] for idx in selected_local)))
         if selector == "true_validation_block_greedy" and selected_local
         else 0,

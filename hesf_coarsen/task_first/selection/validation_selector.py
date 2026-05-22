@@ -51,7 +51,7 @@ def _bridge_flags(relation: np.ndarray, anchor: np.ndarray, class_fp: np.ndarray
     ).astype(np.int64)
 
 
-def build_support_block_keys(support_features: dict[str, Any], mode: str = "default") -> list[tuple[int, ...]]:
+def build_support_block_keys(support_features: dict[str, Any], mode: str = "class_anchor_relation") -> list[tuple[int, ...]]:
     nodes = np.asarray(support_features["support_nodes"], dtype=np.int64)
     types = np.asarray(support_features["support_node_types"], dtype=np.int64)
     components = support_features.get("component_matrices", {})
@@ -61,11 +61,13 @@ def build_support_block_keys(support_features: dict[str, Any], mode: str = "defa
     relation_bucket = _argmax_or_unknown(relation)
     anchor_bucket = _argmax_or_unknown(anchor)
     class_bucket = _argmax_or_unknown(class_fp)
-    if str(mode) != "dblp_aware":
+    if str(mode) in {"default", "class_anchor_relation"}:
         return [
             (int(types[idx]), int(relation_bucket[idx]), int(anchor_bucket[idx]), int(class_bucket[idx]))
             for idx in range(len(nodes))
         ]
+    if str(mode) != "dblp_aware":
+        raise ValueError(f"unsupported support block key mode: {mode}")
     degree = np.asarray(components.get("degree_profile", np.empty((len(nodes), 0))), dtype=np.float32)
     degree_bucket = _degree_buckets(degree, len(nodes))
     bridge_flag = _bridge_flags(relation, anchor, class_fp, degree_bucket)
@@ -116,6 +118,35 @@ def _eval_float(result: float | Mapping[str, Any], primary_key: str = "validatio
         return 0.0
 
 
+def _metric_or_nan(result: float | Mapping[str, Any], key: str) -> float:
+    if not isinstance(result, Mapping):
+        return float(result) if key == "validation_macro_f1" else float("nan")
+    if key not in result or result.get(key) in {"", None}:
+        return float("nan")
+    try:
+        return float(result.get(key))
+    except (TypeError, ValueError):
+        return float("nan")
+
+
+def _safe_delta(left: float, right: float, *, mode: str) -> float:
+    if np.isnan(left) or np.isnan(right):
+        return float("nan")
+    if mode == "drop":
+        return float(left - right)
+    return float(right - left)
+
+
+def _nanmean(values: list[float]) -> float:
+    finite = [float(value) for value in values if not np.isnan(float(value))]
+    return float(np.mean(finite)) if finite else float("nan")
+
+
+def _nanmax(values: list[float]) -> float:
+    finite = [float(value) for value in values if not np.isnan(float(value))]
+    return float(np.max(finite)) if finite else float("nan")
+
+
 def select_blocks_by_validation_feedback(
     support_features: dict[str, Any],
     importance: np.ndarray,
@@ -137,6 +168,7 @@ def select_blocks_by_validation_feedback(
     gain_history: list[float] = []
     block_trim_count = 0
     oversized_block_count = 0
+    proxy_fallback_fill_count = 0
     previous_score = _eval_float(validation_evaluator(np.empty(0, dtype=np.int64)))
     max_steps = max(1, int(cfg.max_validation_greedy_steps))
     candidate_pool_size = max(1, int(cfg.candidate_pool_size))
@@ -147,13 +179,15 @@ def select_blocks_by_validation_feedback(
         best_key: tuple[int, ...] | None = None
         best_members: list[int] = []
         best_score = -float("inf")
-        for key in pool:
+        for candidate_rank, key in enumerate(pool, start=1):
             members = [idx for idx in _node_order(block_groups[key], nodes, values) if idx not in selected_set]
             remaining_budget = int(budget) - len(selected)
+            trimmed_to_budget = False
             if len(members) > remaining_budget:
                 oversized_block_count += 1
                 block_trim_count += 1
                 members = members[:remaining_budget]
+                trimmed_to_budget = True
             if not members:
                 continue
             trial_indices = np.asarray([*selected, *members], dtype=np.int64)
@@ -163,12 +197,14 @@ def select_blocks_by_validation_feedback(
             trial_rows.append(
                 {
                     "step": int(step + 1),
+                    "candidate_rank": int(candidate_rank),
                     "block_key": repr(key),
                     "block_size": int(len(block_groups[key])),
                     "trial_selected_support_count": int(len(trial_nodes)),
                     "validation_score": float(score),
                     "validation_gain": float(gain),
                     "accepted": False,
+                    "trimmed_to_budget": bool(trimmed_to_budget),
                 }
             )
             if score > best_score or (score == best_score and key < (best_key or key)):
@@ -197,43 +233,52 @@ def select_blocks_by_validation_feedback(
                     continue
                 selected.append(int(idx))
                 selected_set.add(int(idx))
+                proxy_fallback_fill_count += 1
                 if len(selected) >= int(budget):
                     break
             if len(selected) >= int(budget):
                 break
+    best_gain_max = float(np.max(gain_history)) if gain_history else 0.0
+    real_validation_degenerate = bool(
+        len(trial_rows) <= int(candidate_pool_size)
+        or len(accepted_blocks) < 2
+        or abs(best_gain_max) <= 1.0e-12
+    )
     return {
         "selected_local_indices": np.asarray(selected[: int(budget)], dtype=np.int64),
         "validation_greedy_trials": trial_rows,
         "diagnostics": {
             "selector_uses_true_validation_feedback": True,
-            "selector_feedback_source": "real_validation_block_greedy",
+            "selector_feedback_source": "real_validation_degenerate" if real_validation_degenerate else "real_validation_block_greedy",
             "selection_split_source": "train_val_only",
+            "selector_family": "real_validation_selector",
             "validation_greedy_steps": int(len(accepted_blocks)),
             "validation_trial_count": int(len(trial_rows)),
             "validation_candidate_pool_size": int(candidate_pool_size),
             "validation_short_eval_epochs": int(cfg.short_eval_epochs),
             "validation_objective": "projected_val_macro_f1",
             "validation_greedy_best_gain_mean": float(np.mean(gain_history)) if gain_history else 0.0,
-            "validation_greedy_best_gain_max": float(np.max(gain_history)) if gain_history else 0.0,
+            "validation_greedy_best_gain_max": best_gain_max,
             "validation_greedy_gain_history": [float(value) for value in gain_history],
             "accepted_block_count": int(len(accepted_blocks)),
             "rejected_block_count": int(len(rejected_blocks)),
             "selected_block_keys": [repr(key) for key in accepted_blocks],
             "block_trim_count": int(block_trim_count),
             "oversized_block_count": int(oversized_block_count),
+            "proxy_fallback_fill_count": int(proxy_fallback_fill_count),
+            "real_validation_degenerate": real_validation_degenerate,
         },
     }
 
 
 def _metric_map(result: float | Mapping[str, Any]) -> dict[str, float]:
-    if not isinstance(result, Mapping):
-        return {"validation_macro_f1": _eval_float(result), "validation_cross_entropy": 0.0, "margin": 0.0, "teacher_kl": 0.0, "class_recall": 0.0}
     return {
         "validation_macro_f1": _eval_float(result),
-        "validation_cross_entropy": _eval_float(result, "validation_cross_entropy"),
-        "margin": _eval_float(result, "margin"),
-        "teacher_kl": _eval_float(result, "teacher_kl"),
-        "class_recall": _eval_float(result, "class_recall"),
+        "validation_cross_entropy": _metric_or_nan(result, "validation_cross_entropy"),
+        "margin": _metric_or_nan(result, "margin"),
+        "teacher_kl": _metric_or_nan(result, "teacher_kl"),
+        "class_recall": _metric_or_nan(result, "class_recall"),
+        "tree_tensor_l2_delta_when_occluded": _metric_or_nan(result, "tree_tensor_l2_delta_when_occluded"),
     }
 
 
@@ -257,27 +302,32 @@ def select_blocks_by_occlusion_feedback(
         member_indices = _node_order(block_groups[key], nodes, values)
         member_nodes = nodes[np.asarray(member_indices, dtype=np.int64)]
         masked = _metric_map(occlusion_evaluator(member_nodes))
-        delta_macro = float(baseline["validation_macro_f1"] - masked["validation_macro_f1"])
-        delta_ce = float(masked["validation_cross_entropy"] - baseline["validation_cross_entropy"])
-        delta_margin = float(baseline["margin"] - masked["margin"])
-        delta_kl = float(masked["teacher_kl"] - baseline["teacher_kl"])
-        delta_recall = float(baseline["class_recall"] - masked["class_recall"])
+        delta_macro = _safe_delta(baseline["validation_macro_f1"], masked["validation_macro_f1"], mode="drop")
+        delta_ce = _safe_delta(baseline["validation_cross_entropy"], masked["validation_cross_entropy"], mode="rise")
+        delta_margin = _safe_delta(baseline["margin"], masked["margin"], mode="drop")
+        delta_kl = _safe_delta(baseline["teacher_kl"], masked["teacher_kl"], mode="rise")
+        delta_recall = _safe_delta(baseline["class_recall"], masked["class_recall"], mode="drop")
         final = (
-            delta_ce
-            + float(cfg.alpha_teacher_kl) * delta_kl
-            + float(cfg.beta_margin) * delta_margin
-            + float(cfg.gamma_class_recall) * delta_recall
-            + max(delta_macro, 0.0)
+            (0.0 if np.isnan(delta_ce) else delta_ce)
+            + float(cfg.alpha_teacher_kl) * (0.0 if np.isnan(delta_kl) else delta_kl)
+            + float(cfg.beta_margin) * (0.0 if np.isnan(delta_margin) else delta_margin)
+            + float(cfg.gamma_class_recall) * (0.0 if np.isnan(delta_recall) else delta_recall)
+            + max(0.0 if np.isnan(delta_macro) else delta_macro, 0.0)
         )
         score_rows.append(
             {
                 "block_key": repr(key),
                 "block_size": int(len(block_groups[key])),
                 "proxy_importance": float(block_scores[key]),
+                "base_validation_macro_f1": float(baseline["validation_macro_f1"]),
+                "occluded_validation_macro_f1": float(masked["validation_macro_f1"]),
+                "base_val_ce": float(baseline["validation_cross_entropy"]),
+                "occluded_val_ce": float(masked["validation_cross_entropy"]),
                 "delta_val_ce": float(delta_ce),
                 "delta_val_macro_f1": float(delta_macro),
                 "delta_margin": float(delta_margin),
                 "delta_teacher_kl": float(delta_kl),
+                "tree_tensor_l2_delta_when_occluded": float(masked["tree_tensor_l2_delta_when_occluded"]),
                 "final_block_importance": float(final),
                 "selected": False,
                 "rank": 0,
@@ -312,22 +362,33 @@ def select_blocks_by_occlusion_feedback(
     macro_values = [float(row["delta_val_macro_f1"]) for row in score_rows]
     margin_values = [float(row["delta_margin"]) for row in score_rows]
     kl_values = [float(row["delta_teacher_kl"]) for row in score_rows]
+    tree_delta_values = [float(row["tree_tensor_l2_delta_when_occluded"]) for row in score_rows]
+    signal_values = [
+        value
+        for value in [*ce_values, *macro_values, *tree_delta_values]
+        if not np.isnan(float(value))
+    ]
+    occlusion_degenerate = not any(abs(float(value)) > 1.0e-12 for value in signal_values)
     return {
         "selected_local_indices": np.asarray(selected[: int(budget)], dtype=np.int64),
         "occlusion_block_scores": score_rows,
         "diagnostics": {
-            "selector_feedback_source": "real_validation_occlusion",
+            "selector_family": "real_occlusion_selector",
+            "selector_feedback_source": "occlusion_proxy_fallback" if occlusion_degenerate else "real_validation_occlusion",
             "selection_split_source": "train_val_only",
             "occlusion_trial_count": int(len(score_rows)),
             "occlusion_candidate_pool_size": int(max(1, int(cfg.occlusion_candidate_pool_size))),
             "occlusion_objective": str(cfg.primary_occlusion_term),
-            "occlusion_delta_ce_mean": float(np.mean(ce_values)) if ce_values else 0.0,
-            "occlusion_delta_ce_max": float(np.max(ce_values)) if ce_values else 0.0,
-            "occlusion_delta_macro_f1_mean": float(np.mean(macro_values)) if macro_values else 0.0,
-            "occlusion_delta_margin_mean": float(np.mean(margin_values)) if margin_values else 0.0,
-            "occlusion_delta_teacher_kl_mean": float(np.mean(kl_values)) if kl_values else 0.0,
+            "occlusion_delta_ce_mean": _nanmean(ce_values),
+            "occlusion_delta_ce_max": _nanmax(ce_values),
+            "occlusion_delta_macro_f1_mean": _nanmean(macro_values),
+            "occlusion_delta_margin_mean": _nanmean(margin_values),
+            "occlusion_delta_teacher_kl_mean": _nanmean(kl_values),
+            "occlusion_tree_tensor_l2_delta_mean": _nanmean(tree_delta_values),
             "occlusion_cache_hit_count": 0,
             "occlusion_cache_miss_count": int(len(score_rows)),
+            "occlusion_degenerate": occlusion_degenerate,
+            "occlusion_proxy_fallback_used": occlusion_degenerate,
             "selector_uses_true_validation_feedback": False,
         },
     }

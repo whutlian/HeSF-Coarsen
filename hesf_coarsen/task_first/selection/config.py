@@ -82,7 +82,7 @@ class SupportSelectorConfig:
     warm_start: bool = False
     min_gain: float = -1.0
     max_validation_greedy_steps: int = 3
-    block_key_mode: Literal["default", "dblp_aware"] = "default"
+    block_key_mode: Literal["class_anchor_relation", "default", "dblp_aware"] = "class_anchor_relation"
     occlusion_candidate_pool_size: int = 8
     occlusion_short_eval_epochs: int = 3
     occlusion_short_patience: int = 2
@@ -98,7 +98,12 @@ class SupportSelectorConfig:
     split_large_prototype_by_degree: bool = True
     split_large_prototype_by_anchor: bool = True
     split_large_prototype_by_relation: bool = True
+    force_raw_bridge_nodes: bool = True
     force_raw_keep_high_degree_bridges: bool = True
+    min_raw_bridge_per_relation_channel: int = 1
+    min_prototype_per_class: int = 1
+    min_prototype_per_relation_channel: int = 1
+    rare_class_never_fallback: bool = True
     rare_class_min_prototypes: int = 1
     per_relation_min_prototypes: int = 1
     per_anchor_min_prototypes: int = 1

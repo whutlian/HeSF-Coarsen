@@ -101,6 +101,13 @@ def _dblp_aware_prototype_key(
     return (int(type_id), int(base[3]), int(base[2]), int(base[1]), int(degree_bucket), int(bridge))
 
 
+def _relation_channel(node: int, support_features: dict[str, Any] | None) -> int:
+    relation = _node_component_row(support_features, "relation_profile", int(node))
+    if relation.size == 0 or float(np.sum(relation)) <= 1.0e-12:
+        return -1
+    return int(np.argmax(relation))
+
+
 def _prototype_count_fields(key: tuple[int, ...]) -> tuple[int, int, int, int]:
     if len(key) >= 6:
         return int(key[0]), int(key[3]), int(key[2]), int(key[1])
@@ -124,11 +131,29 @@ def build_selected_support_graph(
     prototype_key_by_node: dict[int, tuple[int, ...]] = {}
     large_prototype_count = 0
     large_prototype_split_count = 0
+    forced_raw_nodes: set[int] = set()
+    raw_bridge_by_type: Counter[str] = Counter()
+    raw_bridge_by_relation_channel: Counter[str] = Counter()
+    force_raw_bridges = bool(
+        getattr(cfg, "force_raw_bridge_nodes", False)
+        or getattr(cfg, "force_raw_keep_high_degree_bridges", False)
+    )
+    if strategy in {"class_anchor_relation_prototype", "dblp_aware_prototype"} and force_raw_bridges:
+        for node in support_nodes:
+            node = int(node)
+            if node in selected:
+                continue
+            type_id = int(original_graph.node_type[node])
+            degree_bucket = _degree_bucket(node, original_graph, support_features)
+            if _bridge_flag(node, degree_bucket, support_features):
+                forced_raw_nodes.add(node)
+                raw_bridge_by_type[str(type_id)] += 1
+                raw_bridge_by_relation_channel[str(_relation_channel(node, support_features))] += 1
     if strategy in {"class_anchor_relation_prototype", "dblp_aware_prototype"}:
         grouped_nodes: dict[tuple[int, ...], list[int]] = defaultdict(list)
         for node in support_nodes:
             node = int(node)
-            if node in selected:
+            if node in selected or node in forced_raw_nodes:
                 continue
             type_id = int(original_graph.node_type[node])
             if strategy == "dblp_aware_prototype":
@@ -155,6 +180,10 @@ def build_selected_support_graph(
                     large_prototype_split_count += 1
                 for node in chunk:
                     prototype_key_by_node[int(node)] = split_key
+    base_class_member_counts = Counter(
+        (int(_prototype_count_fields(tuple(key))[0]), int(_prototype_count_fields(tuple(key))[1]))
+        for key in base_prototype_key_by_node.values()
+    )
     assignment = np.empty(original_graph.num_nodes, dtype=np.int64)
     super_types: list[int] = []
     background_by_type: dict[int, int] = {}
@@ -162,6 +191,10 @@ def build_selected_support_graph(
     prototype_type_counts: dict[int, int] = {}
     prototype_members: dict[int, list[int]] = defaultdict(list)
     selected_by_type: dict[int, int] = {}
+    prototype_budget_conflict_count = 0
+    prototype_fallback_member_count = 0
+    rare_class_fallback_count = 0
+    fallback_keys: set[tuple[int, ...]] = set()
 
     for node in target_nodes:
         assignment[int(node)] = len(super_types)
@@ -174,6 +207,10 @@ def build_selected_support_graph(
             super_types.append(type_id)
             selected_by_type[type_id] = selected_by_type.get(type_id, 0) + 1
             continue
+        if node in forced_raw_nodes:
+            assignment[node] = len(super_types)
+            super_types.append(type_id)
+            continue
         if not cfg.allow_background_bucket:
             assignment[node] = len(super_types)
             super_types.append(type_id)
@@ -182,7 +219,19 @@ def build_selected_support_graph(
             key = prototype_key_by_node.get(node, base_prototype_key_by_node.get(node, _prototype_key(node, type_id, support_features)))
             type_count = int(prototype_type_counts.get(type_id, 0))
             if key not in prototype_by_key and type_count >= int(cfg.max_prototypes_per_type):
-                key = (type_id, -1, -1, -1, 0)
+                parsed = _prototype_count_fields(tuple(key))
+                class_member_count = int(base_class_member_counts.get((int(parsed[0]), int(parsed[1])), 0))
+                rare_class = class_member_count <= max(
+                    1,
+                    int(getattr(cfg, "min_prototype_per_class", getattr(cfg, "rare_class_min_prototypes", 1))),
+                )
+                if not (bool(getattr(cfg, "rare_class_never_fallback", False)) and rare_class):
+                    prototype_budget_conflict_count += 1
+                    prototype_fallback_member_count += 1
+                    if rare_class:
+                        rare_class_fallback_count += 1
+                    key = (type_id, -1, -1, -1, 0)
+                    fallback_keys.add(tuple(key))
             if key not in prototype_by_key:
                 prototype_by_key[key] = len(super_types)
                 super_types.append(type_id)
@@ -211,6 +260,10 @@ def build_selected_support_graph(
     prototype_count_by_anchor = Counter(str(item[2]) for item in parsed_keys)
     prototype_count_by_relation = Counter(str(item[3]) for item in parsed_keys)
     member_counts = [len(value) for value in prototype_members.values()]
+    cap = max(1, int(cfg.max_members_per_prototype))
+    saturated = [count for count in member_counts if int(count) >= cap]
+    rare_class_min = max(1, int(getattr(cfg, "min_prototype_per_class", getattr(cfg, "rare_class_min_prototypes", 1))))
+    relation_min = max(1, int(getattr(cfg, "min_prototype_per_relation_channel", getattr(cfg, "per_relation_min_prototypes", 1))))
     diagnostics = {
         "background_node_count": int(len(background_by_type)),
         "prototype_background_count": int(len(prototype_by_key)),
@@ -225,16 +278,23 @@ def build_selected_support_graph(
         "prototype_member_count_max": int(max(member_counts)) if member_counts else 0,
         "large_prototype_count": int(large_prototype_count),
         "large_prototype_split_count": int(large_prototype_split_count),
-        "forced_raw_bridge_count": 0,
-        "rare_class_prototype_count": int(sum(1 for value in prototype_count_by_class.values() if value >= int(cfg.rare_class_min_prototypes))),
-        "relation_channel_prototype_count": int(sum(1 for value in prototype_count_by_relation.values() if value >= int(cfg.per_relation_min_prototypes))),
-        "prototype_budget_conflict_count": 0,
+        "forced_raw_bridge_count": int(len(forced_raw_nodes)),
+        "raw_bridge_by_type": dict(raw_bridge_by_type),
+        "raw_bridge_by_relation_channel": dict(raw_bridge_by_relation_channel),
+        "rare_class_prototype_count": int(sum(1 for value in prototype_count_by_class.values() if value >= rare_class_min)),
+        "rare_class_fallback_count": int(rare_class_fallback_count),
+        "relation_channel_prototype_count": int(sum(1 for value in prototype_count_by_relation.values() if value >= relation_min)),
+        "prototype_budget_conflict_count": int(prototype_budget_conflict_count),
+        "prototype_fallback_member_count": int(prototype_fallback_member_count),
+        "fallback_key_count": int(len(fallback_keys)),
+        "prototype_saturation_rate": float(len(saturated) / max(len(member_counts), 1)) if member_counts else 0.0,
         "prototype_key_mode": "dblp_aware" if strategy == "dblp_aware_prototype" else "class_anchor_relation",
+        "meta_path_channel_source": "relation_bucket_fallback" if strategy == "dblp_aware_prototype" else "class_anchor_relation",
         "background_edges_by_relation": background_edges_by_relation,
-        "dropped_support_count": int(len(support_nodes) - len(selected)),
+        "dropped_support_count": int(len(support_nodes) - len(selected) - len(forced_raw_nodes)),
         "selected_support_count": int(len(selected)),
-        "selected_raw_support_count": int(len(selected)),
-        "unselected_support_count": int(len(support_nodes) - len(selected)),
+        "selected_raw_support_count": int(len(selected) + len(forced_raw_nodes)),
+        "unselected_support_count": int(len(support_nodes) - len(selected) - len(forced_raw_nodes)),
         "selected_by_type": {str(key): int(value) for key, value in selected_by_type.items()},
         "edge_retention_by_relation": edge_retention_by_relation,
         "support_context_collision_after_condensation": 0.0,
