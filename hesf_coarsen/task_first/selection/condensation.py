@@ -260,6 +260,10 @@ def build_selected_support_graph(
     prototype_count_by_anchor = Counter(str(item[2]) for item in parsed_keys)
     prototype_count_by_relation = Counter(str(item[3]) for item in parsed_keys)
     member_counts = [len(value) for value in prototype_members.values()]
+    parsed_key_set = {tuple(key) for key in prototype_by_key}
+    degree_bucket_count = len({int(key[4]) for key in parsed_key_set if len(key) >= 6})
+    bridge_flag_count = len({int(key[5]) for key in parsed_key_set if len(key) >= 6})
+    target_anchor_group_count = len({int(_prototype_count_fields(tuple(key))[2]) for key in parsed_key_set})
     cap = max(1, int(cfg.max_members_per_prototype))
     saturated = [count for count in member_counts if int(count) >= cap]
     rare_class_min = max(1, int(getattr(cfg, "min_prototype_per_class", getattr(cfg, "rare_class_min_prototypes", 1))))
@@ -276,6 +280,10 @@ def build_selected_support_graph(
         "prototype_member_count_p90": float(np.percentile(member_counts, 90)) if member_counts else 0.0,
         "prototype_member_count_p99": float(np.percentile(member_counts, 99)) if member_counts else 0.0,
         "prototype_member_count_max": int(max(member_counts)) if member_counts else 0,
+        "prototype_member_count_sum": int(sum(member_counts)),
+        "degree_bucket_count": int(degree_bucket_count),
+        "bridge_flag_count": int(bridge_flag_count),
+        "target_anchor_group_count": int(target_anchor_group_count),
         "large_prototype_count": int(large_prototype_count),
         "large_prototype_split_count": int(large_prototype_split_count),
         "forced_raw_bridge_count": int(len(forced_raw_nodes)),
@@ -283,6 +291,9 @@ def build_selected_support_graph(
         "raw_bridge_by_relation_channel": dict(raw_bridge_by_relation_channel),
         "rare_class_prototype_count": int(sum(1 for value in prototype_count_by_class.values() if value >= rare_class_min)),
         "rare_class_fallback_count": int(rare_class_fallback_count),
+        "rare_class_never_fallback_violation_count": int(rare_class_fallback_count)
+        if bool(getattr(cfg, "rare_class_never_fallback", False))
+        else 0,
         "relation_channel_prototype_count": int(sum(1 for value in prototype_count_by_relation.values() if value >= relation_min)),
         "prototype_budget_conflict_count": int(prototype_budget_conflict_count),
         "prototype_fallback_member_count": int(prototype_fallback_member_count),

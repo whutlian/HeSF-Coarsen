@@ -42,6 +42,17 @@ def _metric(metrics: dict[str, Any], name: str) -> float:
         return 0.0
 
 
+def _occlusion_metric_payload(metrics: dict[str, Any], score: float, tree_delta: float) -> dict[str, float]:
+    return {
+        "validation_macro_f1": float(score),
+        "validation_cross_entropy": _metric(metrics, "validation_cross_entropy") or float(max(0.0, 1.0 - score)),
+        "margin": _metric(metrics, "margin") or float(score),
+        "teacher_kl": _metric(metrics, "teacher_kl"),
+        "class_recall": _metric(metrics, "class_recall") or float(score),
+        "tree_tensor_l2_delta_when_occluded": float(tree_delta),
+    }
+
+
 def _importance_stats(importance: np.ndarray, selected_local: np.ndarray) -> dict[str, float]:
     values = np.asarray(importance, dtype=np.float64)
     selected = values[np.asarray(selected_local, dtype=np.int64)] if len(selected_local) else np.empty(0)
@@ -121,6 +132,7 @@ def run_supervised_support_selection_pipeline(
         "test": _mask_nodes(val_mask),
     }
     trial_cache: dict[tuple[str, tuple[int, ...]], float] = {}
+    occlusion_cache: dict[tuple[int, ...], dict[str, float]] = {}
 
     def _short_validation_score(selected_nodes: np.ndarray) -> float:
         selected_key = tuple(sorted(int(node) for node in np.asarray(selected_nodes, dtype=np.int64).reshape(-1)))
@@ -158,9 +170,8 @@ def run_supervised_support_selection_pipeline(
 
     def _short_occlusion_score(occluded_nodes: np.ndarray) -> dict[str, float]:
         occluded_key = tuple(sorted(int(node) for node in np.asarray(occluded_nodes, dtype=np.int64).reshape(-1)))
-        cache_key = ("occlusion", occluded_key)
-        if cache_key in trial_cache:
-            return {"validation_macro_f1": float(trial_cache[cache_key])}
+        if occluded_key in occlusion_cache:
+            return dict(occlusion_cache[occluded_key])
         occluded = set(occluded_key)
         retained = np.asarray([int(node) for node in support_nodes_all if int(node) not in occluded], dtype=np.int64)
         trial_coarse, trial_assignment, _trial_diag = build_selected_support_graph(
@@ -187,8 +198,13 @@ def run_supervised_support_selection_pipeline(
             max_paths=task_max_paths,
         ).metrics
         score = _metric(trial_metrics, "validation_macro_f1")
-        trial_cache[cache_key] = float(score)
-        return {"validation_macro_f1": float(score)}
+        payload = _occlusion_metric_payload(
+            trial_metrics,
+            float(score),
+            float(len(occluded_key) / max(len(support_nodes_all), 1)),
+        )
+        occlusion_cache[occluded_key] = dict(payload)
+        return payload
 
     selector_name = str(cfg.selector.selector)
     selected = select_support_nodes(
@@ -300,6 +316,10 @@ def run_supervised_support_selection_pipeline(
         "prototype_member_count_p90": float(graph_diag.get("prototype_member_count_p90", 0.0) or 0.0),
         "prototype_member_count_p99": float(graph_diag.get("prototype_member_count_p99", 0.0) or 0.0),
         "prototype_member_count_max": int(graph_diag.get("prototype_member_count_max", 0) or 0),
+        "prototype_member_count_sum": int(graph_diag.get("prototype_member_count_sum", 0) or 0),
+        "degree_bucket_count": int(graph_diag.get("degree_bucket_count", 0) or 0),
+        "bridge_flag_count": int(graph_diag.get("bridge_flag_count", 0) or 0),
+        "target_anchor_group_count": int(graph_diag.get("target_anchor_group_count", 0) or 0),
         "large_prototype_count": int(graph_diag.get("large_prototype_count", 0) or 0),
         "large_prototype_split_count": int(graph_diag.get("large_prototype_split_count", 0) or 0),
         "forced_raw_bridge_count": int(graph_diag.get("forced_raw_bridge_count", 0) or 0),
@@ -307,6 +327,7 @@ def run_supervised_support_selection_pipeline(
         "raw_bridge_by_relation_channel": graph_diag.get("raw_bridge_by_relation_channel", {}),
         "rare_class_prototype_count": int(graph_diag.get("rare_class_prototype_count", 0) or 0),
         "rare_class_fallback_count": int(graph_diag.get("rare_class_fallback_count", 0) or 0),
+        "rare_class_never_fallback_violation_count": int(graph_diag.get("rare_class_never_fallback_violation_count", 0) or 0),
         "relation_channel_prototype_count": int(graph_diag.get("relation_channel_prototype_count", 0) or 0),
         "prototype_budget_conflict_count": int(graph_diag.get("prototype_budget_conflict_count", 0) or 0),
         "prototype_fallback_member_count": int(graph_diag.get("prototype_fallback_member_count", 0) or 0),
@@ -324,6 +345,9 @@ def run_supervised_support_selection_pipeline(
         "validation_greedy_best_gain_mean": float(selection_diag.get("validation_greedy_best_gain_mean", 0.0) or 0.0),
         "validation_greedy_best_gain_max": float(selection_diag.get("validation_greedy_best_gain_max", 0.0) or 0.0),
         "validation_greedy_gain_history": selection_diag.get("validation_greedy_gain_history", []),
+        "validation_gain_history": selection_diag.get("validation_gain_history", selection_diag.get("validation_greedy_gain_history", [])),
+        "validation_scores_unique_count": int(selection_diag.get("validation_scores_unique_count", 0) or 0),
+        "validation_signal_pass": bool(selection_diag.get("validation_signal_pass", False)),
         "accepted_block_count": int(selection_diag.get("accepted_block_count", 0) or 0),
         "rejected_block_count": int(selection_diag.get("rejected_block_count", 0) or 0),
         "block_trim_count": int(selection_diag.get("block_trim_count", 0) or 0),
@@ -337,13 +361,21 @@ def run_supervised_support_selection_pipeline(
         "occlusion_delta_ce_mean": float(selection_diag.get("occlusion_delta_ce_mean", 0.0) or 0.0),
         "occlusion_delta_ce_max": float(selection_diag.get("occlusion_delta_ce_max", 0.0) or 0.0),
         "occlusion_delta_macro_f1_mean": float(selection_diag.get("occlusion_delta_macro_f1_mean", 0.0) or 0.0),
+        "occlusion_delta_macro_f1_max": float(selection_diag.get("occlusion_delta_macro_f1_max", 0.0) or 0.0),
         "occlusion_delta_margin_mean": float(selection_diag.get("occlusion_delta_margin_mean", 0.0) or 0.0),
+        "occlusion_delta_margin_max": float(selection_diag.get("occlusion_delta_margin_max", 0.0) or 0.0),
         "occlusion_delta_teacher_kl_mean": float(selection_diag.get("occlusion_delta_teacher_kl_mean", 0.0) or 0.0),
+        "occlusion_delta_teacher_kl_max": float(selection_diag.get("occlusion_delta_teacher_kl_max", 0.0) or 0.0),
         "occlusion_tree_tensor_l2_delta_mean": float(selection_diag.get("occlusion_tree_tensor_l2_delta_mean", 0.0) or 0.0),
+        "occlusion_tree_tensor_l2_delta_max": float(selection_diag.get("occlusion_tree_tensor_l2_delta_max", 0.0) or 0.0),
+        "occlusion_metric_complete": bool(selection_diag.get("occlusion_metric_complete", False)),
+        "occlusion_nonzero_delta_rate": float(selection_diag.get("occlusion_nonzero_delta_rate", 0.0) or 0.0),
+        "occlusion_tree_delta_nonzero_rate": float(selection_diag.get("occlusion_tree_delta_nonzero_rate", 0.0) or 0.0),
         "occlusion_cache_hit_count": int(selection_diag.get("occlusion_cache_hit_count", 0) or 0),
         "occlusion_cache_miss_count": int(selection_diag.get("occlusion_cache_miss_count", 0) or 0),
         "occlusion_degenerate": bool(selection_diag.get("occlusion_degenerate", False)),
         "occlusion_proxy_fallback_used": bool(selection_diag.get("occlusion_proxy_fallback_used", False)),
+        "occlusion_signal_pass": bool(selection_diag.get("occlusion_signal_pass", False)),
         "zero_footprint_share": support_features["diagnostics"].get("zero_footprint_support_share", 0.0),
         "known_unknown_merge_count": 0,
         "unknown_unknown_merge_count": 0,
