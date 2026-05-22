@@ -22,6 +22,10 @@ _METHOD_NAME = {
     "validation_greedy": "HeSF-SS-validation-proxy-diverse",
     "validation_proxy_diverse": "HeSF-SS-validation-proxy-diverse",
     "true_validation_block_greedy": "HeSF-SS-true-validation-block-greedy",
+    "real_validation_block_greedy": "HeSF-SS-real-validation-block-greedy",
+    "real_occlusion_block_selector": "HeSF-SS-real-occlusion-block",
+    "occlusion_plus_dblp_prototype": "HeSF-SS-occlusion-plus-dblp-prototype",
+    "dblp_aware_prototype": "HeSF-SS-dblp-aware-prototype",
     "sensitivity_block_selector": "HeSF-SS-sensitivity-block-selector",
     "mlp_importance": "HeSF-SS-mlp-importance",
 }
@@ -73,6 +77,7 @@ def run_supervised_support_selection_pipeline(
     seed: int = 12345,
     task_epochs: int = 10,
     task_hidden_dim: int = 32,
+    task_max_paths: int | None = None,
     device: str = "auto",
 ) -> dict[str, Any]:
     if not cfg.keep_all_target_nodes or not cfg.support_only:
@@ -108,11 +113,91 @@ def run_supervised_support_selection_pipeline(
         mode=str(cfg.selector.selector),
         lambda_response=float(cfg.regularizer.lambda_response),
     )
+    trial_split = {
+        "train": _mask_nodes(train_mask),
+        "val": _mask_nodes(val_mask),
+        # Candidate feedback must be train/validation only; reuse validation nodes as
+        # the evaluator's required test split so real test labels are not touched.
+        "test": _mask_nodes(val_mask),
+    }
+    trial_cache: dict[tuple[str, tuple[int, ...]], float] = {}
+
+    def _short_validation_score(selected_nodes: np.ndarray) -> float:
+        selected_key = tuple(sorted(int(node) for node in np.asarray(selected_nodes, dtype=np.int64).reshape(-1)))
+        cache_key = ("validation", selected_key)
+        if cache_key in trial_cache:
+            return float(trial_cache[cache_key])
+        trial_coarse, trial_assignment, _trial_diag = build_selected_support_graph(
+            graph,
+            np.asarray(selected_key, dtype=np.int64),
+            cfg.selector,
+            target_node_type=int(cfg.target_node_type),
+            support_features=support_features,
+        )
+        trial_metrics = evaluate_hettree_task(
+            graph,
+            trial_coarse,
+            trial_assignment.assignment,
+            seed=int(seed),
+            epochs=max(1, int(cfg.selector.short_eval_epochs)),
+            hidden_dim=int(task_hidden_dim),
+            device=str(device),
+            target_node_type=int(cfg.target_node_type),
+            official_split_nodes=trial_split,
+            primary_eval_mode="compressed_projected",
+            early_stopping=True,
+            patience=max(1, int(cfg.selector.occlusion_short_patience)),
+            monitor="projected_val_macro_f1",
+            max_paths=task_max_paths,
+        ).metrics
+        score = _metric(trial_metrics, "validation_macro_f1")
+        trial_cache[cache_key] = float(score)
+        return float(score)
+
+    support_nodes_all = np.asarray(support_features["support_nodes"], dtype=np.int64)
+
+    def _short_occlusion_score(occluded_nodes: np.ndarray) -> dict[str, float]:
+        occluded_key = tuple(sorted(int(node) for node in np.asarray(occluded_nodes, dtype=np.int64).reshape(-1)))
+        cache_key = ("occlusion", occluded_key)
+        if cache_key in trial_cache:
+            return {"validation_macro_f1": float(trial_cache[cache_key])}
+        occluded = set(occluded_key)
+        retained = np.asarray([int(node) for node in support_nodes_all if int(node) not in occluded], dtype=np.int64)
+        trial_coarse, trial_assignment, _trial_diag = build_selected_support_graph(
+            graph,
+            retained,
+            cfg.selector,
+            target_node_type=int(cfg.target_node_type),
+            support_features=support_features,
+        )
+        trial_metrics = evaluate_hettree_task(
+            graph,
+            trial_coarse,
+            trial_assignment.assignment,
+            seed=int(seed),
+            epochs=max(1, int(cfg.selector.occlusion_short_eval_epochs)),
+            hidden_dim=int(task_hidden_dim),
+            device=str(device),
+            target_node_type=int(cfg.target_node_type),
+            official_split_nodes=trial_split,
+            primary_eval_mode="compressed_projected",
+            early_stopping=True,
+            patience=max(1, int(cfg.selector.occlusion_short_patience)),
+            monitor="projected_val_macro_f1",
+            max_paths=task_max_paths,
+        ).metrics
+        score = _metric(trial_metrics, "validation_macro_f1")
+        trial_cache[cache_key] = float(score)
+        return {"validation_macro_f1": float(score)}
+
+    selector_name = str(cfg.selector.selector)
     selected = select_support_nodes(
         support_features,
         importance["importance"],
         ratio,
         cfg.selector,
+        validation_evaluator=_short_validation_score if selector_name == "real_validation_block_greedy" else None,
+        occlusion_evaluator=_short_occlusion_score if selector_name in {"real_occlusion_block_selector", "occlusion_plus_dblp_prototype"} else None,
     )
     coarse, assignment, graph_diag = build_selected_support_graph(
         graph,
@@ -138,6 +223,7 @@ def run_supervised_support_selection_pipeline(
         primary_eval_mode="compressed_projected",
         early_stopping=True,
         monitor="projected_val_macro_f1",
+        max_paths=task_max_paths,
     ).metrics
     target_nodes = np.flatnonzero(graph.node_type == int(cfg.target_node_type)).astype(np.int64)
     support_count = int(np.sum(graph.node_type != int(cfg.target_node_type)))
@@ -209,19 +295,58 @@ def run_supervised_support_selection_pipeline(
         "prototype_count_by_class": graph_diag.get("prototype_count_by_class", {}),
         "prototype_count_by_anchor": graph_diag.get("prototype_count_by_anchor", {}),
         "prototype_count_by_relation_bucket": graph_diag.get("prototype_count_by_relation_bucket", {}),
+        "prototype_member_count_mean": float(graph_diag.get("prototype_member_count_mean", 0.0) or 0.0),
+        "prototype_member_count_p50": float(graph_diag.get("prototype_member_count_p50", 0.0) or 0.0),
+        "prototype_member_count_p90": float(graph_diag.get("prototype_member_count_p90", 0.0) or 0.0),
+        "prototype_member_count_p99": float(graph_diag.get("prototype_member_count_p99", 0.0) or 0.0),
+        "prototype_member_count_max": int(graph_diag.get("prototype_member_count_max", 0) or 0),
+        "large_prototype_count": int(graph_diag.get("large_prototype_count", 0) or 0),
+        "large_prototype_split_count": int(graph_diag.get("large_prototype_split_count", 0) or 0),
+        "forced_raw_bridge_count": int(graph_diag.get("forced_raw_bridge_count", 0) or 0),
+        "rare_class_prototype_count": int(graph_diag.get("rare_class_prototype_count", 0) or 0),
+        "relation_channel_prototype_count": int(graph_diag.get("relation_channel_prototype_count", 0) or 0),
+        "prototype_budget_conflict_count": int(graph_diag.get("prototype_budget_conflict_count", 0) or 0),
+        "prototype_key_mode": graph_diag.get("prototype_key_mode", ""),
         "teacher_KL_retained": 0.0,
         "val_loss_delta_retained": 0.0,
         "selector_uses_true_validation_feedback": bool(selection_diag.get("selector_uses_true_validation_feedback", False)),
+        "validation_trial_count": int(selection_diag.get("validation_trial_count", 0) or 0),
+        "validation_candidate_pool_size": int(selection_diag.get("validation_candidate_pool_size", selection_diag.get("validation_greedy_candidate_pool_size", 0)) or 0),
+        "validation_short_eval_epochs": int(selection_diag.get("validation_short_eval_epochs", selection_diag.get("validation_greedy_short_eval_epochs", 0)) or 0),
+        "validation_objective": selection_diag.get("validation_objective", ""),
+        "validation_greedy_best_gain_mean": float(selection_diag.get("validation_greedy_best_gain_mean", 0.0) or 0.0),
+        "validation_greedy_best_gain_max": float(selection_diag.get("validation_greedy_best_gain_max", 0.0) or 0.0),
+        "validation_greedy_gain_history": selection_diag.get("validation_greedy_gain_history", []),
+        "accepted_block_count": int(selection_diag.get("accepted_block_count", 0) or 0),
+        "rejected_block_count": int(selection_diag.get("rejected_block_count", 0) or 0),
+        "block_trim_count": int(selection_diag.get("block_trim_count", 0) or 0),
+        "oversized_block_count": int(selection_diag.get("oversized_block_count", 0) or 0),
+        "selected_block_keys": selection_diag.get("selected_block_keys", []),
+        "occlusion_trial_count": int(selection_diag.get("occlusion_trial_count", 0) or 0),
+        "occlusion_candidate_pool_size": int(selection_diag.get("occlusion_candidate_pool_size", 0) or 0),
+        "occlusion_objective": selection_diag.get("occlusion_objective", ""),
+        "occlusion_delta_ce_mean": float(selection_diag.get("occlusion_delta_ce_mean", 0.0) or 0.0),
+        "occlusion_delta_ce_max": float(selection_diag.get("occlusion_delta_ce_max", 0.0) or 0.0),
+        "occlusion_delta_macro_f1_mean": float(selection_diag.get("occlusion_delta_macro_f1_mean", 0.0) or 0.0),
+        "occlusion_delta_margin_mean": float(selection_diag.get("occlusion_delta_margin_mean", 0.0) or 0.0),
+        "occlusion_delta_teacher_kl_mean": float(selection_diag.get("occlusion_delta_teacher_kl_mean", 0.0) or 0.0),
+        "occlusion_cache_hit_count": int(selection_diag.get("occlusion_cache_hit_count", 0) or 0),
+        "occlusion_cache_miss_count": int(selection_diag.get("occlusion_cache_miss_count", 0) or 0),
         "zero_footprint_share": support_features["diagnostics"].get("zero_footprint_support_share", 0.0),
         "known_unknown_merge_count": 0,
         "unknown_unknown_merge_count": 0,
         "selector_uses_test_labels": False,
         "teacher_uses_test_labels_for_training": bool((teacher or {}).get("teacher_uses_test_labels_for_training", False)),
+        "selection_split_source": selection_diag.get("selection_split_source", "train_val_only" if selector_name in {"real_validation_block_greedy", "real_occlusion_block_selector", "occlusion_plus_dblp_prototype"} else "train_only"),
+        "teacher_split_source": "train_val_only",
         "test_label_usage": "metrics_only",
         "validation_selection_uses": "validation_macro_f1",
-        "selector_feedback_source": "true_validation_feedback"
-        if bool(selection_diag.get("selector_uses_true_validation_feedback", False))
-        else "proxy_diverse_importance",
+        "selector_feedback_source": selection_diag.get(
+            "selector_feedback_source",
+            "true_validation_feedback"
+            if bool(selection_diag.get("selector_uses_true_validation_feedback", False))
+            else "proxy_diverse_importance",
+        ),
         "evaluator_status": "diagnostic_lite_only",
         "status": "success" if not task.get("skipped", False) else "skipped",
         "skip_reason": task.get("skip_reason", ""),

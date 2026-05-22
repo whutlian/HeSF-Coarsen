@@ -57,6 +57,10 @@ class SupportSelectorConfig:
         "validation_greedy",
         "validation_proxy_diverse",
         "true_validation_block_greedy",
+        "real_validation_block_greedy",
+        "real_occlusion_block_selector",
+        "occlusion_plus_dblp_prototype",
+        "dblp_aware_prototype",
         "sensitivity_block_selector",
         "mlp_importance",
         "hybrid_teacher_response",
@@ -71,14 +75,33 @@ class SupportSelectorConfig:
         "dummy",
         "typed_background",
         "class_anchor_relation_prototype",
+        "dblp_aware_prototype",
     ] = "class_anchor_relation_prototype"
     candidate_pool_size: int = 16
     short_eval_epochs: int = 5
     warm_start: bool = False
     min_gain: float = -1.0
+    max_validation_greedy_steps: int = 3
+    block_key_mode: Literal["default", "dblp_aware"] = "default"
+    occlusion_candidate_pool_size: int = 8
+    occlusion_short_eval_epochs: int = 3
+    occlusion_short_patience: int = 2
+    occlusion_cache_enabled: bool = True
+    alpha_teacher_kl: float = 0.1
+    beta_margin: float = 0.2
+    gamma_class_recall: float = 0.2
+    primary_occlusion_term: str = "validation_cross_entropy_delta"
     max_prototypes_per_type: int = 64
     max_prototypes_per_class_anchor_relation: int = 4
     min_nodes_per_prototype: int = 1
+    max_members_per_prototype: int = 512
+    split_large_prototype_by_degree: bool = True
+    split_large_prototype_by_anchor: bool = True
+    split_large_prototype_by_relation: bool = True
+    force_raw_keep_high_degree_bridges: bool = True
+    rare_class_min_prototypes: int = 1
+    per_relation_min_prototypes: int = 1
+    per_anchor_min_prototypes: int = 1
     prototype_feature_aggregation: Literal["mean", "degree_weighted_mean"] = "degree_weighted_mean"
     prototype_edge_aggregation: Literal["sum", "mean"] = "sum"
 
