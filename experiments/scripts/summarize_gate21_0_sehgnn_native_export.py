@@ -22,6 +22,7 @@ DECISIONS = {
 
 REQUIRED_DATASETS = {"DBLP", "ACM", "IMDB"}
 REQUIRED_SEEDS_PER_DATASET = 5
+REQUIRED_COMPRESSED_METHODS = {"H6-node30", "flatten-node30", "TypedHash-node30", "target-only"}
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -110,6 +111,18 @@ def _storage_ratio_by_method(rows: Sequence[Mapping[str, Any]]) -> dict[str, dic
     return out
 
 
+def _compressed_status_by_method(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, int]]:
+    out: dict[str, dict[str, int]] = {}
+    for row in rows:
+        method = str(row.get("method", ""))
+        status = str(row.get("status", ""))
+        if not method:
+            continue
+        out.setdefault(method, {})
+        out[method][status] = out[method].get(status, 0) + 1
+    return out
+
+
 def _summary_by_dataset(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[str, list[Mapping[str, Any]]] = {}
     for row in rows:
@@ -160,6 +173,10 @@ def _has_required_fidelity_runs(rows: Sequence[Mapping[str, Any]]) -> bool:
     return True
 
 
+def _observed_compressed_methods(rows: Sequence[Mapping[str, Any]]) -> set[str]:
+    return {str(row.get("method", "")) for row in rows if row.get("method", "")}
+
+
 def summarize_gate21_0(out_dir: Path) -> dict[str, Any]:
     out_dir = Path(out_dir)
     native_rows = _read_csv(out_dir / "native" / "native_metrics.csv")
@@ -173,11 +190,13 @@ def summarize_gate21_0(out_dir: Path) -> dict[str, Any]:
     native_repro_pass = bool(native_rows) and _has_required_native_runs(native_rows)
     export_full_fidelity_pass = bool(export_fidelity_rows) and _has_required_fidelity_runs(export_fidelity_rows)
     compressed_eval_allowed = bool(native_repro_pass and export_full_fidelity_pass)
+    compressed_methods_observed = _observed_compressed_methods(compressed_rows)
+    required_compressed_methods_present = REQUIRED_COMPRESSED_METHODS.issubset(compressed_methods_observed)
     if not native_repro_pass:
         decision = "NATIVE_SEHGNN_REPRO_FAIL"
     elif not export_full_fidelity_pass:
         decision = "NATIVE_SEHGNN_REPRO_PASS_EXPORT_FULL_FAIL"
-    elif not compressed_rows:
+    elif not compressed_rows or not required_compressed_methods_present:
         decision = "EXPORT_FULL_FIDELITY_PASS_COMPRESSED_READY"
     else:
         decision = "COMPRESSED_SEHGNN_VALIDATION_READY"
@@ -202,6 +221,9 @@ def summarize_gate21_0(out_dir: Path) -> dict[str, Any]:
         "full_fidelity_gap_by_dataset": _fidelity_gap_by_dataset(export_fidelity_rows),
         "compressed_recovery_by_dataset": _compressed_recovery_by_dataset(compressed_rows),
         "storage_ratio_by_method": _storage_ratio_by_method(storage_rows),
+        "compressed_status_by_method": _compressed_status_by_method(compressed_rows),
+        "compressed_methods_observed": sorted(compressed_methods_observed),
+        "required_compressed_methods_present": bool(required_compressed_methods_present),
     }
     write_json(out_dir / "gate21_0_result.json", result)
     write_csv(out_dir / "gate21_0_native_summary_by_dataset.csv", _summary_by_dataset(native_rows))
@@ -224,7 +246,7 @@ def summarize_gate21_0(out_dir: Path) -> dict[str, Any]:
     compressed_storage_written = (out_dir / "compressed" / "gate21_0_compressed_storage_audit.csv").exists()
     compressed_stage_consistent = (
         decision != "COMPRESSED_SEHGNN_VALIDATION_READY"
-        or (compressed_eval_allowed and compressed_metrics_written and compressed_storage_written)
+        or (compressed_eval_allowed and compressed_metrics_written and compressed_storage_written and required_compressed_methods_present)
     )
     stop_guard_consistent = (
         (decision == "NATIVE_SEHGNN_REPRO_FAIL" and not export_fidelity_written and not compressed_metrics_written)
@@ -247,6 +269,7 @@ def summarize_gate21_0(out_dir: Path) -> dict[str, Any]:
         f"- [{'x' if export_fidelity_written else ' '}] export-full fidelity CSV written.",
         f"- [{'x' if export_full_fidelity_pass else ' '}] export-full fidelity passed before compressed stage.",
         f"- [{'x' if compressed_eval_allowed else ' '}] compressed evaluation allowed only after native/export-full pass.",
+        f"- [{'x' if required_compressed_methods_present else ' '}] required compressed methods present: H6-node30, flatten-node30, TypedHash-node30, target-only.",
         f"- [{'x' if compressed_stage_consistent else ' '}] compressed metrics and storage audit written when compressed stage runs.",
         "",
         f"Decision: `{decision}`",

@@ -191,7 +191,7 @@ def test_export_graph_to_sehgnn_hgb_writes_grouped_ids_relations_and_split_label
 
 
 def test_compressed_storage_ratio_fields_report_total_ratio_separately() -> None:
-    from experiments.scripts.run_gate21_0_sehgnn_native_export import _storage_ratio_fields
+    from experiments.scripts.run_gate21_0_sehgnn_native_export import _compressed_method_label, _storage_ratio_fields
     from hesf_coarsen.io.schema import HeteroGraph, RelationAdj, RelationSpec
 
     original = HeteroGraph(
@@ -214,6 +214,10 @@ def test_compressed_storage_ratio_fields_report_total_ratio_separately() -> None
     assert fields["total_storage_ratio_vs_full_graph"] == 0.6
     assert fields["export_file_bytes"] == 20
     assert fields["native_full_file_bytes"] == 100
+    assert _compressed_method_label("H6") == "H6-node30"
+    assert _compressed_method_label("flatten") == "flatten-node30"
+    assert _compressed_method_label("typedhash") == "TypedHash-node30"
+    assert _compressed_method_label("target-only") == "target-only"
 
 
 def test_gate21_0_summary_fails_before_export_when_native_missing(tmp_path: Path) -> None:
@@ -296,3 +300,60 @@ def test_gate21_0_summary_requires_all_native_seed_runs_success(tmp_path: Path) 
 
     assert result["decision"] == "NATIVE_SEHGNN_REPRO_FAIL"
     assert result["native_repro_pass"] is False
+
+
+def test_gate21_0_summary_requires_all_compressed_methods_for_ready_decision(tmp_path: Path) -> None:
+    from experiments.scripts.summarize_gate21_0_sehgnn_native_export import summarize_gate21_0
+
+    native_dir = tmp_path / "native"
+    fidelity_dir = tmp_path / "fidelity"
+    compressed_dir = tmp_path / "compressed"
+    native_dir.mkdir()
+    fidelity_dir.mkdir()
+    compressed_dir.mkdir()
+    native_fields = [
+        "dataset",
+        "seed",
+        "status",
+        "command",
+        "best_epoch",
+        "validation_micro_f1",
+        "validation_macro_f1",
+        "test_micro_f1",
+        "test_macro_f1",
+        "test_accuracy_if_single_label",
+        "is_multilabel",
+        "loss_type",
+        "train_time_sec",
+        "peak_memory_mb",
+        "stdout_path",
+        "stderr_path",
+        "error_message",
+    ]
+    with (native_dir / "native_metrics.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=native_fields)
+        writer.writeheader()
+        for dataset in ("DBLP", "ACM", "IMDB"):
+            for seed in range(1, 6):
+                writer.writerow({"dataset": dataset, "seed": seed, "status": "success", "test_micro_f1": "0.95", "test_macro_f1": "0.94"})
+    with (fidelity_dir / "gate21_0_sehgnn_full_fidelity.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["dataset", "seed", "fidelity_pass"])
+        writer.writeheader()
+        for dataset in ("DBLP", "ACM", "IMDB"):
+            for seed in range(1, 6):
+                writer.writerow({"dataset": dataset, "seed": seed, "fidelity_pass": "True"})
+    with (compressed_dir / "gate21_0_compressed_metrics.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["dataset", "seed", "method", "status"])
+        writer.writeheader()
+        writer.writerow({"dataset": "DBLP", "seed": 1, "method": "H6-node30", "status": "success"})
+    with (compressed_dir / "gate21_0_compressed_storage_audit.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["dataset", "method"])
+        writer.writeheader()
+        writer.writerow({"dataset": "DBLP", "method": "H6-node30"})
+
+    result = summarize_gate21_0(tmp_path)
+
+    assert result["native_repro_pass"] is True
+    assert result["export_full_fidelity_pass"] is True
+    assert result["decision"] == "EXPORT_FULL_FIDELITY_PASS_COMPRESSED_READY"
+    assert result["required_compressed_methods_present"] is False

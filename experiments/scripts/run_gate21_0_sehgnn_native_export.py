@@ -134,6 +134,14 @@ def _storage_ratio_fields(
     }
 
 
+def _compressed_method_label(method: str) -> str:
+    if method == "target-only":
+        return "target-only"
+    if method == "typedhash":
+        return "TypedHash-node30"
+    return f"{method}-node30"
+
+
 def _target_local_ids(graph: HeteroGraph, target_type: int, global_ids: np.ndarray) -> np.ndarray:
     target_nodes = nodes_of_type(graph, int(target_type))
     lookup = {int(node): int(pos) for pos, node in enumerate(target_nodes.tolist())}
@@ -281,7 +289,7 @@ def _run_compressed(args: argparse.Namespace) -> dict[str, object]:
                     compressed_labels[int(compressed_global)] = int(labels_native[int(original_global)])
             trainval_compressed = compressed_target_local[[original_target_local[int(node)] for node in trainval_native.tolist()]]
             test_compressed = compressed_target_local[[original_target_local[int(node)] for node in test_native.tolist()]]
-            method_label = f"{method}-node30"
+            method_label = _compressed_method_label(method)
             manifest = export_graph_to_sehgnn_hgb(
                 graph=graph,
                 dataset_name=dataset,
@@ -365,7 +373,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--out-dir", type=Path, default=Path("outputs/gate21_0_sehgnn_native_export"))
     parser.add_argument("--data-root", type=Path, default=Path("data"))
-    parser.add_argument("--compressed-methods", nargs="+", default=["H6", "flatten"])
+    parser.add_argument("--compressed-methods", nargs="+", default=["H6", "flatten", "typedhash", "target-only"])
     parser.add_argument("--support-ratio", type=float, default=0.30)
     parser.add_argument("--candidate-k", type=int, default=16)
     args = parser.parse_args(argv)
