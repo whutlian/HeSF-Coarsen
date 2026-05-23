@@ -94,7 +94,13 @@ def _write_optional_dgl(graph: HeteroGraph, export_dir: Path, relation_names: di
             torch.as_tensor(src, dtype=torch.int64),
             torch.as_tensor(dst, dtype=torch.int64),
         )
-    num_nodes_dict = {_type_name(type_id): int(np.sum(graph.node_type == int(type_id))) for type_id in sorted(np.unique(graph.node_type))}
+    type_ids = set(int(v) for v in np.unique(graph.node_type))
+    if graph.features is not None:
+        type_ids.update(int(v) for v in graph.features)
+    for spec in graph.relation_specs.values():
+        type_ids.add(int(spec.src_type))
+        type_ids.add(int(spec.dst_type))
+    num_nodes_dict = {_type_name(type_id): int(np.sum(graph.node_type == int(type_id))) for type_id in sorted(type_ids)}
     hetero = dgl.heterograph(data_dict, num_nodes_dict=num_nodes_dict)
     dgl.save_graphs(str(export_dir / "graph.dgl"), [hetero])
     return "written"
@@ -150,7 +156,13 @@ def export_hgb_graph(
     for subdir in ("node_features", "edges", "splits"):
         (export_dir / subdir).mkdir(parents=True, exist_ok=True)
 
-    type_names = {_type: _type_name(_type) for _type in sorted(int(v) for v in np.unique(graph.node_type))}
+    type_ids = set(int(v) for v in np.unique(graph.node_type))
+    if graph.features is not None:
+        type_ids.update(int(v) for v in graph.features)
+    for spec in graph.relation_specs.values():
+        type_ids.add(int(spec.src_type))
+        type_ids.add(int(spec.dst_type))
+    type_names = {_type: _type_name(_type) for _type in sorted(type_ids)}
     num_nodes_by_type = {type_names[type_id]: int(np.sum(graph.node_type == type_id)) for type_id in type_names}
     for type_id, type_label in type_names.items():
         feature = None if graph.features is None else graph.features.get(type_id)
@@ -159,11 +171,19 @@ def export_hgb_graph(
         np.save(export_dir / "node_features" / f"{type_label}.npy", np.asarray(feature, dtype=np.float32))
 
     relation_names: dict[int, str] = {}
+    relation_schemas: list[dict[str, str]] = []
     num_edges_by_relation: dict[str, int] = {}
     for relation_id, rel in sorted(graph.relations.items()):
         spec = graph.relation_specs[int(relation_id)]
         name = _safe_name(spec.name)
         relation_names[int(relation_id)] = name
+        relation_schemas.append(
+            {
+                "name": name,
+                "src_type": _type_name(int(spec.src_type)),
+                "dst_type": _type_name(int(spec.dst_type)),
+            }
+        )
         src_lookup = _type_local_lookup(graph, int(rel.src_type))
         dst_lookup = _type_local_lookup(graph, int(rel.dst_type))
         edge_array = np.zeros((int(rel.num_edges), 3), dtype=np.float32)
@@ -197,6 +217,7 @@ def export_hgb_graph(
         "target_type": _type_name(target_type_id),
         "node_type_names": [type_names[type_id] for type_id in sorted(type_names)],
         "relation_type_names": [relation_names[relation_id] for relation_id in sorted(relation_names)],
+        "relation_schemas": relation_schemas,
         "num_nodes_by_type": num_nodes_by_type,
         "num_edges_by_relation": num_edges_by_relation,
         "dgl_status": dgl_status,

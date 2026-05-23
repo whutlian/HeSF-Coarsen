@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from time import perf_counter
@@ -120,6 +121,28 @@ def run_openhgnn_model(
                 "train_time_sec": float(perf_counter() - start),
             }
         )
+        stderr_path.write_text(result["error_message"], encoding="utf-8")
+        return result
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.path.insert(0, r'%s'); import openhgnn" % str(Path(repo_dir).resolve()).replace("\\", "\\\\"),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        result.update(
+            {
+                "status": "failed_dependency",
+                "error_message": probe.stderr.strip() or probe.stdout.strip() or f"{label} dependency probe failed",
+                "returncode": int(probe.returncode),
+                "train_time_sec": float(perf_counter() - start),
+            }
+        )
+        stdout_path.write_text(probe.stdout, encoding="utf-8")
         stderr_path.write_text(result["error_message"], encoding="utf-8")
         return result
     result.update(

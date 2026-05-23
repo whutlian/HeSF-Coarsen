@@ -506,6 +506,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                 "support_ratio": ratio,
                                 "primary_eval_mode": str(args.primary_eval_mode),
                                 "calibrate": bool(args.calibrate),
+                                "device": str(args.device),
                             },
                         )
                     row.update(
@@ -560,6 +561,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--data-root", type=Path, default=Path("data"))
     parser.add_argument("--calibrate", action="store_true")
     parser.add_argument("--primary-eval-mode", default="compressed_projected")
+    parser.add_argument("--device", default="cuda")
     parser.add_argument("--export-only", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-models", nargs="*", default=[])

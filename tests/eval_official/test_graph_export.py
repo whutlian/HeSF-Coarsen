@@ -103,5 +103,56 @@ def test_export_hgb_graph_preserves_mapping_splits_labels_types_and_edges(tmp_pa
     assert metadata["dataset"] == "Tiny"
     assert metadata["method"] == "H6"
     assert metadata["relation_type_names"] == ["paper__to__author", "author__to__paper"]
+    assert metadata["relation_schemas"] == [
+        {"name": "paper__to__author", "src_type": "type_0", "dst_type": "type_1"},
+        {"name": "author__to__paper", "src_type": "type_1", "dst_type": "type_0"},
+    ]
     audit = json.loads((export_dir / "export_audit.json").read_text())
     assert audit["target_count_original"] == audit["target_count_exported"] == 6
+
+
+def test_export_hgb_graph_preserves_zero_count_support_types(tmp_path: Path) -> None:
+    from hesf_coarsen.eval.official.graph_export import export_hgb_graph
+
+    node_type = np.array([0, 0, 0], dtype=np.int32)
+    labels = np.array([0, 1, 2], dtype=np.int64)
+    graph = HeteroGraph(
+        num_nodes=3,
+        node_type=node_type,
+        relations={
+            0: RelationAdj(
+                src=np.array([], dtype=np.int64),
+                dst=np.array([], dtype=np.int64),
+                weight=np.array([], dtype=np.float32),
+                src_type=0,
+                dst_type=1,
+                relation_id=0,
+            )
+        },
+        relation_specs={0: RelationSpec(0, "paper__to__author", 0, 1)},
+        features={
+            0: np.eye(3, dtype=np.float32),
+            1: np.zeros((0, 2), dtype=np.float32),
+        },
+        labels=labels,
+    )
+    result = export_hgb_graph(
+        graph,
+        dataset_name="Tiny",
+        method_name="target-only",
+        seed=23456,
+        support_ratio=None,
+        output_dir=tmp_path,
+        target_type="type_0",
+        train_idx=np.array([0], dtype=np.int64),
+        val_idx=np.array([1], dtype=np.int64),
+        test_idx=np.array([2], dtype=np.int64),
+        labels=labels,
+    )
+
+    export_dir = Path(result["export_dir"])
+    metadata = json.loads((export_dir / "metadata.json").read_text())
+    assert result["export_status"] == "success"
+    assert metadata["num_nodes_by_type"] == {"type_0": 3, "type_1": 0}
+    assert (export_dir / "node_features" / "type_1.npy").exists()
+    assert np.load(export_dir / "node_features" / "type_1.npy").shape == (0, 2)

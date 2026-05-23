@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from time import perf_counter
@@ -137,14 +138,79 @@ def run_sehgnn_official(
         stderr_path.write_text(result["error_message"], encoding="utf-8")
         return result
 
+    runner_result = Path(output_dir) / "runner_results" / f"{Path(result['config_path']).stem}.json"
+    logits_dir = Path(output_dir) / "logits"
+    command = [
+        sys.executable,
+        "-m",
+        "hesf_coarsen.eval.official.sehgnn_export_runner",
+        "--export-dir",
+        str(export_dir),
+        "--repo-dir",
+        str(repo_dir),
+        "--dataset-name",
+        str(dataset_name),
+        "--target-type",
+        str(target_type),
+        "--seed",
+        str(int(seed)),
+        "--result-json",
+        str(runner_result),
+        "--logits-dir",
+        str(logits_dir),
+        "--epochs",
+        str(int(config.get("epochs", config.get("epoch", 12)))),
+        "--embed-size",
+        str(int(config.get("embed_size", 64))),
+        "--hidden",
+        str(int(config.get("hidden", 64))),
+        "--batch-size",
+        str(int(config.get("batch_size", 2048))),
+        "--lr",
+        str(float(config.get("lr", 0.001))),
+        "--weight-decay",
+        str(float(config.get("weight_decay", 0.0))),
+        "--device",
+        str(config.get("device", "cpu")),
+    ]
+    result["command"] = " ".join(command)
+    completed = subprocess.run(command, cwd=Path(__file__).resolve().parents[3], text=True, capture_output=True, check=False)
+    stdout_path.write_text(completed.stdout, encoding="utf-8")
+    stderr_path.write_text(completed.stderr, encoding="utf-8")
+    result["returncode"] = int(completed.returncode)
+    if runner_result.exists():
+        payload = json.loads(runner_result.read_text(encoding="utf-8"))
+    else:
+        payload = {}
+    if completed.returncode == 0 and payload.get("status") == "success":
+        result.update(payload)
+        result.update(
+            {
+                "model_name": "SeHGNN-official",
+                "dataset": str(dataset_name),
+                "seed": int(seed),
+                "method": result["method"],
+                "support_ratio": result["support_ratio"],
+                "target_type": str(target_type),
+                "command": " ".join(command),
+                "returncode": 0,
+                "stdout_path": str(stdout_path),
+                "stderr_path": str(stderr_path),
+                "config_path": str(result["config_path"]),
+                "calibrated": False,
+                "calibration_uses_test_labels": False,
+                "selector_uses_test_labels": False,
+                "uses_hettree_lite": False,
+            }
+        )
+        return result
+    status = str(payload.get("status") or ("failed_oom" if "out of memory" in completed.stderr.lower() else "failed_runtime"))
+    error_message = str(payload.get("error_message") or completed.stderr.strip() or completed.stdout.strip() or "official SeHGNN runner failed")
     result.update(
         {
-            "status": "failed_format_adapter",
-            "error_message": "official SeHGNN adapter for Gate21 HGB export is not installed; no lite fallback used",
-            "returncode": 2,
+            "status": status,
+            "error_message": error_message,
             "train_time_sec": float(perf_counter() - start),
-            "command": "",
         }
     )
-    stderr_path.write_text(str(result["error_message"]), encoding="utf-8")
     return result
