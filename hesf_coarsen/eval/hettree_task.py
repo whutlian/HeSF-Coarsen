@@ -510,6 +510,16 @@ def evaluate_hettree_task(
         projected_pred,
         macro_empty_class_policy=macro_empty_class_policy,
     )
+    projected_train_pred = (
+        coarse_pred_full[np.asarray(original_to_coarse, dtype=np.int64)[train_nodes]]
+        if len(train_nodes)
+        else np.asarray([], dtype=np.int64)
+    )
+    projected_train_logits = (
+        coarse_logits_full[np.asarray(original_to_coarse, dtype=np.int64)[train_nodes]]
+        if len(train_nodes)
+        else np.zeros((0, int(num_classes)), dtype=np.float32)
+    )
     projected_val_pred = coarse_pred_full[np.asarray(original_to_coarse, dtype=np.int64)[val_nodes]] if len(val_nodes) else np.asarray([], dtype=np.int64)
     projected_val_logits = (
         coarse_logits_full[np.asarray(original_to_coarse, dtype=np.int64)[val_nodes]]
@@ -626,6 +636,11 @@ def evaluate_hettree_task(
                 "projected_test_pred_labels": np.asarray(projected_pred, dtype=np.int64).tolist(),
                 "projected_test_labels": np.asarray(labels[test_nodes], dtype=np.int64).tolist(),
                 "projected_test_pred": np.asarray(projected_pred, dtype=np.int64).tolist(),
+                "projected_train_nodes": np.asarray(train_nodes, dtype=np.int64).tolist(),
+                "projected_train_true_labels": np.asarray(labels[train_nodes], dtype=np.int64).tolist(),
+                "projected_train_pred_labels": np.asarray(projected_train_pred, dtype=np.int64).tolist(),
+                "projected_train_labels": np.asarray(labels[train_nodes], dtype=np.int64).tolist(),
+                "projected_train_pred": np.asarray(projected_train_pred, dtype=np.int64).tolist(),
                 "projected_val_nodes": np.asarray(val_nodes, dtype=np.int64).tolist(),
                 "projected_val_true_labels": np.asarray(labels[val_nodes], dtype=np.int64).tolist(),
                 "projected_val_pred_labels": np.asarray(projected_val_pred, dtype=np.int64).tolist(),
@@ -649,16 +664,20 @@ def evaluate_hettree_task(
             {
                 "projected_val_labels": np.asarray(labels[val_nodes], dtype=np.int64).tolist(),
                 "projected_test_labels": np.asarray(labels[test_nodes], dtype=np.int64).tolist(),
+                "projected_train_labels": np.asarray(labels[train_nodes], dtype=np.int64).tolist(),
                 "projected_val_nodes": np.asarray(val_nodes, dtype=np.int64).tolist(),
                 "projected_test_nodes": np.asarray(test_nodes, dtype=np.int64).tolist(),
+                "projected_train_nodes": np.asarray(train_nodes, dtype=np.int64).tolist(),
                 "projected_val_pred": np.asarray(projected_val_pred, dtype=np.int64).tolist(),
                 "projected_test_pred": np.asarray(projected_pred, dtype=np.int64).tolist(),
+                "projected_train_pred": np.asarray(projected_train_pred, dtype=np.int64).tolist(),
                 "train_class_prior": _class_prior(train_nodes),
                 "val_class_prior": _class_prior(val_nodes),
                 "num_classes": int(num_classes),
             }
         )
         if bool(return_logits or return_val_logits or return_prediction_payload):
+            metrics["projected_train_logits"] = np.asarray(projected_train_logits, dtype=np.float32).tolist()
             metrics["projected_val_logits"] = np.asarray(projected_val_logits, dtype=np.float32).tolist()
         if bool(return_logits or return_test_logits or return_prediction_payload):
             metrics["projected_test_logits"] = np.asarray(projected_test_logits, dtype=np.float32).tolist()
