@@ -229,6 +229,10 @@ def evaluate_hettree_task(
         "coarse_train_loss",
     ] = "projected_val_macro_f1",
     return_predictions: bool = False,
+    return_logits: bool = False,
+    return_val_logits: bool = False,
+    return_test_logits: bool = False,
+    return_prediction_payload: bool = False,
 ) -> TaskEvalResult:
     try:
         import torch
@@ -483,8 +487,10 @@ def evaluate_hettree_task(
 
     model.eval()
     with torch.no_grad():
-        coarse_pred_local = model(coarse_x).argmax(dim=1).detach().cpu().numpy()
-        original_pred_local = model(original_x).argmax(dim=1).detach().cpu().numpy()
+        coarse_logits_local = model(coarse_x).detach().cpu().numpy().astype(np.float32, copy=False)
+        original_logits_local = model(original_x).detach().cpu().numpy().astype(np.float32, copy=False)
+        coarse_pred_local = np.argmax(coarse_logits_local, axis=1).astype(np.int64, copy=False)
+        original_pred_local = np.argmax(original_logits_local, axis=1).astype(np.int64, copy=False)
 
     original_test_targets = original_tree.target_nodes[original_test_local]
     transfer_pred = original_pred_local[original_test_local]
@@ -495,13 +501,21 @@ def evaluate_hettree_task(
     )
     coarse_pred_full = np.full(coarse.num_nodes, -1, dtype=np.int64)
     coarse_pred_full[coarse_tree.target_nodes] = coarse_pred_local
+    coarse_logits_full = np.zeros((int(coarse.num_nodes), int(num_classes)), dtype=np.float32)
+    coarse_logits_full[coarse_tree.target_nodes] = coarse_logits_local
     projected_pred = coarse_pred_full[np.asarray(original_to_coarse, dtype=np.int64)[test_nodes]]
+    projected_test_logits = coarse_logits_full[np.asarray(original_to_coarse, dtype=np.int64)[test_nodes]]
     projected_scores = _classification_scores(
         labels[test_nodes],
         projected_pred,
         macro_empty_class_policy=macro_empty_class_policy,
     )
     projected_val_pred = coarse_pred_full[np.asarray(original_to_coarse, dtype=np.int64)[val_nodes]] if len(val_nodes) else np.asarray([], dtype=np.int64)
+    projected_val_logits = (
+        coarse_logits_full[np.asarray(original_to_coarse, dtype=np.int64)[val_nodes]]
+        if len(val_nodes)
+        else np.zeros((0, int(num_classes)), dtype=np.float32)
+    )
     hybrid_target_scores = projected_scores
     projected_val_scores = _projected_scores_from_coarse_pred(coarse_pred_local, val_nodes)
     transfer_val_scores = _transfer_scores_from_original_pred(original_pred_local, original_val_local, val_nodes)
@@ -610,11 +624,42 @@ def evaluate_hettree_task(
                 "projected_test_nodes": np.asarray(test_nodes, dtype=np.int64).tolist(),
                 "projected_test_true_labels": np.asarray(labels[test_nodes], dtype=np.int64).tolist(),
                 "projected_test_pred_labels": np.asarray(projected_pred, dtype=np.int64).tolist(),
+                "projected_test_labels": np.asarray(labels[test_nodes], dtype=np.int64).tolist(),
+                "projected_test_pred": np.asarray(projected_pred, dtype=np.int64).tolist(),
                 "projected_val_nodes": np.asarray(val_nodes, dtype=np.int64).tolist(),
                 "projected_val_true_labels": np.asarray(labels[val_nodes], dtype=np.int64).tolist(),
                 "projected_val_pred_labels": np.asarray(projected_val_pred, dtype=np.int64).tolist(),
+                "projected_val_labels": np.asarray(labels[val_nodes], dtype=np.int64).tolist(),
+                "projected_val_pred": np.asarray(projected_val_pred, dtype=np.int64).tolist(),
                 "num_predicted_classes": int(len(unique_pred)),
                 "predicted_class_histogram": {str(int(label)): int(count) for label, count in zip(unique_pred.tolist(), pred_counts.tolist())},
             }
         )
+    if bool(return_logits or return_val_logits or return_test_logits or return_prediction_payload):
+        def _class_prior(nodes: np.ndarray) -> list[float]:
+            node_labels = np.asarray(labels[nodes], dtype=np.int64).reshape(-1) if len(nodes) else np.empty(0, dtype=np.int64)
+            valid = node_labels[node_labels >= 0]
+            counts = np.bincount(valid, minlength=int(num_classes)).astype(np.float64) if len(valid) else np.zeros(int(num_classes), dtype=np.float64)
+            total = float(np.sum(counts))
+            if total <= 0.0:
+                return [0.0 for _ in range(int(num_classes))]
+            return (counts / total).astype(float).tolist()
+
+        metrics.update(
+            {
+                "projected_val_labels": np.asarray(labels[val_nodes], dtype=np.int64).tolist(),
+                "projected_test_labels": np.asarray(labels[test_nodes], dtype=np.int64).tolist(),
+                "projected_val_nodes": np.asarray(val_nodes, dtype=np.int64).tolist(),
+                "projected_test_nodes": np.asarray(test_nodes, dtype=np.int64).tolist(),
+                "projected_val_pred": np.asarray(projected_val_pred, dtype=np.int64).tolist(),
+                "projected_test_pred": np.asarray(projected_pred, dtype=np.int64).tolist(),
+                "train_class_prior": _class_prior(train_nodes),
+                "val_class_prior": _class_prior(val_nodes),
+                "num_classes": int(num_classes),
+            }
+        )
+        if bool(return_logits or return_val_logits or return_prediction_payload):
+            metrics["projected_val_logits"] = np.asarray(projected_val_logits, dtype=np.float32).tolist()
+        if bool(return_logits or return_test_logits or return_prediction_payload):
+            metrics["projected_test_logits"] = np.asarray(projected_test_logits, dtype=np.float32).tolist()
     return TaskEvalResult(metrics)
