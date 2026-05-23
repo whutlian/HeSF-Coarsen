@@ -16,6 +16,16 @@ from hesf_coarsen.eval.official.metrics import classification_metrics_from_logit
 from hesf_coarsen.eval.official.runner_utils import write_json
 
 
+SUPPORTED_DATASET_CONFIGS = {"DBLP", "ACM"}
+
+
+def resolve_supported_model_dataset(dataset_name: str) -> str:
+    dataset = str(dataset_name)
+    if dataset not in SUPPORTED_DATASET_CONFIGS:
+        raise ValueError(f"unsupported SeHGNN dataset config: {dataset}")
+    return dataset
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -206,7 +216,7 @@ def train_export(
     feats = {key: torch.as_tensor(value, dtype=torch.float32, device=device) for key, value in feature_blocks.items()}
     labels_t = torch.as_tensor(labels, dtype=torch.long, device=device)
     data_size = {key: int(value.shape[1]) for key, value in feature_blocks.items()}
-    model_dataset = dataset_name if dataset_name in {"DBLP", "ACM"} else "DBLP"
+    model_dataset = resolve_supported_model_dataset(dataset_name)
     model = SeHGNN(
         model_dataset,
         int(embed_size),

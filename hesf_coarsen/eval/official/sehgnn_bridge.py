@@ -10,6 +10,9 @@ from typing import Any, Mapping
 from hesf_coarsen.eval.official.runner_utils import repo_commit_hash, write_json
 
 
+ADAPTER_WARNING = "WARNING: this run loads the official SeHGNN model class but does not use official SeHGNN HGB preprocessing."
+
+
 def _metadata(export_dir: Path) -> dict[str, Any]:
     path = Path(export_dir) / "metadata.json"
     if not path.exists():
@@ -73,6 +76,11 @@ def _base_result(
         "calibration_uses_test_labels": False,
         "selector_uses_test_labels": False,
         "uses_hettree_lite": False,
+        "bridge_type": "model_class_only",
+        "official_pipeline": False,
+        "uses_official_preprocess": False,
+        "method_label": "SeHGNN-modelclass-HeSF-features",
+        "warning": ADAPTER_WARNING,
     }
 
 
@@ -201,6 +209,11 @@ def run_sehgnn_official(
                 "calibration_uses_test_labels": False,
                 "selector_uses_test_labels": False,
                 "uses_hettree_lite": False,
+                "bridge_type": "model_class_only",
+                "official_pipeline": False,
+                "uses_official_preprocess": False,
+                "method_label": "SeHGNN-modelclass-HeSF-features",
+                "warning": ADAPTER_WARNING,
             }
         )
         return result
