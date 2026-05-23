@@ -22,6 +22,7 @@ DECISIONS = {
     "FIX_COMPRESSED_GRAPH_EXPORT",
     "RESET_095_TARGET_TO_RECOVERY",
 }
+SEHGNN_COMPARISON_MODELS = {"SeHGNN-official", "OpenHGNN-SeHGNN"}
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -95,6 +96,57 @@ def _best_by_dataset(rows: Sequence[Mapping[str, Any]], *, method_filter: set[st
                 "test_macro_f1": _float(row.get("test_macro_f1"), None),
             }
     return out
+
+
+def _sehgnn_openhgnn_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return [dict(row) for row in rows if str(row.get("model_name", "")) in SEHGNN_COMPARISON_MODELS]
+
+
+def _paired_sehgnn_openhgnn_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str, str, str], dict[str, Mapping[str, Any]]] = {}
+    for row in _sehgnn_openhgnn_rows(rows):
+        key = (
+            str(row.get("dataset", "")),
+            str(row.get("seed", "")),
+            str(row.get("method", "")),
+            str(row.get("support_ratio", "")),
+            str(row.get("calibrated", "")),
+        )
+        grouped.setdefault(key, {})[str(row.get("model_name", ""))] = row
+    paired: list[dict[str, Any]] = []
+    for (dataset, seed, method, ratio, calibrated), group in sorted(grouped.items()):
+        official = group.get("SeHGNN-official", {})
+        openhgnn = group.get("OpenHGNN-SeHGNN", {})
+        official_acc = _float(official.get("test_accuracy"), None)
+        openhgnn_acc = _float(openhgnn.get("test_accuracy"), None)
+        official_macro = _float(official.get("test_macro_f1"), None)
+        openhgnn_macro = _float(openhgnn.get("test_macro_f1"), None)
+        paired.append(
+            {
+                "dataset": dataset,
+                "seed": seed,
+                "method": method,
+                "support_ratio": ratio,
+                "calibrated": calibrated,
+                "sehgnn_official_status": official.get("status", ""),
+                "openhgnn_sehgnn_status": openhgnn.get("status", ""),
+                "sehgnn_official_test_accuracy": "" if official_acc is None else official_acc,
+                "openhgnn_sehgnn_test_accuracy": "" if openhgnn_acc is None else openhgnn_acc,
+                "openhgnn_minus_official_accuracy": "" if official_acc is None or openhgnn_acc is None else float(openhgnn_acc) - float(official_acc),
+                "sehgnn_official_test_macro_f1": "" if official_macro is None else official_macro,
+                "openhgnn_sehgnn_test_macro_f1": "" if openhgnn_macro is None else openhgnn_macro,
+                "openhgnn_minus_official_macro_f1": "" if official_macro is None or openhgnn_macro is None else float(openhgnn_macro) - float(official_macro),
+                "sehgnn_official_peak_memory_mb": official.get("peak_memory_mb", ""),
+                "openhgnn_sehgnn_peak_memory_mb": openhgnn.get("peak_memory_mb", ""),
+                "sehgnn_official_val_logits_path": official.get("val_logits_path", ""),
+                "openhgnn_sehgnn_val_logits_path": openhgnn.get("val_logits_path", ""),
+                "sehgnn_official_test_logits_path": official.get("test_logits_path", ""),
+                "openhgnn_sehgnn_test_logits_path": openhgnn.get("test_logits_path", ""),
+                "sehgnn_official_calibrated_test_logits_path": official.get("calibrated_test_logits_path", ""),
+                "openhgnn_sehgnn_calibrated_test_logits_path": openhgnn.get("calibrated_test_logits_path", ""),
+            }
+        )
+    return paired
 
 
 def summarize_rows(
@@ -182,6 +234,8 @@ def summarize(input_dir: Path, output_dir: Path | None = None) -> dict[str, Any]
     write_csv(output_dir / "gate21_by_method.csv", _group_mean(raw_rows, ("model_name", "method", "support_ratio"), metrics))
     write_csv(output_dir / "gate21_by_dataset_model.csv", _group_mean(raw_rows, ("dataset", "model_name"), metrics))
     write_csv(output_dir / "gate21_calibration_effect.csv", list(calibration_rows))
+    write_csv(output_dir / "gate21_sehgnn_openhgnn_merged.csv", _sehgnn_openhgnn_rows(raw_rows))
+    write_csv(output_dir / "gate21_sehgnn_openhgnn_paired.csv", _paired_sehgnn_openhgnn_rows(raw_rows))
     vs_rows: list[dict[str, Any]] = []
     full = result["best_full_graph_model_by_dataset"]
     comp = result["best_compressed_calibrated_by_dataset"]

@@ -63,3 +63,54 @@ def test_gate21_smoke_export_calibrate_and_summarize_without_external_repos(tmp_
     assert result["official_bridge_pass"] is False
     assert result["decision"] == "FIX_OFFICIAL_BRIDGE"
     assert result["no_test_leakage"] is True
+
+
+def test_gate21_sehgnn_openhgnn_pairing_exports_comparable_rows() -> None:
+    from experiments.scripts.summarize_gate21_open_sota import _paired_sehgnn_openhgnn_rows, _sehgnn_openhgnn_rows
+
+    rows = [
+        {
+            "dataset": "DBLP",
+            "seed": "23456",
+            "model_name": "SeHGNN-official",
+            "method": "full",
+            "support_ratio": "",
+            "calibrated": "False",
+            "status": "success",
+            "test_accuracy": "0.70",
+            "test_macro_f1": "0.65",
+            "val_logits_path": "official_val.npy",
+            "test_logits_path": "official_test.npy",
+        },
+        {
+            "dataset": "DBLP",
+            "seed": "23456",
+            "model_name": "OpenHGNN-SeHGNN",
+            "method": "full",
+            "support_ratio": "",
+            "calibrated": "False",
+            "status": "success",
+            "test_accuracy": "0.75",
+            "test_macro_f1": "0.66",
+            "val_logits_path": "openhgnn_val.npy",
+            "test_logits_path": "openhgnn_test.npy",
+        },
+        {
+            "dataset": "DBLP",
+            "seed": "23456",
+            "model_name": "OpenHGNN-HGT",
+            "method": "full",
+            "support_ratio": "",
+            "calibrated": "False",
+            "status": "failed_dependency",
+        },
+    ]
+
+    merged = _sehgnn_openhgnn_rows(rows)
+    paired = _paired_sehgnn_openhgnn_rows(rows)
+
+    assert [row["model_name"] for row in merged] == ["SeHGNN-official", "OpenHGNN-SeHGNN"]
+    assert len(paired) == 1
+    assert np.isclose(paired[0]["openhgnn_minus_official_accuracy"], 0.05)
+    assert paired[0]["sehgnn_official_test_logits_path"] == "official_test.npy"
+    assert paired[0]["openhgnn_sehgnn_test_logits_path"] == "openhgnn_test.npy"

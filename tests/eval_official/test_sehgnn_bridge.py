@@ -46,7 +46,7 @@ def test_sehgnn_feature_blocks_include_target_self_and_neighbor_means(tmp_path: 
     np.testing.assert_allclose(blocks["author__to__paper__src_mean"], expected)
 
 
-def test_openhgnn_bridge_reports_dependency_probe_failure(tmp_path: Path) -> None:
+def test_openhgnn_bridge_reports_dependency_probe_failure_for_dgl_graph_models(tmp_path: Path) -> None:
     from hesf_coarsen.eval.official.graph_export import export_hgb_graph
     from hesf_coarsen.eval.official.openhgnn_bridge import run_openhgnn_model
 
@@ -71,7 +71,7 @@ def test_openhgnn_bridge_reports_dependency_probe_failure(tmp_path: Path) -> Non
     result = run_openhgnn_model(
         Path(export["export_dir"]),
         fake_repo,
-        "openhgnn_sehgnn",
+        "openhgnn_hgt",
         "Tiny",
         "type_0",
         23456,

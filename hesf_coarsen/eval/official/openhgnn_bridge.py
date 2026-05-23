@@ -123,6 +123,92 @@ def run_openhgnn_model(
         )
         stderr_path.write_text(result["error_message"], encoding="utf-8")
         return result
+    if str(model_name) == "openhgnn_sehgnn":
+        model_path = Path(repo_dir) / "openhgnn" / "models" / "SeHGNN.py"
+        if not model_path.exists():
+            result.update(
+                {
+                    "status": "failed_dependency",
+                    "error_message": f"missing_model_file: {model_path}",
+                    "returncode": 127,
+                    "train_time_sec": float(perf_counter() - start),
+                }
+            )
+            stderr_path.write_text(result["error_message"], encoding="utf-8")
+            return result
+        runner_result = Path(output_dir) / "runner_results" / f"{Path(result['config_path']).stem}.json"
+        logits_dir = Path(output_dir) / "logits"
+        command = [
+            sys.executable,
+            "-m",
+            "hesf_coarsen.eval.official.openhgnn_export_runner",
+            "--export-dir",
+            str(export_dir),
+            "--repo-dir",
+            str(repo_dir),
+            "--dataset-name",
+            str(dataset_name),
+            "--target-type",
+            str(target_type),
+            "--seed",
+            str(int(seed)),
+            "--result-json",
+            str(runner_result),
+            "--logits-dir",
+            str(logits_dir),
+            "--epochs",
+            str(int(config.get("epochs", config.get("epoch", 12)))),
+            "--embed-size",
+            str(int(config.get("embed_size", 64))),
+            "--hidden",
+            str(int(config.get("hidden", 64))),
+            "--batch-size",
+            str(int(config.get("batch_size", 2048))),
+            "--lr",
+            str(float(config.get("lr", 0.001))),
+            "--weight-decay",
+            str(float(config.get("weight_decay", 0.0))),
+            "--device",
+            str(config.get("device", "cuda")),
+        ]
+        result["command"] = " ".join(command)
+        completed = subprocess.run(command, cwd=Path(__file__).resolve().parents[3], text=True, capture_output=True, check=False)
+        stdout_path.write_text(completed.stdout, encoding="utf-8")
+        stderr_path.write_text(completed.stderr, encoding="utf-8")
+        result["returncode"] = int(completed.returncode)
+        payload = json.loads(runner_result.read_text(encoding="utf-8")) if runner_result.exists() else {}
+        if completed.returncode == 0 and payload.get("status") == "success":
+            result.update(payload)
+            result.update(
+                {
+                    "model_name": label,
+                    "dataset": str(dataset_name),
+                    "seed": int(seed),
+                    "method": method,
+                    "support_ratio": "" if ratio is None else ratio,
+                    "target_type": str(target_type),
+                    "command": " ".join(command),
+                    "returncode": 0,
+                    "stdout_path": str(stdout_path),
+                    "stderr_path": str(stderr_path),
+                    "config_path": str(config_path),
+                    "calibrated": False,
+                    "calibration_uses_test_labels": False,
+                    "selector_uses_test_labels": False,
+                    "uses_hettree_lite": False,
+                }
+            )
+            return result
+        status = str(payload.get("status") or ("failed_oom" if "out of memory" in completed.stderr.lower() else "failed_runtime"))
+        error_message = str(payload.get("error_message") or completed.stderr.strip() or completed.stdout.strip() or f"{label} runner failed")
+        result.update(
+            {
+                "status": status,
+                "error_message": error_message,
+                "train_time_sec": float(perf_counter() - start),
+            }
+        )
+        return result
     probe = subprocess.run(
         [
             sys.executable,
