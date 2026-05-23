@@ -205,3 +205,83 @@ def fit_macro_constrained_accuracy_calibrator(
 def apply_calibrator(logits: Any, calibrator: Mapping[str, Any]) -> np.ndarray:
     adjusted = temperature_scale_logits(logits, float(calibrator.get("temperature", 1.0)))
     return class_bias_adjust_logits(adjusted, calibrator.get("class_bias", {}))
+
+
+def apply_logit_calibration(logits: Any, temperature: float, class_bias: Mapping[str | int, float] | Sequence[float] | np.ndarray) -> np.ndarray:
+    return class_bias_adjust_logits(temperature_scale_logits(logits, float(temperature)), class_bias)
+
+
+def calibration_param_bytes(num_classes: int) -> int:
+    return int((1 + int(num_classes)) * np.dtype(np.float32).itemsize)
+
+
+def calibrate_logits_temperature_bias(
+    val_logits: Any,
+    val_labels: Any,
+    *,
+    temperature_grid: Sequence[float],
+    class_bias_grid: Sequence[float],
+    macro_guard_epsilon: float,
+    objective: str = "validation_accuracy_macro_constrained",
+) -> dict[str, Any]:
+    if objective != "validation_accuracy_macro_constrained":
+        raise ValueError(f"unsupported calibration objective: {objective}")
+    logits = _as_logits(val_logits)
+    fit = fit_macro_constrained_accuracy_calibrator(
+        logits,
+        val_labels,
+        macro_epsilon=float(macro_guard_epsilon),
+        temperatures=tuple(float(value) for value in temperature_grid),
+        class_bias_values=tuple(float(value) for value in class_bias_grid),
+    )
+    fit.update(
+        {
+            "calibration_split": "val",
+            "calibration_status": "success",
+            "calibration_modes": "temperature_scaling;class_bias_grid_search;macro_guarded_accuracy_search",
+            "macro_guard_epsilon": float(macro_guard_epsilon),
+            "calibration_param_bytes": calibration_param_bytes(logits.shape[1]),
+            "calibrator_uses_test_labels": False,
+        }
+    )
+    return fit
+
+
+def nested_calibration_split(val_idx: Any, labels: Any, seed: int) -> dict[str, np.ndarray]:
+    idx = np.asarray(val_idx, dtype=np.int64).reshape(-1)
+    labels_arr = np.asarray(labels, dtype=np.int64).reshape(-1)
+    if idx.size == 0:
+        return {"val_calib": idx.copy(), "val_select": idx.copy()}
+    rng = np.random.default_rng(int(seed) + 1901)
+    calib: list[int] = []
+    select: list[int] = []
+    for cls in sorted({int(labels_arr[int(node)]) for node in idx.tolist() if 0 <= int(node) < len(labels_arr) and int(labels_arr[int(node)]) >= 0}):
+        cls_nodes = np.asarray([int(node) for node in idx.tolist() if int(labels_arr[int(node)]) == cls], dtype=np.int64)
+        rng.shuffle(cls_nodes)
+        if len(cls_nodes) >= 2:
+            split = max(1, len(cls_nodes) // 2)
+            if split >= len(cls_nodes):
+                split = len(cls_nodes) - 1
+            calib.extend(int(node) for node in cls_nodes[:split].tolist())
+            select.extend(int(node) for node in cls_nodes[split:].tolist())
+        elif len(cls_nodes) == 1:
+            if len(calib) <= len(select):
+                calib.append(int(cls_nodes[0]))
+            else:
+                select.append(int(cls_nodes[0]))
+    assigned = set(calib) | set(select)
+    leftovers = np.asarray([int(node) for node in idx.tolist() if int(node) not in assigned], dtype=np.int64)
+    rng.shuffle(leftovers)
+    for node in leftovers.tolist():
+        if len(calib) <= len(select):
+            calib.append(int(node))
+        else:
+            select.append(int(node))
+    if not select and calib:
+        select.append(calib.pop())
+    if not calib and select:
+        calib.append(select.pop())
+    return {
+        "val_calib": np.asarray(sorted(calib), dtype=np.int64),
+        "val_select": np.asarray(sorted(select), dtype=np.int64),
+    }
