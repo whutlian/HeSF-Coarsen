@@ -109,6 +109,8 @@ def _node_order(indices: np.ndarray, nodes: np.ndarray, importance: np.ndarray) 
 def _eval_float(result: float | Mapping[str, Any], primary_key: str = "validation_macro_f1") -> float:
     if isinstance(result, Mapping):
         try:
+            if "score_total" in result:
+                return float(result.get("score_total", 0.0) or 0.0)
             return float(result.get(primary_key, result.get("macro_f1", 0.0)) or 0.0)
         except (TypeError, ValueError):
             return 0.0
@@ -198,7 +200,8 @@ def select_blocks_by_validation_feedback(
                 continue
             trial_indices = np.asarray([*selected, *members], dtype=np.int64)
             trial_nodes = nodes[trial_indices]
-            score = _eval_float(validation_evaluator(trial_nodes))
+            trial_result = validation_evaluator(trial_nodes)
+            score = _eval_float(trial_result)
             score_history.append(float(score))
             gain = float(score - previous_score)
             underfill_penalty = float(getattr(cfg, "underfill_penalty_lambda", 0.0)) * abs(
@@ -214,6 +217,19 @@ def select_blocks_by_validation_feedback(
                     "trial_selected_support_count": int(len(trial_nodes)),
                     "validation_score": float(score),
                     "validation_gain": float(gain),
+                    "validation_macro_f1": _metric_or_nan(trial_result, "validation_macro_f1"),
+                    "validation_accuracy": _metric_or_nan(trial_result, "validation_accuracy"),
+                    "validation_micro_f1": _metric_or_nan(trial_result, "validation_micro_f1"),
+                    "validation_loss_or_ce": _metric_or_nan(trial_result, "validation_loss_or_ce"),
+                    "class_collapse_penalty": _metric_or_nan(trial_result, "class_collapse_penalty"),
+                    "underfill_penalty": _metric_or_nan(trial_result, "underfill_penalty"),
+                    "score_total": _metric_or_nan(trial_result, "score_total"),
+                    "score_macro_component": _metric_or_nan(trial_result, "score_macro_component"),
+                    "score_accuracy_component": _metric_or_nan(trial_result, "score_accuracy_component"),
+                    "score_micro_component": _metric_or_nan(trial_result, "score_micro_component"),
+                    "score_underfill_component": _metric_or_nan(trial_result, "score_underfill_component"),
+                    "score_class_collapse_component": _metric_or_nan(trial_result, "score_class_collapse_component"),
+                    "validation_micro_f1_available": bool(trial_result.get("validation_micro_f1_available", False)) if isinstance(trial_result, Mapping) else False,
                     "budget_penalty_value": float(underfill_penalty),
                     "budget_penalized_objective": float(objective),
                     "accepted": False,

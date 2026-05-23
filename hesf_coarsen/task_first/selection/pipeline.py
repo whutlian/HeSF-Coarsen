@@ -42,6 +42,49 @@ def _metric(metrics: dict[str, Any], name: str) -> float:
         return 0.0
 
 
+def _accuracy_calibrated_validation_payload(
+    metrics: dict[str, Any],
+    *,
+    requested_support_count: int,
+    selected_support_count: int,
+    selector_cfg: Any,
+) -> dict[str, Any]:
+    macro = _metric(metrics, "validation_macro_f1")
+    accuracy = _metric(metrics, "validation_accuracy")
+    if "validation_micro_f1" in metrics and metrics.get("validation_micro_f1") not in {"", None}:
+        micro = _metric(metrics, "validation_micro_f1")
+        micro_available = True
+    else:
+        micro = accuracy
+        micro_available = False
+    baseline_classes = int(metrics.get("num_classes", 0) or 0)
+    predicted_classes = int(metrics.get("num_predicted_classes", baseline_classes) or 0)
+    class_collapse = max(0, baseline_classes - predicted_classes) / max(1, baseline_classes)
+    underfill = max(0, int(requested_support_count) - int(selected_support_count)) / max(1, int(requested_support_count))
+    macro_component = float(macro)
+    accuracy_component = float(getattr(selector_cfg, "alpha_accuracy", 0.0)) * float(accuracy)
+    micro_component = float(getattr(selector_cfg, "delta_micro", 0.0)) * float(micro)
+    underfill_component = -float(getattr(selector_cfg, "beta_underfill", 0.0)) * float(underfill)
+    collapse_component = -float(getattr(selector_cfg, "gamma_class_collapse", 0.0)) * float(class_collapse)
+    return {
+        "validation_macro_f1": float(macro),
+        "validation_accuracy": float(accuracy),
+        "validation_micro_f1": float(micro),
+        "validation_micro_f1_available": bool(micro_available),
+        "validation_loss_or_ce": float(metrics.get("validation_loss_or_ce", max(0.0, 1.0 - accuracy)) or 0.0),
+        "num_predicted_classes": int(predicted_classes),
+        "predicted_class_histogram": metrics.get("predicted_class_histogram", {}),
+        "class_collapse_penalty": float(class_collapse),
+        "underfill_penalty": float(underfill),
+        "score_macro_component": float(macro_component),
+        "score_accuracy_component": float(accuracy_component),
+        "score_micro_component": float(micro_component),
+        "score_underfill_component": float(underfill_component),
+        "score_class_collapse_component": float(collapse_component),
+        "score_total": float(macro_component + accuracy_component + micro_component + underfill_component + collapse_component),
+    }
+
+
 def _occlusion_metric_payload(metrics: dict[str, Any], score: float, tree_delta: float) -> dict[str, float]:
     return {
         "validation_macro_f1": float(score),
@@ -131,14 +174,18 @@ def run_supervised_support_selection_pipeline(
         # the evaluator's required test split so real test labels are not touched.
         "test": _mask_nodes(val_mask),
     }
-    trial_cache: dict[tuple[str, tuple[int, ...]], float] = {}
+    trial_cache: dict[tuple[str, tuple[int, ...]], float | dict[str, Any]] = {}
     occlusion_cache: dict[tuple[int, ...], dict[str, float]] = {}
+    support_count_for_budget = int(np.sum(graph.node_type != int(cfg.target_node_type)))
+    requested_count_for_score = int(np.ceil(support_count_for_budget * float(ratio) - 1.0e-12))
+    use_accuracy_calibrated_score = str(getattr(cfg.selector, "validation_score_mode", "macro")) == "accuracy_calibrated"
 
-    def _short_validation_score(selected_nodes: np.ndarray) -> float:
+    def _short_validation_score(selected_nodes: np.ndarray) -> float | dict[str, Any]:
         selected_key = tuple(sorted(int(node) for node in np.asarray(selected_nodes, dtype=np.int64).reshape(-1)))
         cache_key = ("validation", selected_key)
         if cache_key in trial_cache:
-            return float(trial_cache[cache_key])
+            cached = trial_cache[cache_key]
+            return dict(cached) if isinstance(cached, dict) else float(cached)
         trial_coarse, trial_assignment, _trial_diag = build_selected_support_graph(
             graph,
             np.asarray(selected_key, dtype=np.int64),
@@ -161,7 +208,17 @@ def run_supervised_support_selection_pipeline(
             patience=max(1, int(cfg.selector.occlusion_short_patience)),
             monitor="projected_val_macro_f1",
             max_paths=task_max_paths,
+            return_predictions=bool(use_accuracy_calibrated_score),
         ).metrics
+        if use_accuracy_calibrated_score:
+            payload = _accuracy_calibrated_validation_payload(
+                trial_metrics,
+                requested_support_count=int(requested_count_for_score),
+                selected_support_count=int(len(selected_nodes)),
+                selector_cfg=cfg.selector,
+            )
+            trial_cache[cache_key] = dict(payload)
+            return payload
         score = _metric(trial_metrics, "validation_macro_f1")
         trial_cache[cache_key] = float(score)
         return float(score)

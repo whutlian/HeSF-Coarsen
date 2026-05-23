@@ -90,6 +90,11 @@ class SupportSelectorConfig:
     negative_fill_max_drop: float = 5.0e-4
     budget_penalty_lambda: float = 0.05
     underfill_penalty_lambda: float = 0.10
+    validation_score_mode: str = "macro"
+    alpha_accuracy: float = 0.0
+    delta_micro: float = 0.0
+    beta_underfill: float = 0.0
+    gamma_class_collapse: float = 0.0
     max_validation_greedy_steps: int = 3
     block_key_mode: Literal["class_anchor_relation", "default", "dblp_aware"] = "class_anchor_relation"
     occlusion_candidate_pool_size: int = 8

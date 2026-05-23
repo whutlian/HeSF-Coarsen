@@ -228,6 +228,7 @@ def evaluate_hettree_task(
         "transfer_val_macro_f1",
         "coarse_train_loss",
     ] = "projected_val_macro_f1",
+    return_predictions: bool = False,
 ) -> TaskEvalResult:
     try:
         import torch
@@ -500,6 +501,7 @@ def evaluate_hettree_task(
         projected_pred,
         macro_empty_class_policy=macro_empty_class_policy,
     )
+    projected_val_pred = coarse_pred_full[np.asarray(original_to_coarse, dtype=np.int64)[val_nodes]] if len(val_nodes) else np.asarray([], dtype=np.int64)
     hybrid_target_scores = projected_scores
     projected_val_scores = _projected_scores_from_coarse_pred(coarse_pred_local, val_nodes)
     transfer_val_scores = _transfer_scores_from_original_pred(original_pred_local, original_val_local, val_nodes)
@@ -532,8 +534,7 @@ def evaluate_hettree_task(
     if torch.cuda.is_available():
         peak_vram_mb = float(torch.cuda.max_memory_allocated() / (1024 * 1024))
 
-    return TaskEvalResult(
-        {
+    metrics: dict[str, Any] = {
             "model": "hettree_lite",
             "hettree_reference": "AAAI25 HETTREE-inspired semantic-tree evaluator; official repository unavailable locally",
             "skipped": False,
@@ -600,4 +601,20 @@ def evaluate_hettree_task(
             "total_time": float(feature_time + train_time),
             "peak_vram_allocated_mb": peak_vram_mb,
         }
-    )
+    if bool(return_predictions):
+        valid_test = (np.asarray(labels[test_nodes]).reshape(-1) >= 0) & (np.asarray(projected_pred).reshape(-1) >= 0)
+        test_pred_valid = np.asarray(projected_pred, dtype=np.int64).reshape(-1)[valid_test]
+        unique_pred, pred_counts = np.unique(test_pred_valid, return_counts=True) if len(test_pred_valid) else (np.asarray([], dtype=np.int64), np.asarray([], dtype=np.int64))
+        metrics.update(
+            {
+                "projected_test_nodes": np.asarray(test_nodes, dtype=np.int64).tolist(),
+                "projected_test_true_labels": np.asarray(labels[test_nodes], dtype=np.int64).tolist(),
+                "projected_test_pred_labels": np.asarray(projected_pred, dtype=np.int64).tolist(),
+                "projected_val_nodes": np.asarray(val_nodes, dtype=np.int64).tolist(),
+                "projected_val_true_labels": np.asarray(labels[val_nodes], dtype=np.int64).tolist(),
+                "projected_val_pred_labels": np.asarray(projected_val_pred, dtype=np.int64).tolist(),
+                "num_predicted_classes": int(len(unique_pred)),
+                "predicted_class_histogram": {str(int(label)): int(count) for label, count in zip(unique_pred.tolist(), pred_counts.tolist())},
+            }
+        )
+    return TaskEvalResult(metrics)
