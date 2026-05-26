@@ -10,7 +10,8 @@ from typing import Any, Mapping
 from hesf_coarsen.eval.official.runner_utils import repo_commit_hash, write_json
 
 
-ADAPTER_WARNING = "WARNING: this run loads the official SeHGNN model class but does not use official SeHGNN HGB preprocessing."
+MODELCLASS_LABEL = "SeHGNN-modelclass-HeSF-features"
+ADAPTER_WARNING = "WARNING: This run uses HeSF-built target feature blocks and is not the official SeHGNN HGB preprocessing pipeline."
 
 
 def _metadata(export_dir: Path) -> dict[str, Any]:
@@ -48,7 +49,7 @@ def _base_result(
     stderr_path = logs_dir / f"{run_id}.stderr"
     config_path = configs_dir / f"{run_id}.json"
     return {
-        "model_name": "SeHGNN-official",
+        "model_name": MODELCLASS_LABEL,
         "dataset": str(dataset_name),
         "seed": int(seed),
         "method": method,
@@ -79,7 +80,7 @@ def _base_result(
         "bridge_type": "model_class_only",
         "official_pipeline": False,
         "uses_official_preprocess": False,
-        "method_label": "SeHGNN-modelclass-HeSF-features",
+        "method_label": MODELCLASS_LABEL,
         "warning": ADAPTER_WARNING,
     }
 
@@ -194,7 +195,7 @@ def run_sehgnn_official(
         result.update(payload)
         result.update(
             {
-                "model_name": "SeHGNN-official",
+                "model_name": MODELCLASS_LABEL,
                 "dataset": str(dataset_name),
                 "seed": int(seed),
                 "method": result["method"],
@@ -212,7 +213,7 @@ def run_sehgnn_official(
                 "bridge_type": "model_class_only",
                 "official_pipeline": False,
                 "uses_official_preprocess": False,
-                "method_label": "SeHGNN-modelclass-HeSF-features",
+                "method_label": MODELCLASS_LABEL,
                 "warning": ADAPTER_WARNING,
             }
         )

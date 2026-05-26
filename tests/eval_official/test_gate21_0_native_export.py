@@ -32,10 +32,11 @@ def test_sehgnn_bridge_marks_model_class_adapter_as_non_official(tmp_path: Path)
     )
 
     assert result["bridge_type"] == "model_class_only"
+    assert result["model_name"] == "SeHGNN-modelclass-HeSF-features"
     assert result["official_pipeline"] is False
     assert result["uses_official_preprocess"] is False
     assert result["method_label"] == "SeHGNN-modelclass-HeSF-features"
-    assert "does not use official SeHGNN HGB preprocessing" in result["warning"]
+    assert result["warning"] == "WARNING: This run uses HeSF-built target feature blocks and is not the official SeHGNN HGB preprocessing pipeline."
 
 
 def test_official_hgb_command_is_dataset_specific_and_has_no_imdb_fallback(tmp_path: Path) -> None:
