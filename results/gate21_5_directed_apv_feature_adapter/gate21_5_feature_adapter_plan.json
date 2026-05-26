@@ -1,0 +1,6 @@
+{
+  "dataset": "DBLP",
+  "rows": 70,
+  "dry_run": false,
+  "fit_split": "all-nodes"
+}

@@ -8,6 +8,7 @@ from hesf_coarsen.eval.official.relation_budget_allocator import (
     allocate_relation_channel_spec,
     parse_relation_channel_spec,
 )
+from hesf_coarsen.eval.official.directed_relation_skeleton import canonicalize_directed_method, is_directed_skeleton_method
 
 
 APV_SKELETON_SPEC = "APPA100-PVVP100-PTTP00"
@@ -74,6 +75,8 @@ def canonicalize_gate21_4_method(method: str) -> dict[str, Any]:
             "official_sehgnn_unmodified": True,
             "eligible_for_main_decision": True,
         }
+    if token.startswith("H6-dirskel-") or token.startswith("dirskel-"):
+        return {**canonicalize_directed_method(token), "is_directionality_ablation": False}
     if token in set(DIRECTIONALITY_SPECS) or _looks_like_directionality_spec(token):
         return {
             "method": f"H6-dir-{token}",

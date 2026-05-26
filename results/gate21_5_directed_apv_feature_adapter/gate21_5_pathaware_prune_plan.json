@@ -1,0 +1,6 @@
+{
+  "dataset": "DBLP",
+  "raw_rows": 360,
+  "dry_run": true,
+  "note": "Gate21.5 keeps path-aware AP/PV pruning as diagnostic unless a real run populates metrics."
+}

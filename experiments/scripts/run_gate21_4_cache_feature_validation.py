@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -26,7 +27,7 @@ from hesf_coarsen.eval.hettree_task import infer_target_node_type
 from hesf_coarsen.eval.official.cache_hygiene import CacheNamespace, collect_cache_audit_before_after, compute_export_file_list_hash, file_hashes_for_export, prepare_unique_cache_dir
 from hesf_coarsen.eval.official.edge_pruning_baselines import semantic_storage_ratio
 from hesf_coarsen.eval.official.feature_cache_storage import adapter_storage_row
-from hesf_coarsen.eval.official.paper_feature_transform import transform_feature_matrix
+from hesf_coarsen.eval.official.gate21_5_feature_transforms import transform_gate21_5_graph_features
 from hesf_coarsen.eval.official.runner_utils import write_csv, write_json
 from hesf_coarsen.eval.official.sehgnn_native_export import export_graph_to_sehgnn_hgb
 from hesf_coarsen.eval.official.sehgnn_native_runner import build_official_hgb_command, run_native_command
@@ -112,8 +113,13 @@ FEATURE_TRANSFORM_AUDIT_FIELDS = [
     "term_channel_spec",
     "input_shape",
     "output_shape",
+    "feature_transform_family",
+    "node_types_modified",
+    "feature_dim_by_type_after_loader",
     "feature_dtype",
     "feature_dim",
+    "source_storage_dtype",
+    "model_input_dtype",
     "sidecar_metadata_bytes",
     "metadata_keys",
     "fit_uses_labels",
@@ -214,6 +220,21 @@ def _safe(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in str(value))
 
 
+def _compact_run_method_name(result_kind: str, transform_name: str, relation_spec: str) -> str:
+    raw = f"{result_kind}-{_safe(transform_name)}-{_safe(relation_spec)}"
+    if str(result_kind) == "adapter":
+        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+        return f"ad-{_safe(transform_name)[:18]}-{digest}"
+    if str(result_kind) == "feature_channel":
+        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+        return f"fc-{_safe(transform_name)[:18]}-{digest}"
+    if len(raw) <= 72:
+        return raw
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+    transform = _safe(transform_name)
+    return f"{result_kind}-{transform[:20]}-{digest}"
+
+
 def _term_spec(token: str) -> str:
     token = str(token).upper()
     if token.startswith("APPA"):
@@ -221,6 +242,28 @@ def _term_spec(token: str) -> str:
     if token.startswith("PTTP"):
         return f"APPA100-PVVP100-{token}"
     raise ValueError(f"unsupported term channel spec: {token}")
+
+
+def _base_graph_methods(value: str) -> tuple[str, str]:
+    token = str(value)
+    if token in {"APV", "APV-skeleton", "H6-APV-skeleton"}:
+        return "H6-APV-skeleton", "H6-relgrid-APPA100-PVVP100-PTTP00"
+    if token in {"dirskel-best", "H6-dirskel-best"}:
+        return "H6-dirskel-AP100-PA00-PV100-VP00-PTTP00", "H6-dirskel-AP100-PA00-PV100-VP00-PTTP00"
+    if token.startswith("H6-dirskel-"):
+        return token, token
+    return token, token
+
+
+def _relation_spec_for_base(base_graph: str, term: str) -> str:
+    token = str(term).upper()
+    if token.startswith("AP") and "-" in token:
+        return token
+    if not token.startswith("PTTP"):
+        raise ValueError(f"unsupported term channel spec: {term}")
+    if str(base_graph) in {"dirskel-best", "H6-dirskel-best"} or str(base_graph).startswith("H6-dirskel-"):
+        return f"AP100-PA00-PV100-VP00-{token}"
+    return f"APPA100-PVVP100-{token}"
 
 
 def _compression_to_transform(method: str) -> tuple[str, str, int | str, float]:
@@ -232,6 +275,7 @@ def _compression_to_transform(method: str) -> tuple[str, str, int | str, float]:
         "pca_svd_dim128": ("pca-paper-128", "fp32", 128, 128 / 4231),
         "pca_svd_dim64": ("pca-paper-64", "fp32", 64, 64 / 4231),
         "random_projection_dim128": ("random_projection_dim128", "fp32", 128, 128 / 4231),
+        "random_projection_dim64": ("random_projection_dim64", "fp32", 64, 64 / 4231),
     }
     if method not in mapping:
         raise ValueError(f"unsupported feature compression method: {method}")
@@ -253,12 +297,13 @@ def _write_dry_run(args: argparse.Namespace) -> dict[str, Any]:
         shutil.rmtree(out)
     out.mkdir(parents=True, exist_ok=True)
     _empty_outputs(out)
+    base_method, canonical_base = _base_graph_methods(str(args.base_graph))
     feature_rows = [
         {
             "dataset": str(args.dataset).upper(),
             "method": "feature_channel_ablation",
-            "base_graph_method": str(args.base_graph),
-            "canonical_base_graph_method": "H6-relgrid-APPA100-PVVP100-PTTP00",
+            "base_graph_method": base_method,
+            "canonical_base_graph_method": canonical_base,
             "graph_seed": int(graph_seed),
             "training_seed": int(training_seed),
             "term_channel_spec": str(term),
@@ -277,8 +322,8 @@ def _write_dry_run(args: argparse.Namespace) -> dict[str, Any]:
         {
             "dataset": str(args.dataset).upper(),
             "method": "SeHGNN-feature-compressed-adapter",
-            "base_graph_method": str(args.base_graph),
-            "canonical_base_graph_method": "H6-relgrid-APPA100-PVVP100-PTTP00",
+            "base_graph_method": base_method,
+            "canonical_base_graph_method": canonical_base,
             "graph_seed": int(graph_seed),
             "training_seed": int(training_seed),
             "feature_compression_method": str(method),
@@ -297,11 +342,11 @@ def _write_dry_run(args: argparse.Namespace) -> dict[str, Any]:
             "run_id": _run_id(str(args.dataset).upper(), f"feature_channel-{transform}-{term}", int(graph_seed), int(training_seed)),
             "dataset": str(args.dataset).upper(),
             "method": "feature_channel_ablation",
-            "canonical_method": "H6-relgrid-APPA100-PVVP100-PTTP00",
+            "canonical_method": canonical_base,
             "run_group": "feature_channel_ablation",
             "graph_seed": int(graph_seed),
             "training_seed": int(training_seed),
-            "relation_channel_spec": _term_spec(str(term)),
+            "relation_channel_spec": _relation_spec_for_base(str(args.base_graph), str(term)),
             "relation_direction_spec": "",
             "paper_feature_transform": str(transform),
             "feature_compression_method": "",
@@ -321,11 +366,11 @@ def _write_dry_run(args: argparse.Namespace) -> dict[str, Any]:
             "run_id": _run_id(str(args.dataset).upper(), f"adapter-{method}", int(graph_seed), int(training_seed)),
             "dataset": str(args.dataset).upper(),
             "method": "SeHGNN-feature-compressed-adapter",
-            "canonical_method": "H6-relgrid-APPA100-PVVP100-PTTP00",
+            "canonical_method": canonical_base,
             "run_group": "feature_cache_adapter",
             "graph_seed": int(graph_seed),
             "training_seed": int(training_seed),
-            "relation_channel_spec": "APPA100-PVVP100-PTTP00",
+            "relation_channel_spec": _relation_spec_for_base(str(args.base_graph), "PTTP00"),
             "relation_direction_spec": "",
             "paper_feature_transform": _compression_to_transform(str(method))[0],
             "feature_compression_method": str(method),
@@ -356,6 +401,7 @@ def run_gate21_4_cache_feature(args: argparse.Namespace) -> dict[str, Any]:
     out.mkdir(parents=True, exist_ok=True)
     _empty_outputs(out)
     dataset = str(args.dataset).upper()
+    base_method, canonical_base = _base_graph_methods(str(args.base_graph))
     original = load_hgb_graph(Path(args.data_root), dataset)
     target_type = int(infer_target_node_type(original))
     labels_native, trainval_native, test_native = _native_labels(Path(args.hgb_data_root), dataset, original.num_nodes)
@@ -394,7 +440,7 @@ def run_gate21_4_cache_feature(args: argparse.Namespace) -> dict[str, Any]:
                         target_type=target_type,
                         graph_seed=int(graph_seed),
                         training_seed=int(training_seed),
-                        relation_spec=_term_spec(term),
+                        relation_spec=_relation_spec_for_base(str(args.base_graph), str(term)),
                         transform_name=str(transform),
                         result_kind="feature_channel",
                     )
@@ -416,7 +462,7 @@ def run_gate21_4_cache_feature(args: argparse.Namespace) -> dict[str, Any]:
                     target_type=target_type,
                     graph_seed=int(graph_seed),
                     training_seed=int(training_seed),
-                    relation_spec="APPA100-PVVP100-PTTP00",
+                    relation_spec=_relation_spec_for_base(str(args.base_graph), "PTTP00"),
                     transform_name=transform,
                     result_kind="adapter",
                     feature_compression_method=str(compression_method),
@@ -461,7 +507,8 @@ def _run_one(
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     dataset = str(args.dataset).upper()
     out = Path(args.output_dir)
-    method_name = f"{result_kind}-{_safe(transform_name)}-{_safe(relation_spec)}"
+    base_method, canonical_base = _base_graph_methods(str(args.base_graph))
+    method_name = _compact_run_method_name(result_kind, transform_name, relation_spec)
     try:
         spec = MethodSpec(method_name, "gate21_4_cache_feature", "feature_cache_adapter_probe", "relation_channel_grid", "random_edge_within_relation", relation_spec, eligible_for_main_decision=False)
         graph, _candidate, _retained, _requested, _min_active, _score, _coverage = _prune_graph(
@@ -475,7 +522,7 @@ def _run_one(
             labels=labels_native,
             min_edges_per_relation=int(args.min_edges_per_relation),
         )
-        graph = _transform_paper_features(graph, transform_name, seed=int(graph_seed))
+        graph = _transform_paper_features(graph, transform_name, seed=int(graph_seed), dataset=dataset)
         transform_audit = getattr(graph, "_gate21_4_transform_audit", {})
         labels, trainval, test = _compressed_labels_and_splits(
             original=original,
@@ -536,8 +583,8 @@ def _run_one(
         cache_row = {"dataset": dataset, "method": method_name, "graph_seed": int(graph_seed), "training_seed": int(training_seed), "export_dir": str(export_dir), **file_hashes_for_export(export_dir), **cache_after}
         common = {
             "dataset": dataset,
-            "base_graph_method": "H6-APV-skeleton",
-            "canonical_base_graph_method": "H6-relgrid-APPA100-PVVP100-PTTP00",
+            "base_graph_method": base_method,
+            "canonical_base_graph_method": canonical_base,
             "graph_seed": int(graph_seed),
             "training_seed": int(training_seed),
             "semantic_structural_storage_ratio": storage.get("semantic_structural_storage_ratio", ""),
@@ -564,6 +611,7 @@ def _run_one(
             relation_spec=relation_spec,
             transform_name=transform_name,
             feature_compression_method=feature_compression_method,
+            canonical_method=canonical_base,
             command=command,
             export_dir=export_dir,
             cache_dir=namespace.cache_dir,
@@ -577,7 +625,7 @@ def _run_one(
             adapter = adapter_storage_row(
                 dataset=dataset,
                 method="SeHGNN-feature-compressed-adapter",
-                base_graph_method="H6-APV-skeleton",
+                base_graph_method=base_method,
                 graph_seed=int(graph_seed),
                 training_seed=int(training_seed),
                 native_full_total_bytes=native_total,
@@ -637,8 +685,8 @@ def _run_one(
         failed = {
             "dataset": dataset,
             "method": "SeHGNN-feature-compressed-adapter" if result_kind == "adapter" else "feature_channel_ablation",
-            "base_graph_method": "H6-APV-skeleton",
-            "canonical_base_graph_method": "H6-relgrid-APPA100-PVVP100-PTTP00",
+            "base_graph_method": base_method,
+            "canonical_base_graph_method": canonical_base,
             "graph_seed": int(graph_seed),
             "training_seed": int(training_seed),
             "success": False,
@@ -665,6 +713,7 @@ def _manifest_row(
     relation_spec: str,
     transform_name: str,
     feature_compression_method: str,
+    canonical_method: str,
     command,
     export_dir: Path,
     cache_dir: Path,
@@ -679,7 +728,7 @@ def _manifest_row(
         "run_id": _run_id(dataset, method, int(graph_seed), int(training_seed)),
         "dataset": dataset,
         "method": method,
-        "canonical_method": "H6-relgrid-APPA100-PVVP100-PTTP00",
+        "canonical_method": canonical_method,
         "run_group": run_group,
         "graph_seed": int(graph_seed),
         "training_seed": int(training_seed),
@@ -703,7 +752,7 @@ def _storage_audit_row(storage: Mapping[str, Any], row: Mapping[str, Any], graph
     out = {
         "dataset": storage.get("dataset", ""),
         "method": row.get("method", ""),
-        "canonical_method": "H6-relgrid-APPA100-PVVP100-PTTP00",
+        "canonical_method": row.get("canonical_base_graph_method", "H6-relgrid-APPA100-PVVP100-PTTP00"),
         "graph_seed": int(graph_seed),
         "training_seed": int(training_seed),
         "semantic_structural_storage_ratio": storage.get("semantic_structural_storage_ratio", ""),
@@ -746,24 +795,8 @@ def _le(value: float | None, threshold: float) -> bool | str:
     return "" if value is None else bool(float(value) <= float(threshold))
 
 
-def _transform_paper_features(graph, transform_name: str, *, seed: int):
-    features = {} if graph.features is None else {int(k): v.copy() for k, v in graph.features.items()}
-    audit: dict[str, Any] = {"transform_name": transform_name, "fit_uses_labels": False, "fit_uses_test_labels": False}
-    if 1 in features:
-        transformed, audit = transform_feature_matrix(features[1], transform_name, seed=int(seed))
-        features[1] = transformed
-    from hesf_coarsen.io.schema import HeteroGraph
-
-    out = HeteroGraph(
-        num_nodes=graph.num_nodes,
-        node_type=graph.node_type.copy(),
-        relations=graph.relations,
-        relation_specs=graph.relation_specs,
-        features=features,
-        labels=None if graph.labels is None else np.asarray(graph.labels).copy(),
-    )
-    object.__setattr__(out, "_gate21_4_transform_audit", audit)
-    return out
+def _transform_paper_features(graph, transform_name: str, *, seed: int, dataset: str = "DBLP"):
+    return transform_gate21_5_graph_features(graph, transform_name, dataset=dataset, seed=int(seed))
 
 
 def _recovery(value: Any, baseline: float) -> float | str:
