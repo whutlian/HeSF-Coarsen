@@ -1,0 +1,7 @@
+dataset,artifact_name,artifact_family,changes_training_semantics,requires_loader_adapter,raw_hgb_text_bytes,gzip_bytes,zstd_bytes,binary_relation_bytes,binary_feature_bytes,metadata_bytes,total_artifact_bytes,artifact_ratio_vs_native_full_text,read_time_seconds,write_time_seconds,loader_supported,notes
+DBLP,raw_hgb_text,storage_only,False,False,69968460,,,,,,69968460,1.0,,,True,
+DBLP,gzip_hgb_text,storage_only,False,True,69968460,1628666,,,,,1628666,0.02327714515940468,,,False,
+DBLP,binary_csr_relation_tables,storage_only,False,True,,,,252912,,,252912,0.003614657232701706,,,False,
+DBLP,binary_csr_plus_fp16_features,storage_only,False,True,,,,252912,33322960,,33575872,0.4798715306868266,,,False,
+DBLP,binary_csr_plus_int8_features,storage_only,False,True,,,,252912,16661480,,16914392,0.24174309395976415,,,False,
+DBLP,zstd_hgb_text,storage_only,False,True,69968460,,,,,,69968460,1.0,,,False,zstd executable/library not required for Gate21.6 local run; row kept as unsupported storage-only baseline.

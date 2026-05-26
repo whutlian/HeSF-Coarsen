@@ -1,0 +1,10 @@
+{
+  "methods": [
+    "H6-node30",
+    "HeSF-RCS-APV12",
+    "Random-HG-TP",
+    "export-full-SeHGNN"
+  ],
+  "quick": true,
+  "dry_run": false
+}

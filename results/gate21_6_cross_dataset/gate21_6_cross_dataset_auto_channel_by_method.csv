@@ -1,0 +1,7 @@
+dataset,selector,method,success,used_test_data,relation_count_source,relation_channel_keep_plan_path
+DBLP,coverage_greedy,auto-coverage_greedy,True,False,gate21_5_relation_edge_retention,gate21_6_auto_channel_plans.jsonl
+DBLP,validation_probe_greedy,auto-validation_probe_greedy,True,False,gate21_5_relation_edge_retention,gate21_6_auto_channel_plans.jsonl
+ACM,coverage_greedy,auto-coverage_greedy,True,False,external\SeHGNN\data\ACM\link.dat,gate21_6_auto_channel_plans.jsonl
+ACM,validation_probe_greedy,auto-validation_probe_greedy,True,False,external\SeHGNN\data\ACM\link.dat,gate21_6_auto_channel_plans.jsonl
+IMDB,coverage_greedy,auto-coverage_greedy,True,False,external\SeHGNN\data\IMDB\link.dat,gate21_6_auto_channel_plans.jsonl
+IMDB,validation_probe_greedy,auto-validation_probe_greedy,True,False,external\SeHGNN\data\IMDB\link.dat,gate21_6_auto_channel_plans.jsonl

@@ -1,0 +1,4 @@
+stage_name,wall_time_seconds,cpu_time_seconds,peak_rss_mb,peak_vms_mb,peak_gpu_memory_mb,input_bytes_read,output_bytes_written,intermediate_bytes_written,num_files_read,num_files_written,num_edge_passes,num_feature_passes,io_bytes_estimated
+compression_construction,,,0.0,,,9578,7479,0,1,1,1,,True
+feature_adapter_construction,,,0.0,,,32775,46045,0,1,1,,1,True
+summarization,,,0.0,,,1478621,1478621,0,112,112,,,True

@@ -1,0 +1,15 @@
+{
+  "base_methods": [
+    "H6-APV-skeleton",
+    "HeSF-RCS-APV12",
+    "HeSF-RCS-APV16"
+  ],
+  "adapters": [
+    "fp16_node_features",
+    "int8_per_feature",
+    "pca_svd_dim64",
+    "pca_svd_dim128",
+    "random_projection_dim64",
+    "random_projection_dim128"
+  ]
+}

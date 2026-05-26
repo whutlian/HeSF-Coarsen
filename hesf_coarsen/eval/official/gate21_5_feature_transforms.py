@@ -138,7 +138,10 @@ def _zero_transform(features: dict[int, np.ndarray], graph: HeteroGraph, name: s
         type_id = DBLP_TYPE_BY_NAME.get(type_name)
         if type_id is None:
             raise ValueError(f"unsupported zero transform: {name!r}")
-        _ensure_feature(features, graph, type_id, dim=_default_dim(features))
+        if type_id not in features:
+            # Gate21.6 safety: zeroing an originally featureless type must keep
+            # its zero-dimensional feature shape instead of injecting paper_dim.
+            _ensure_feature(features, graph, type_id, dim=0)
         features[type_id] = np.zeros_like(features[type_id], dtype=np.float32)
         modified.add(type_id)
     return modified

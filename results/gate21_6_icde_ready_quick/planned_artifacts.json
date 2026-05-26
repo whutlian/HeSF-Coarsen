@@ -1,0 +1,12 @@
+{
+  "artifacts": [
+    "gate21_6_decision.json",
+    "gate21_6_decision.md",
+    "gate21_6_main_table_official.csv",
+    "gate21_6_adapter_table.csv",
+    "gate21_6_external_tp_table.csv",
+    "gate21_6_storage_system_table.csv",
+    "gate21_6_ablation_table.csv"
+  ],
+  "output_dir": "results\\gate21_6_icde_ready_quick"
+}

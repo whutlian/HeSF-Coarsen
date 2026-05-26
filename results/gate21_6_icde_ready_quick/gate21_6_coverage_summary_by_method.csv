@@ -1,0 +1,5 @@
+method,graph_seed,fraction_target_authors_with_AP_edge,fraction_target_authors_reaching_venue,venue_coverage_fraction,paper_coverage_fraction,coverage_warning_flags
+H6-APV-skeleton,1,1.0,0.0,0.0,0.0,venue_coverage_lt_1
+H6-dirskel-AP100-PA00-PV100-VP00-PTTP00,1,1.0,0.0,0.0,0.0,venue_coverage_lt_1
+H6-dirskel-AP100-PA50-PV100-VP50-PTTP00,1,1.0,0.0,0.0,0.0,venue_coverage_lt_1
+H6-dirskel-AP100-PA00-PV75-VP00-PTTP00,1,1.0,0.0,0.0,0.0,venue_coverage_lt_1

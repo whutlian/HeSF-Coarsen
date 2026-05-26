@@ -1,0 +1,19 @@
+{
+  "methods": [
+    "Random-HG-TP",
+    "Herding-HG-TP",
+    "KCenter-HG-TP",
+    "Coarsening-HG-TP",
+    "GraphSparsify-TP",
+    "FreeHGC-TP"
+  ],
+  "budgets": [
+    0.5,
+    0.3,
+    0.2,
+    0.1
+  ],
+  "freehgc_root": "",
+  "official_sehgnn_root": "external\\SeHGNN",
+  "construction_scope": "manifest-level persistent TP construction estimates; official training not executed in Gate21.6 budget run"
+}

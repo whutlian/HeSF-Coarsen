@@ -1,0 +1,30 @@
+{
+  "methods": [
+    "full",
+    "H6-node30",
+    "H6-APV-skeleton",
+    "HeSF-RCS-APV12",
+    "HeSF-RCS-APV16"
+  ],
+  "feature_settings": [
+    "raw",
+    "zero-author-preserve-dim",
+    "zero-paper-preserve-dim",
+    "zero-term-preserve-dim",
+    "zero-venue-preserve-dim",
+    "zero-all-support-preserve-dim",
+    "zero-all-features-preserve-dim",
+    "paper-PCA64",
+    "paper-random-projection64",
+    "paper-int8",
+    "paper-fp16"
+  ],
+  "label_graph_settings": [
+    "default",
+    "no_label_feats",
+    "num_label_hops_0",
+    "num_feature_hops_0",
+    "no_label_feats+zero-all-support-preserve-dim",
+    "feature_only_mlp_if_supported"
+  ]
+}

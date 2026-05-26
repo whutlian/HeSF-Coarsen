@@ -1,0 +1,5 @@
+dataset,method,graph_seed,training_seed,protocol,planned_only
+DBLP,export-full-SeHGNN,1,1,official_reference,False
+DBLP,H6-node30,1,1,schema_preserving_tp_workload,False
+DBLP,HeSF-RCS-APV12,1,1,schema_preserving_tp_workload,False
+DBLP,Random-HG-TP,1,1,schema_preserving_tp_workload,False

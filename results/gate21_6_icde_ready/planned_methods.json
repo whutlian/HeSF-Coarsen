@@ -1,0 +1,18 @@
+{
+  "methods": [
+    "Coarsening-HG-TP",
+    "FreeHGC-TP",
+    "GraphSparsify-TP",
+    "H6-APV-skeleton",
+    "H6-node30",
+    "HeSF-RCS-APV12",
+    "HeSF-RCS-APV16",
+    "Herding-HG-TP",
+    "KCenter-HG-TP",
+    "Random-HG-TP",
+    "export-full-SeHGNN",
+    "full-native-SeHGNN"
+  ],
+  "quick": false,
+  "dry_run": false
+}

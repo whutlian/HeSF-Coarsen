@@ -1,0 +1,16 @@
+method,graph_seed_count,deterministic_graph_method,expected_export_hash_unique_count,actual_export_hash_unique_count,graph_sampling_stability_pass,graph_sampling_warning
+H6-APV-skeleton,1,True,1,1,True,
+HeSF-RCS-APV12,1,True,1,1,True,
+H6-dirskel-AP100-PA00-PV100-VP00-PTTP05,1,False,5,1,False,graph_seed_count<5
+H6-dirskel-AP100-PA00-PV100-VP00-PTTP10,1,False,5,1,False,graph_seed_count<5
+H6-dirskel-AP100-PA00-PV100-VP00-PTTP30,1,False,5,1,False,graph_seed_count<5
+H6-dirskel-AP100-PA00-PV100-VP50-PTTP00,1,False,5,1,False,graph_seed_count<5
+H6-dirskel-AP100-PA00-PV50-VP00-PTTP00,1,False,5,1,False,graph_seed_count<5
+H6-dirskel-AP100-PA00-PV75-VP00-PTTP00,1,False,5,1,False,graph_seed_count<5
+H6-dirskel-AP100-PA50-PV100-VP00-PTTP00,1,False,5,1,False,graph_seed_count<5
+HeSF-RCS-APV16,1,False,5,1,False,graph_seed_count<5
+H6-dirskel-AP50-PA00-PV100-VP00-PTTP00,1,False,5,1,False,graph_seed_count<5
+H6-dirskel-AP75-PA00-PV100-VP00-PTTP00,1,False,5,1,False,graph_seed_count<5
+H6-node30,5,True,1,5,False,deterministic_export_hash_unique_count!=1
+export-full-SeHGNN,0,True,1,1,True,
+full-native-SeHGNN,0,True,1,1,True,

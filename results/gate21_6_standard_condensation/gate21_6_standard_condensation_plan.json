@@ -1,0 +1,11 @@
+{
+  "methods": [
+    "FreeHGC",
+    "HGCond",
+    "GCond-HG",
+    "Random-HG",
+    "Herding-HG",
+    "KCenter-HG",
+    "Coarsening-HG"
+  ]
+}

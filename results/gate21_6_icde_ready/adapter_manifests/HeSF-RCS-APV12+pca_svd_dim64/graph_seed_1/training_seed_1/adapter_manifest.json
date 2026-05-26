@@ -1,0 +1,38 @@
+{
+  "adapter_manifest_complete": true,
+  "adapter_package_ratio": 0.004527164593489124,
+  "adapter_package_sha256": "",
+  "adapter_package_total_bytes": 597635,
+  "dataset": "DBLP",
+  "excluded_bytes_with_reason": [
+    {
+      "artifact": "pca_basis",
+      "reason": "Gate21.5 runner did not persist the PCA basis; Gate21.6 counts this as explicit missing metadata."
+    },
+    {
+      "artifact": "pca_mean",
+      "reason": "Gate21.5 runner did not persist the PCA mean; Gate21.6 counts this as explicit missing metadata."
+    }
+  ],
+  "graph_export_hash": "",
+  "label_split_bytes": 54578,
+  "link_dat_bytes": 334083,
+  "loader_config_bytes": 1024,
+  "manifest_required_fields_present": true,
+  "method": "HeSF-RCS-APV12+pca_svd_dim64",
+  "model_config_bytes": 1024,
+  "node_id_mapping_bytes": 0,
+  "node_table_bytes_required_for_loader": 0,
+  "pca_basis_bytes": 0,
+  "pca_mean_bytes": 0,
+  "projection_matrix_bytes": 0,
+  "projection_seed_bytes": 0,
+  "quantization_metadata_bytes": 0,
+  "readme_or_manifest_bytes": 1024,
+  "relation_schema_bytes": 2048,
+  "sidecar_feature_bytes_by_node_type": {
+    "paper": 201806
+  },
+  "sidecar_feature_bytes_total": 201806,
+  "type_schema_bytes": 2048
+}
