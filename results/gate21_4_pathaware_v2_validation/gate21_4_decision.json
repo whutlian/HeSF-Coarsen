@@ -1,0 +1,14 @@
+{
+  "decisions": [
+    "PATHAWARE_V2_GAIN_FAIL"
+  ],
+  "pathaware_rows": 36,
+  "random_success_count": 9,
+  "stratified_success_count": 9,
+  "random_mean_micro": 0.9491393333333333,
+  "stratified_mean_micro": 0.9495303333333334,
+  "random_mean_val_test_gap": 0.009227555555555607,
+  "stratified_mean_val_test_gap": 0.010689444444444493,
+  "random_mean_structural_ratio": 0.3721235707242166,
+  "stratified_mean_structural_ratio": 0.3721235707242166
+}

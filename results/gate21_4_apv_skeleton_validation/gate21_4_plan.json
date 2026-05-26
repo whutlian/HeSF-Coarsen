@@ -1,0 +1,30 @@
+{
+  "dataset": "DBLP",
+  "graph_seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "training_seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "methods": [
+    "full-native-SeHGNN",
+    "export-full-SeHGNN",
+    "H6-node30",
+    "H6-APV-skeleton",
+    "H6-relgrid-APPA100-PVVP100-PTTP05",
+    "H6-relgrid-APPA100-PVVP100-PTTP10",
+    "H6-relgrid-APPA100-PVVP100-PTTP20",
+    "H6-relgrid-APPA100-PVVP100-PTTP30",
+    "H6-struct40-random-relwise",
+    "H6-struct30-proportional-current"
+  ],
+  "dry_run": false
+}

@@ -1,0 +1,35 @@
+{
+  "dataset": "DBLP",
+  "dry_run": false,
+  "base_graph": "APV-skeleton",
+  "graph_seeds": [
+    1
+  ],
+  "training_seeds": [
+    1,
+    2,
+    3
+  ],
+  "feature_transforms": [
+    "raw",
+    "zero-paper",
+    "pca-paper-128",
+    "pca-paper-64",
+    "int8-paper",
+    "fp16-paper"
+  ],
+  "term_channel_specs": [
+    "PTTP00",
+    "PTTP30",
+    "PTTP100"
+  ],
+  "feature_compression_methods": [
+    "raw_features_adapter_control",
+    "fp16_node_features",
+    "int8_per_feature",
+    "pca_svd_dim256",
+    "pca_svd_dim128",
+    "pca_svd_dim64",
+    "random_projection_dim128"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "decisions": [
+    "FEATURE_ADAPTER_BYTE50_PASS",
+    "FEATURE_ADAPTER_BYTE30_PASS",
+    "PAPER_FEATURE_TERM_REDUNDANCY_NOT_SUPPORTED"
+  ],
+  "feature_channel_rows": 54,
+  "feature_cache_adapter_rows": 21,
+  "feature_cache_adapter_success_rows": 21,
+  "feature_adapter_byte50_pass": true,
+  "feature_adapter_byte30_pass": true
+}

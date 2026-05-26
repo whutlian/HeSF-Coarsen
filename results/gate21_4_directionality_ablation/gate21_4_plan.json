@@ -1,0 +1,28 @@
+{
+  "dataset": "DBLP",
+  "graph_seeds": [
+    1,
+    2,
+    3
+  ],
+  "training_seeds": [
+    1,
+    2,
+    3
+  ],
+  "methods": [
+    "H6-dir-AP100-PA00-PTTP30-PVVP100",
+    "H6-dir-AP00-PA100-PTTP30-PVVP100",
+    "H6-dir-AP100-PA50-PTTP30-PVVP100",
+    "H6-dir-AP50-PA100-PTTP30-PVVP100",
+    "H6-dir-APPA100-PT100-TP00-PVVP100",
+    "H6-dir-APPA100-PT00-TP100-PVVP100",
+    "H6-dir-APPA100-PT50-TP20-PVVP100",
+    "H6-dir-APPA100-PT20-TP50-PVVP100",
+    "H6-dir-APPA100-PTTP30-PV100-VP00",
+    "H6-dir-APPA100-PTTP30-PV00-VP100",
+    "H6-dir-APPA100-PTTP30-PV100-VP50",
+    "H6-dir-APPA100-PTTP30-PV50-VP100"
+  ],
+  "dry_run": false
+}
