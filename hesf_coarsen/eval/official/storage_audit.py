@@ -41,6 +41,10 @@ STORAGE_AUDIT_FIELDS = [
     "structural_storage_budget_pass",
     "raw_hgb_byte_budget_pass",
     "cache_byte_budget_pass",
+    "node_dat_fraction_of_export",
+    "link_dat_fraction_of_export",
+    "feature_dominates_raw_bytes_flag",
+    "edge_pruning_raw_byte_savings_estimated",
 ]
 
 
@@ -72,6 +76,10 @@ class StorageBreakdown:
     structural_storage_budget_pass: bool | None
     raw_hgb_byte_budget_pass: bool | None
     cache_byte_budget_pass: bool | None
+    node_dat_fraction_of_export: float | None
+    link_dat_fraction_of_export: float | None
+    feature_dominates_raw_bytes_flag: bool | None
+    edge_pruning_raw_byte_savings_estimated: float | None
 
     def to_row(self, *, method_family: str = "") -> dict[str, Any]:
         row = asdict(self)
@@ -207,4 +215,8 @@ def audit_hgb_directory(
         structural_storage_budget_pass=_pass(semantic_structural_storage_ratio, structural_budget),
         raw_hgb_byte_budget_pass=_pass(float(export_total / native_total), raw_byte_budget),
         cache_byte_budget_pass=_pass(cache_ratio, raw_byte_budget),
+        node_dat_fraction_of_export=float(components["node_dat_bytes"] / export_total) if export_total > 0 else None,
+        link_dat_fraction_of_export=float(components["link_dat_bytes"] / export_total) if export_total > 0 else None,
+        feature_dominates_raw_bytes_flag=bool(export_total > 0 and components["node_dat_bytes"] / export_total > 0.90),
+        edge_pruning_raw_byte_savings_estimated=float(1.0 - components["link_dat_bytes"] / max(native_total, 1)),
     )

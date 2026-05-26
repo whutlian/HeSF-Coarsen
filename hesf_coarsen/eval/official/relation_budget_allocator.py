@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -27,6 +28,101 @@ class RelationBudgetAllocation:
     actual_edges: int
     requested_ratio_vs_candidate: float
     min_edges_constraint_active: bool
+
+
+@dataclass(frozen=True)
+class RelationPairRetentionSpec:
+    pair_name: str
+    forward_retention: float
+    reverse_retention: float
+    sampling_strategy: str
+    min_edges: int = 1
+    max_edges: int | None = None
+
+
+@dataclass(frozen=True)
+class ParsedRelationChannelSpec:
+    raw_spec: str
+    retention_by_relation: dict[str, float]
+    pair_specs: tuple[RelationPairRetentionSpec, ...]
+    sampling_strategy: str = "random"
+
+
+RELATION_PAIR_DIRECTIONS = {
+    "AP_PA": ("AP", "PA"),
+    "PT_TP": ("PT", "TP"),
+    "PV_VP": ("PV", "VP"),
+}
+
+PAIR_TOKEN_TO_PAIR = {
+    "APPA": "AP_PA",
+    "PTTP": "PT_TP",
+    "PVVP": "PV_VP",
+}
+
+
+def _ratio_from_percent(value: str) -> float:
+    return max(0.0, min(1.0, float(int(value)) / 100.0))
+
+
+def parse_relation_channel_spec(spec: str, *, sampling_strategy: str = "random") -> ParsedRelationChannelSpec:
+    raw = str(spec).strip()
+    if raw.startswith("H6-relgrid-"):
+        raw = raw[len("H6-relgrid-") :]
+    if raw.startswith("H6-dir-"):
+        raw = raw[len("H6-dir-") :]
+    retention = {name: 0.0 for pair in RELATION_PAIR_DIRECTIONS.values() for name in pair}
+    for token in [part for part in raw.split("-") if part]:
+        pair_match = re.fullmatch(r"(APPA|PTTP|PVVP)(\d{1,3})", token)
+        if pair_match:
+            pair = PAIR_TOKEN_TO_PAIR[pair_match.group(1)]
+            forward, reverse = RELATION_PAIR_DIRECTIONS[pair]
+            ratio = _ratio_from_percent(pair_match.group(2))
+            retention[forward] = ratio
+            retention[reverse] = ratio
+            continue
+        direction_match = re.fullmatch(r"(AP|PA|PT|TP|PV|VP)(\d{1,3})", token)
+        if direction_match:
+            retention[direction_match.group(1)] = _ratio_from_percent(direction_match.group(2))
+            continue
+        raise ValueError(f"unsupported relation-channel token {token!r} in {spec!r}")
+    pair_specs = []
+    for pair, (forward, reverse) in RELATION_PAIR_DIRECTIONS.items():
+        pair_specs.append(
+            RelationPairRetentionSpec(
+                pair_name=pair,
+                forward_retention=float(retention[forward]),
+                reverse_retention=float(retention[reverse]),
+                sampling_strategy=str(sampling_strategy),
+            )
+        )
+    return ParsedRelationChannelSpec(raw_spec=raw, retention_by_relation=retention, pair_specs=tuple(pair_specs), sampling_strategy=str(sampling_strategy))
+
+
+def allocate_relation_channel_spec(
+    relation_stats: list[RelationStats],
+    parsed_spec: ParsedRelationChannelSpec,
+    *,
+    min_edges_per_relation: int = 1,
+) -> list[RelationBudgetAllocation]:
+    rows: list[RelationBudgetAllocation] = []
+    for stat in relation_stats:
+        candidate = max(0, int(stat.candidate_edge_count))
+        requested = int(round(candidate * float(parsed_spec.retention_by_relation.get(str(stat.relation_name), 0.0))))
+        minimum = min(candidate, max(int(min_edges_per_relation), int(stat.min_edges)))
+        actual = min(candidate, max(minimum, requested))
+        rows.append(
+            RelationBudgetAllocation(
+                relation_id=stat.relation_id,
+                relation_name=str(stat.relation_name),
+                relation_pair_name=stat.relation_pair_name,
+                requested_edges=int(requested),
+                actual_edges=int(actual),
+                requested_ratio_vs_candidate=float(requested / max(candidate, 1)),
+                min_edges_constraint_active=bool(actual != requested and candidate > 0),
+            )
+        )
+    return rows
 
 
 class RelationBudgetAllocator:
