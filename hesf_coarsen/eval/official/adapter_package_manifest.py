@@ -210,3 +210,90 @@ def _gate21_10_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"1", "true", "yes", "y", "pass", "passed"}
+
+
+def clean_gate21_11_adapter_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    cleaned: list[dict[str, Any]] = []
+    ratio_fields = (
+        "static_inference_package_ratio",
+        "transform_recipe_package_ratio",
+        "reconstructable_package_ratio",
+    )
+    byte_fields = (
+        "sidecar_feature_bytes_total",
+        "link_dat_bytes",
+        "label_split_bytes",
+        "schema_bytes",
+        "mapping_bytes",
+        "projection_seed_bytes",
+        "projection_matrix_bytes",
+        "pca_basis_bytes",
+        "pca_mean_bytes",
+        "pca_fit_config_bytes",
+        "quantization_metadata_bytes",
+        "loader_adapter_bytes",
+    )
+    for row in rows:
+        out = dict(row)
+        success = _gate21_10_bool(out.get("success"))
+        out.setdefault("base_method", out.get("base_graph_method", ""))
+        out.setdefault("adapter_method", out.get("feature_adapter", out.get("adapter_name", "")))
+        out.setdefault("adapter_variant", out.get("adapter_method", ""))
+        out.setdefault("official_sehgnn_unmodified", False)
+        out.setdefault("eligible_for_adapter_table", True)
+        out.setdefault("eligible_for_official_main_table", False)
+        if not success:
+            out["success"] = False
+            if not str(out.get("failure_type", "")).strip():
+                out["failure_type"] = "adapter_not_ready"
+            if not str(out.get("failure_reason", "")).strip():
+                out["failure_reason"] = out.get("failure_message") or out.get("failed_reason") or "adapter row did not succeed"
+            for field in ratio_fields:
+                out[field] = "NaN"
+            for field in byte_fields:
+                if field not in out or not _gate21_10_valid_number(out.get(field)):
+                    out[field] = "NaN"
+        else:
+            out["success"] = True
+            out.setdefault("failure_type", "")
+            out.setdefault("failure_reason", "")
+        cleaned.append(out)
+    return cleaned
+
+
+def summarize_gate21_11_adapters(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault((str(row.get("base_method", "")), str(row.get("adapter_method", ""))), []).append(row)
+    out: list[dict[str, Any]] = []
+    for (base_method, adapter_method), group in sorted(grouped.items()):
+        ready = [
+            row
+            for row in group
+            if _gate21_10_bool(row.get("success"))
+            and _gate21_10_bool(row.get("training_executed", True))
+            and _gate21_10_valid_number(row.get("static_inference_package_ratio"))
+        ]
+        out.append(
+            {
+                "base_method": base_method,
+                "adapter_method": adapter_method,
+                "adapter_variant": adapter_method,
+                "row_count": len(group),
+                "success_count": len(ready),
+                "failure_count": len(group) - len(ready),
+                "test_micro_f1_mean": _gate21_10_mean(ready, "test_micro_f1"),
+                "test_macro_f1_mean": _gate21_10_mean(ready, "test_macro_f1"),
+                "static_inference_package_ratio_mean": _gate21_11_mean_or_nan(ready, "static_inference_package_ratio"),
+                "transform_recipe_package_ratio_mean": _gate21_11_mean_or_nan(ready, "transform_recipe_package_ratio"),
+                "reconstructable_package_ratio_mean": _gate21_11_mean_or_nan(ready, "reconstructable_package_ratio"),
+                "eligible_for_adapter_table": True,
+                "eligible_for_official_main_table": False,
+            }
+        )
+    return out
+
+
+def _gate21_11_mean_or_nan(rows: Sequence[Mapping[str, Any]], field: str) -> float | str:
+    value = _gate21_10_mean(rows, field)
+    return "NaN" if value == "" else value

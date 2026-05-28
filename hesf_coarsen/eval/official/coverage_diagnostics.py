@@ -89,6 +89,49 @@ def compute_apv_coverage_diagnostics(
         for paper in reached_papers
         for venue in venues_by_paper.get(int(paper), set())
     }
+
+
+def gate21_11_distributional_coverage_ready(rows: Sequence[Mapping[str, Any]]) -> bool:
+    required_nonempty = (
+        "venue_degree_bucket_coverage_json",
+        "paper_degree_bucket_coverage_json",
+        "author_degree_bucket_coverage_json",
+        "per_class_venue_coverage_json",
+        "per_class_paper_coverage_json",
+    )
+    required_numeric = (
+        "fraction_target_authors_with_AP_edge",
+        "fraction_target_authors_reaching_venue_via_AP_PV",
+        "venue_class_proxy_purity_trainval",
+        "paper_class_proxy_purity_trainval",
+    )
+    required_bool = (
+        "coverage_edge_count_matches_relation_retention",
+        "node_type_offsets_match_node_dat_counts",
+        "relation_direction_matches_official_relation_name",
+    )
+    return bool(rows) and all(
+        all(str(row.get(field, "")).strip() for field in required_nonempty)
+        and all(_gate21_11_float(row.get(field)) is not None for field in required_numeric)
+        and all(_gate21_11_bool(row.get(field)) for field in required_bool)
+        for row in rows
+    )
+
+
+def _gate21_11_float(value: Any) -> float | None:
+    if value in {"", None, "NaN", "nan"}:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed == parsed and parsed not in {float("inf"), float("-inf")} else None
+
+
+def _gate21_11_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "pass", "passed"}
     reached_terms = {
         term
         for paper in reached_papers
