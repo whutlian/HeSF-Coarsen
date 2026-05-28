@@ -165,7 +165,7 @@ def _row_from_completed(
     stderr_path: Path,
     wall_time_seconds: float,
 ) -> dict[str, Any]:
-    metrics = parse_freehgc_metrics(stdout)
+    metrics = parse_freehgc_metrics(f"{stdout}\n{stderr}")
     if returncode == 0 and metrics:
         return {
             **_base_row(dataset=dataset, method=method, protocol=protocol, ratio=ratio, root=root, command=command),

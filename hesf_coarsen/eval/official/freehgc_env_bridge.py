@@ -10,6 +10,13 @@ from typing import Any, Sequence
 
 FREEHGC_REPO_URL = "https://github.com/GooLiang/FreeHGC"
 REQUIRED_IMPORTS = ("torch", "torch_geometric", "torch_sparse", "torch_scatter", "numpy")
+REQUIRED_FILES = (
+    "README.md",
+    "HGB/train_hgb.py",
+    "HGB/data_hgb.py",
+    "HGB/model_hgb.py",
+    "HGB/model_SeHGNN.py",
+)
 
 
 def resolve_freehgc_root(root: str | Path | None = None) -> Path:
@@ -31,12 +38,7 @@ def freehgc_preflight(
     python = str(python_executable or sys.executable)
     missing_files = [
         str(path.relative_to(root)) if root.exists() else str(path)
-        for path in [
-            root / "README.md",
-            root / "HGB" / "train_hgb.py",
-            root / "HGB" / "data_hgb.py",
-            root / "HGB" / "model_hgb.py",
-        ]
+        for path in [root / required for required in REQUIRED_FILES]
         if not path.exists()
     ]
     import_rows = [_import_status(module) for module in REQUIRED_IMPORTS]

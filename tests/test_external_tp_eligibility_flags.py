@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 
 
 def _decision_module():
@@ -60,3 +61,34 @@ def test_freehgc_missing_dependency_cannot_be_ready() -> None:
     assert decision["EXTERNAL_TP_FREEHGC_READY"] is False
     assert decision["EXTERNAL_TP_TASK_RESULTS_READY"] is False
     assert "missing_dependency" in decision["method_status"]["FreeHGC-TP"]["missing_requirements"]
+
+
+def test_freehgc_preflight_reports_all_required_hgb_model_files(tmp_path) -> None:
+    from hesf_coarsen.eval.official.freehgc_env_bridge import freehgc_preflight
+
+    hgb_root = tmp_path / "FreeHGC" / "HGB"
+    hgb_root.mkdir(parents=True)
+    (tmp_path / "FreeHGC" / "README.md").write_text("FreeHGC\n", encoding="utf-8")
+    (hgb_root / "train_hgb.py").write_text("from model_hgb import *\nfrom model_SeHGNN import *\n", encoding="utf-8")
+    (hgb_root / "data_hgb.py").write_text("", encoding="utf-8")
+
+    preflight = freehgc_preflight(freehgc_root=tmp_path / "FreeHGC")
+
+    assert str(Path("HGB") / "model_hgb.py") in preflight["missing_dependency_name"]
+    assert str(Path("HGB") / "model_SeHGNN.py") in preflight["missing_dependency_name"]
+
+
+def test_freehgc_metric_parser_reads_training_logger_info_lines() -> None:
+    from hesf_coarsen.eval.official.freehgc_protocol_runner import parse_freehgc_metrics
+
+    metrics = parse_freehgc_metrics(
+        "[INFO] Epoch 1, Times(s): 0.2676, mac,mic: "
+        "Tra(0.5512 0.5455), Val(0.2494 0.2593), Tes(0.3177 0.3250) Val_loss(1.6658)\n"
+        "[INFO] macro: Best Val 0.2494, Best Test 0.3177\n"
+        "[INFO] micro: Best Val 0.2593, Best Test 0.3250\n"
+    )
+
+    assert metrics["validation_macro_f1"] == 0.2494
+    assert metrics["validation_micro_f1"] == 0.2593
+    assert metrics["test_macro_f1"] == 0.3177
+    assert metrics["test_micro_f1"] == 0.3250
