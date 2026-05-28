@@ -59,6 +59,73 @@ def summarize_gate21_11_external_tp(
     return out
 
 
+def summarize_gate21_12_external_tp(
+    runs: list[dict[str, Any]],
+    *,
+    required_methods: tuple[str, ...] = REQUIRED_EXTERNAL_TP_5X5,
+    expected_run_count: int = 25,
+) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+    for row in runs:
+        key = (
+            str(row.get("dataset", "DBLP")),
+            str(row.get("method", "")),
+            str(row.get("budget_type", row.get("budget_family", ""))),
+            str(row.get("requested_budget", "")),
+        )
+        grouped.setdefault(key, []).append(row)
+    out: list[dict[str, Any]] = []
+    for (dataset, method, budget_type, requested_budget), group in sorted(grouped.items()):
+        ready = [row for row in group if _ready(row)]
+        out.append(
+            {
+                "dataset": dataset,
+                "method": method,
+                "budget_type": budget_type,
+                "requested_budget": requested_budget,
+                "ready_run_count": len(ready),
+                "expected_run_count": int(expected_run_count),
+                "graph_seed_count": len({str(row.get("graph_seed")) for row in ready if str(row.get("graph_seed", ""))}),
+                "training_seed_count": len({str(row.get("training_seed")) for row in ready if str(row.get("training_seed", ""))}),
+                "test_micro_f1_mean": _mean(ready, "test_micro_f1"),
+                "test_micro_f1_std": _std(ready, "test_micro_f1"),
+                "test_macro_f1_mean": _mean(ready, "test_macro_f1"),
+                "test_macro_f1_std": _std(ready, "test_macro_f1"),
+                "actual_structural_storage_ratio_mean": _mean(ready, "actual_structural_storage_ratio"),
+                "actual_structural_storage_ratio_std": _std(ready, "actual_structural_storage_ratio"),
+                "raw_hgb_text_byte_ratio_mean": _mean(ready, "raw_hgb_text_byte_ratio"),
+                "budget_match_rate": _rate(ready, "budget_matched_within_tolerance"),
+                "official_hgb_export_rate": _rate(group, "official_hgb_exported"),
+                "training_success_rate": _rate(group, "training_executed"),
+            }
+        )
+    for method in required_methods:
+        if not any(row["method"] == method for row in out):
+            out.append(
+                {
+                    "dataset": "DBLP",
+                    "method": method,
+                    "budget_type": "",
+                    "requested_budget": "",
+                    "ready_run_count": 0,
+                    "expected_run_count": int(expected_run_count),
+                    "graph_seed_count": 0,
+                    "training_seed_count": 0,
+                    "test_micro_f1_mean": "NaN",
+                    "test_micro_f1_std": "NaN",
+                    "test_macro_f1_mean": "NaN",
+                    "test_macro_f1_std": "NaN",
+                    "actual_structural_storage_ratio_mean": "NaN",
+                    "actual_structural_storage_ratio_std": "NaN",
+                    "raw_hgb_text_byte_ratio_mean": "NaN",
+                    "budget_match_rate": "NaN",
+                    "official_hgb_export_rate": "NaN",
+                    "training_success_rate": "NaN",
+                }
+            )
+    return out
+
+
 def _summary_row(
     dataset: str,
     method: str,

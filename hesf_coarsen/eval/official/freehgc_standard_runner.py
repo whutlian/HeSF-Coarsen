@@ -43,6 +43,18 @@ def summarize_gate21_11_freehgc_standard(rows: list[dict[str, object]], *, expec
     return out
 
 
+def summarize_gate21_12_freehgc_standard(rows: list[dict[str, object]], *, expected_seed_count: int = 5) -> list[dict[str, object]]:
+    out = summarize_gate21_11_freehgc_standard(rows, expected_seed_count=expected_seed_count)
+    for row in out:
+        row["protocol"] = "freehgc_standard_condensation"
+        row["FREEHGC_STANDARD_TASK_RESULTS_READY"] = bool(
+            _bool(row.get("eligible_for_decision"))
+            and _finite(row.get("test_micro_f1_mean"))
+            and _finite(row.get("test_macro_f1_mean"))
+        )
+    return out
+
+
 def _mean_or_nan(rows: list[dict[str, object]], field: str) -> float | str:
     vals = [_float(row.get(field)) for row in rows]
     finite = [val for val in vals if val is not None]
