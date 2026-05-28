@@ -1,0 +1,34 @@
+{
+  "gate": "21.14",
+  "objective": "Full Execution Push - baselines, mechanisms, and transfer",
+  "output_dir": "outputs\\gate21_14_full_execution_push",
+  "datasets": [
+    "DBLP",
+    "ACM",
+    "IMDB"
+  ],
+  "dataset": "DBLP",
+  "quick": false,
+  "dry_run": false,
+  "skip_training": false,
+  "stages": [
+    "adapters",
+    "coverage",
+    "cross_dataset",
+    "external_tp",
+    "feature_ablation",
+    "freehgc",
+    "metapath",
+    "official_anchors",
+    "pareto",
+    "selector_audit",
+    "system_cost"
+  ],
+  "gate21_13_root": "results\\gate21_13_summary",
+  "gate21_6_package_root": "results\\gate21_6_chatgpt_packages\\gate21_6_main_results_for_chatgpt\\gate21_6_icde_ready",
+  "gate21_0_root": "outputs\\gate21_0_sehgnn_native_export",
+  "freehgc_root": "external\\FreeHGC",
+  "freehgc_zip": "FreeHGC-main (1).zip",
+  "hesf_commit": "560d79632b675a32313b947ecb54246fcf776da9",
+  "ready_guardrail": "NaN, placeholder, smoke, hard-failure, and diagnostic rows never set Gate21.14 readiness flags."
+}

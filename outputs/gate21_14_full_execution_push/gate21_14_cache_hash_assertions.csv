@@ -1,0 +1,8 @@
+assertion_name,expected,actual,pass,failure_reason
+full_vs_APV12_hash_diff,True,False,False,Real tensor hashes are missing; relation/cache fallback cannot satisfy Gate21.14.
+APV12_vs_APV16_hash_diff,True,False,False,Real tensor hashes are missing; relation/cache fallback cannot satisfy Gate21.14.
+APV12_vs_APV12_PTTP10_hash_diff,True,False,False,Real tensor hashes are missing; relation/cache fallback cannot satisfy Gate21.14.
+APV12_vs_APV12_PV75_hash_diff,True,False,False,Real tensor hashes are missing; relation/cache fallback cannot satisfy Gate21.14.
+cache_hash_not_empty_sha256,True,False,False,Real tensor hashes are missing; relation/cache fallback cannot satisfy Gate21.14.
+feature_tensor_hash_not_nan,True,False,False,Real tensor hashes are missing; relation/cache fallback cannot satisfy Gate21.14.
+label_tensor_hash_not_nan_if_labels_enabled,True,False,False,Real tensor hashes are missing; relation/cache fallback cannot satisfy Gate21.14.

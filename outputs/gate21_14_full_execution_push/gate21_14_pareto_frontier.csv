@@ -1,0 +1,50 @@
+dataset,selector_mode,requested_budget,actual_structural_ratio,budget_slack,selected_plan_name,AP_keep,PA_keep,PV_keep,VP_keep,PT_keep,TP_keep,validation_micro,validation_macro,test_micro,test_macro,eligible_for_main_table,is_pareto_optimal,reason_if_dominated
+DBLP,bottleneck_first,0.08,NaN,NaN,bottleneck_first-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,bottleneck_first,0.1,NaN,NaN,bottleneck_first-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,bottleneck_first,0.12,0.11952,0.0004799999999999943,HeSF-RCS-APV12,1.0,0.0,1.0,0.0,0.0,0.0,0.94479,0.94054,0.94479,0.94054,True,True,
+DBLP,bottleneck_first,0.16,0.15916,0.0008400000000000074,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,bottleneck_first,0.2,0.15916,0.040840000000000015,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,bottleneck_first,0.3,0.15916,0.14084,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,bottleneck_first,0.5,0.15916,0.34084000000000003,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,feedback_aware,0.08,NaN,NaN,feedback_aware-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,feedback_aware,0.1,NaN,NaN,feedback_aware-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,feedback_aware,0.12,0.11952,0.0004799999999999943,HeSF-RCS-APV12,1.0,0.0,1.0,0.0,0.0,0.0,0.94479,0.94054,0.94479,0.94054,True,True,
+DBLP,feedback_aware,0.16,0.15916,0.0008400000000000074,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,feedback_aware,0.2,0.15916,0.040840000000000015,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,feedback_aware,0.3,0.15916,0.14084,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,feedback_aware,0.5,0.15916,0.34084000000000003,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,redundancy_suppressed,0.08,NaN,NaN,redundancy_suppressed-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,redundancy_suppressed,0.1,NaN,NaN,redundancy_suppressed-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,redundancy_suppressed,0.12,0.11952,0.0004799999999999943,HeSF-RCS-APV12,1.0,0.0,1.0,0.0,0.0,0.0,0.94479,0.94054,0.94479,0.94054,True,True,
+DBLP,redundancy_suppressed,0.16,NaN,NaN,redundancy_suppressed-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,redundancy_suppressed,0.2,NaN,NaN,redundancy_suppressed-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,redundancy_suppressed,0.3,NaN,NaN,redundancy_suppressed-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,redundancy_suppressed,0.5,NaN,NaN,redundancy_suppressed-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,cost_normalized_validation_delta,0.08,NaN,NaN,cost_normalized_validation_delta-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,cost_normalized_validation_delta,0.1,NaN,NaN,cost_normalized_validation_delta-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,cost_normalized_validation_delta,0.12,0.11952,0.0004799999999999943,HeSF-RCS-APV12,1.0,0.0,1.0,0.0,0.0,0.0,0.94479,0.94054,0.94479,0.94054,True,True,
+DBLP,cost_normalized_validation_delta,0.16,0.15916,0.0008400000000000074,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,cost_normalized_validation_delta,0.2,0.15916,0.040840000000000015,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,cost_normalized_validation_delta,0.3,0.15916,0.14084,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,cost_normalized_validation_delta,0.5,0.15916,0.34084000000000003,HeSF-RCS-APV16,1.0,0.5,1.0,0.5,0.0,0.0,0.94979,0.94617,0.94979,0.94617,True,True,
+DBLP,pareto_frontier_search,0.08,NaN,NaN,pareto_frontier_search-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,pareto_frontier_search,0.1,NaN,NaN,pareto_frontier_search-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,pareto_frontier_search,0.12,0.11952,0.0004799999999999943,HeSF-RCS-APV12,1.0,0.0,1.0,0.0,0.0,0.0,0.94479,0.94054,0.94479,0.94054,True,True,
+DBLP,pareto_frontier_search,0.16,NaN,NaN,pareto_frontier_search-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,pareto_frontier_search,0.2,NaN,NaN,pareto_frontier_search-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,pareto_frontier_search,0.3,NaN,NaN,pareto_frontier_search-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,pareto_frontier_search,0.5,NaN,NaN,pareto_frontier_search-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,freehgc_score_selector,0.08,NaN,NaN,freehgc_score_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,freehgc_score_selector,0.1,NaN,NaN,freehgc_score_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,freehgc_score_selector,0.12,0.11952,0.0004799999999999943,HeSF-RCS-APV12,1.0,0.0,1.0,0.0,0.0,0.0,0.94479,0.94054,0.94479,0.94054,True,True,
+DBLP,freehgc_score_selector,0.16,NaN,NaN,freehgc_score_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,freehgc_score_selector,0.2,NaN,NaN,freehgc_score_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,freehgc_score_selector,0.3,NaN,NaN,freehgc_score_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,freehgc_score_selector,0.5,NaN,NaN,freehgc_score_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,coverage_balanced_selector,0.08,NaN,NaN,coverage_balanced_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,coverage_balanced_selector,0.1,NaN,NaN,coverage_balanced_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,coverage_balanced_selector,0.12,0.11952,0.0004799999999999943,HeSF-RCS-APV12,1.0,0.0,1.0,0.0,0.0,0.0,0.94479,0.94054,0.94479,0.94054,True,True,
+DBLP,coverage_balanced_selector,0.16,NaN,NaN,coverage_balanced_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,coverage_balanced_selector,0.2,NaN,NaN,coverage_balanced_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,coverage_balanced_selector,0.3,NaN,NaN,coverage_balanced_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness
+DBLP,coverage_balanced_selector,0.5,NaN,NaN,coverage_balanced_selector-candidate,0.0,0.0,0.0,0.0,0.0,0.0,NaN,NaN,NaN,NaN,False,False,candidate was not trained with official SeHGNN; not eligible for frontier readiness

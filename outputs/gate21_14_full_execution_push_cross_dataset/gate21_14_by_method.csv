@@ -1,0 +1,27 @@
+dataset,method,fraction_target_authors_with_AP_edge,fraction_authors_reaching_paper,fraction_authors_reaching_venue_via_AP_PV,fraction_reached_papers_with_PV_edge,AP_PV_path_multiplicity_mean,AP_PV_path_multiplicity_p50,AP_PV_path_multiplicity_p90,APA_feedback_path_count_mean,VPA_feedback_path_count_mean,paper_venue_entropy_mean,venue_degree_bucket_coverage,paper_degree_bucket_coverage,author_degree_bucket_coverage,per_class_venue_coverage_json,per_class_paper_coverage_json,venue_class_proxy_purity_trainval,paper_class_proxy_purity_trainval,uses_test_labels_for_proxy,failure_type,failure_reason,evidence_family,success_count,expected_success_count,mean_micro,mean_macro,mean_recovery_vs_native_full_micro,mean_recovery_vs_native_full_macro,cross_dataset_ready
+DBLP,H6-APV-skeleton,1.0,1.0,1.0,NaN,NaN,NaN,NaN,NaN,NaN,NaN,,,,{},{},NaN,NaN,False,distributional_coverage_not_executed,Reachability-only sanity is not sufficient for Gate21.14; distributional proxy fields are still missing.,coverage,,,,,,,
+DBLP,HeSF-RCS-APV12,1.0,1.0,1.0,NaN,NaN,NaN,NaN,NaN,NaN,NaN,,,,{},{},NaN,NaN,False,distributional_coverage_not_executed,Reachability-only sanity is not sufficient for Gate21.14; distributional proxy fields are still missing.,coverage,,,,,,,
+DBLP,HeSF-RCS-APV16,1.0,1.0,1.0,NaN,NaN,NaN,NaN,NaN,NaN,NaN,,,,{},{},NaN,NaN,False,distributional_coverage_not_executed,Reachability-only sanity is not sufficient for Gate21.14; distributional proxy fields are still missing.,coverage,,,,,,,
+DBLP,APV12-PV75,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,,,,{},{},NaN,NaN,False,distributional_coverage_not_executed,Reachability-only sanity is not sufficient for Gate21.14; distributional proxy fields are still missing.,coverage,,,,,,,
+DBLP,APV12-PTTP10,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,,,,{},{},NaN,NaN,False,distributional_coverage_not_executed,Reachability-only sanity is not sufficient for Gate21.14; distributional proxy fields are still missing.,coverage,,,,,,,
+ACM,H6-node30,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+ACM,HeSF-RCS-auto structural20,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+ACM,HeSF-RCS-auto structural30,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+ACM,best available external TP baseline,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+ACM,export-full,,,,,,,,,,,,,,,,,,,,,cross_dataset,5,5,0.9384323999999999,0.93918,1.0,1.0,True
+ACM,full-native,,,,,,,,,,,,,,,,,,,,,cross_dataset,5,5,0.9384323999999999,0.93918,1.0,1.0,True
+ACM,random-edge-relation-wise,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+DBLP,H6-node30,,,,,,,,,,,,,,,,,,,,,cross_dataset,5,5,0.9470422,0.9433027999999999,0.9933519323843203,0.9931380953941403,True
+DBLP,HeSF-RCS-auto structural20,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+DBLP,HeSF-RCS-auto structural30,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+DBLP,best available external TP baseline,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+DBLP,export-full,,,,,,,,,,,,,,,,,,,,,cross_dataset,5,5,0.9533802,0.9498198,1.0,1.0,True
+DBLP,full-native,,,,,,,,,,,,,,,,,,,,,cross_dataset,5,5,0.9533802,0.9498198,1.0,1.0,True
+DBLP,random-edge-relation-wise,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+IMDB,H6-node30,,,,,,,,,,,,,,,,,,,,,cross_dataset,5,5,0.6570166,0.6346849999999999,0.9413811622293181,0.9455935737445905,True
+IMDB,HeSF-RCS-auto structural20,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+IMDB,HeSF-RCS-auto structural30,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+IMDB,best available external TP baseline,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False
+IMDB,export-full,,,,,,,,,,,,,,,,,,,,,cross_dataset,5,5,0.697974,0.6712752,1.0,1.0,True
+IMDB,full-native,,,,,,,,,,,,,,,,,,,,,cross_dataset,5,5,0.697974,0.6712752,1.0,1.0,True
+IMDB,random-edge-relation-wise,,,,,,,,,,,,,,,,,,,,,cross_dataset,0,5,NaN,NaN,NaN,NaN,False

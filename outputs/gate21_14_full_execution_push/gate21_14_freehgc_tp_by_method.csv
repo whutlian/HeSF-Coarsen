@@ -1,0 +1,3 @@
+dataset,method,protocol,official_hgb_exported,training_executed,success,ready,failure_type,failure_reason,hard_incompatibility
+DBLP,FreeHGC-TP-selection,FreeHGC-selection-TP,False,False,False,False,freehgc_selection_tp_not_executed,FreeHGC upstream ranking signal could not be produced because standard FreeHGC HGB runner is not runnable in this local checkout.,
+DBLP,FreeHGC-TP-synthetic-support,FreeHGC-synthetic-support-TP,False,False,False,False,hard_incompatibility,"No stable HGB node IDs, feature dimensions, link.dat endpoints, and loader acceptance trace are available for synthetic FreeHGC support nodes.",True

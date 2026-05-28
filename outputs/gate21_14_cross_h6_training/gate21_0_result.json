@@ -1,0 +1,113 @@
+{
+  "decision": "EXPORT_FULL_FIDELITY_PASS_COMPRESSED_READY",
+  "native_repro_pass": true,
+  "export_full_fidelity_pass": true,
+  "compressed_eval_allowed": true,
+  "datasets_native_passed": [
+    "ACM",
+    "DBLP",
+    "IMDB"
+  ],
+  "datasets_native_failed": [],
+  "datasets_export_fidelity_failed": [],
+  "uses_official_main_py": true,
+  "uses_official_preprocess": true,
+  "uses_model_class_adapter_only": false,
+  "imdb_uses_dblp_fallback": false,
+  "no_test_leakage": true,
+  "best_native_full_by_dataset": {
+    "DBLP": {
+      "seed": "2",
+      "test_micro_f1": 0.954577,
+      "test_macro_f1": 0.951351,
+      "test_accuracy_if_single_label": 0.954577
+    },
+    "ACM": {
+      "seed": "5",
+      "test_micro_f1": 0.945231,
+      "test_macro_f1": 0.945808,
+      "test_accuracy_if_single_label": 0.945231
+    },
+    "IMDB": {
+      "seed": "4",
+      "test_micro_f1": 0.7031810000000001,
+      "test_macro_f1": 0.677357,
+      "test_accuracy_if_single_label": null
+    }
+  },
+  "best_export_full_by_dataset": {
+    "DBLP": {
+      "seed": "2",
+      "test_micro_f1": 0.954577,
+      "test_macro_f1": 0.951351,
+      "test_accuracy_if_single_label": 0.954577
+    },
+    "ACM": {
+      "seed": "5",
+      "test_micro_f1": 0.945231,
+      "test_macro_f1": 0.945808,
+      "test_accuracy_if_single_label": 0.945231
+    },
+    "IMDB": {
+      "seed": "4",
+      "test_micro_f1": 0.7031810000000001,
+      "test_macro_f1": 0.677357,
+      "test_accuracy_if_single_label": null
+    }
+  },
+  "full_fidelity_gap_by_dataset": {
+    "DBLP": {
+      "max_abs_micro_gap": 0.0,
+      "mean_abs_micro_gap": 0.0,
+      "max_abs_macro_gap": 0.0,
+      "mean_abs_macro_gap": 0.0
+    },
+    "ACM": {
+      "max_abs_micro_gap": 0.0,
+      "mean_abs_micro_gap": 0.0,
+      "max_abs_macro_gap": 0.0,
+      "mean_abs_macro_gap": 0.0
+    },
+    "IMDB": {
+      "max_abs_micro_gap": 0.0,
+      "mean_abs_micro_gap": 0.0,
+      "max_abs_macro_gap": 0.0,
+      "mean_abs_macro_gap": 0.0
+    }
+  },
+  "compressed_recovery_by_dataset": {
+    "IMDB": {
+      "H6-node30": {
+        "runs": 5,
+        "mean_recovery_vs_native_full_micro": 0.9413811622293181,
+        "mean_recovery_vs_native_full_macro": 0.9455935737445905
+      }
+    }
+  },
+  "storage_ratio_by_method": {
+    "ACM:H6-node30": {
+      "support_node_ratio": 0.3001136794240242,
+      "support_edge_ratio": 0.8341546930669937,
+      "total_storage_ratio_vs_full_graph": 0.8274864266106432,
+      "export_file_bytes": 42130824.0,
+      "native_full_file_bytes": 46816733.0
+    },
+    "IMDB:H6-node30": {
+      "support_node_ratio": 0.30003639010189226,
+      "support_edge_ratio": 0.9993074952101753,
+      "total_storage_ratio_vs_full_graph": 0.8926449630767522,
+      "export_file_bytes": 101384480.0,
+      "native_full_file_bytes": 187019381.0
+    }
+  },
+  "compressed_status_by_method": {
+    "H6-node30": {
+      "failed_runtime": 5,
+      "success": 5
+    }
+  },
+  "compressed_methods_observed": [
+    "H6-node30"
+  ],
+  "required_compressed_methods_present": false
+}

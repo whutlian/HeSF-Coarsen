@@ -1,0 +1,5 @@
+dataset,method,requested_budget,success_count,expected_success_count,ready_5x5,mean_micro,mean_macro,utility_source,failure_type,failure_reason
+DBLP,FreeHGC-score-TP,0.12,0,25,False,NaN,NaN,freehgc_score,freehgc_score_unavailable,FreeHGC standard scoring could not be extracted; row is not ready and is excluded from main decisions.
+DBLP,FreeHGC-score-TP,0.16,0,25,False,NaN,NaN,freehgc_score,freehgc_score_unavailable,FreeHGC standard scoring could not be extracted; row is not ready and is excluded from main decisions.
+DBLP,FreeHGC-score-TP,0.2,0,25,False,NaN,NaN,freehgc_score,freehgc_score_unavailable,FreeHGC standard scoring could not be extracted; row is not ready and is excluded from main decisions.
+DBLP,FreeHGC-score-TP,0.3,0,25,False,NaN,NaN,freehgc_score,freehgc_score_unavailable,FreeHGC standard scoring could not be extracted; row is not ready and is excluded from main decisions.

@@ -1,0 +1,13 @@
+dataset,method,success_count,official_sehgnn_preprocess_time_seconds,training_time_seconds,peak_cpu_rss_mb,preprocessed_cache_bytes,interpretation_class,system_workload_cost_ready
+DBLP,raw_hgb_text,0,NaN,NaN,NaN,NaN,official HGB text workload,False
+DBLP,export_full_hgb_text,0,NaN,NaN,NaN,NaN,official HGB text workload,False
+DBLP,gzip_hgb_text,0,NaN,NaN,NaN,NaN,"archive/transfer compression, not workload reduction",False
+DBLP,zstd_hgb_text,0,NaN,NaN,NaN,NaN,"archive/transfer compression, not workload reduction",False
+DBLP,binary_csr_relation_tables,0,NaN,NaN,NaN,NaN,"loader-adapter storage format, not unmodified official HGB",False
+DBLP,binary_csr_plus_int8_features,0,NaN,NaN,NaN,NaN,"loader-adapter storage format, not unmodified official HGB",False
+DBLP,HeSF-RCS-APV12 official text,0,,,,,schema-preserving structural workload reduction,False
+DBLP,HeSF-RCS-APV16 official text,0,,,,,schema-preserving structural workload reduction,False
+DBLP,HeSF-RCS-APV12 + RP64 adapter,0,,,,,deployment artifact with loader/feature adapter,False
+DBLP,HeSF-RCS-APV16 + RP64 adapter,0,NaN,NaN,NaN,NaN,deployment artifact with loader/feature adapter,False
+DBLP,best_external_TP_baseline,0,NaN,NaN,NaN,NaN,official HGB text workload,False
+DBLP,FreeHGC-standard if runnable,0,NaN,NaN,NaN,NaN,official HGB text workload,False

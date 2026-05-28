@@ -1,0 +1,91 @@
+dataset,base_method,adapter_method,training_seed,success,failure_type,failure_reason,test_micro_f1,test_macro_f1,training_executed,static_inference_package_ratio,transform_recipe_package_ratio,reconstructable_package_ratio,static_inference_package_bytes,transform_recipe_package_bytes,reconstructable_package_bytes,sidecar_feature_bytes,link_dat_bytes,label_split_bytes,schema_bytes,mapping_bytes,projection_seed_bytes,projection_matrix_bytes,pca_basis_bytes,pca_mean_bytes,quantization_metadata_bytes,reproducible_transform_package_complete,eligible_for_adapter_table,eligible_for_official_main_table
+DBLP,HeSF-RCS-APV12,random_projection_dim64,1,True,,,0.9483804,0.944354,True,0.004516968464509335,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,random_projection_dim64,2,True,,,0.9483804,0.944354,True,0.004516968464509335,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,random_projection_dim64,3,True,,,0.9483804,0.944354,True,0.004516968464509335,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,random_projection_dim64,4,True,,,0.9483804,0.944354,True,0.004516968464509335,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,random_projection_dim64,5,True,,,0.9483804,0.944354,True,0.004516968464509335,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,random_projection_dim128,1,True,,,0.9458452,0.94147,True,0.007120375013926882,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,random_projection_dim128,2,True,,,0.9458452,0.94147,True,0.007120375013926882,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,random_projection_dim128,3,True,,,0.9458452,0.94147,True,0.007120375013926882,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,random_projection_dim128,4,True,,,0.9458452,0.94147,True,0.007120375013926882,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,random_projection_dim128,5,True,,,0.9458452,0.94147,True,0.007120375013926882,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,int8_per_feature,1,True,,,0.9440846,0.9397848,True,0.1354913811500573,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,int8_per_feature,2,True,,,0.9440846,0.9397848,True,0.1354913811500573,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,int8_per_feature,3,True,,,0.9440846,0.9397848,True,0.1354913811500573,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,int8_per_feature,4,True,,,0.9440846,0.9397848,True,0.1354913811500573,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,int8_per_feature,5,True,,,0.9440846,0.9397848,True,0.1354913811500573,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,fp16_node_features,1,True,,,0.9447888,0.9405382,True,0.26537835319699854,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,fp16_node_features,2,True,,,0.9447888,0.9405382,True,0.26537835319699854,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,fp16_node_features,3,True,,,0.9447888,0.9405382,True,0.26537835319699854,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,fp16_node_features,4,True,,,0.9447888,0.9405382,True,0.26537835319699854,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,fp16_node_features,5,True,,,0.9447888,0.9405382,True,0.26537835319699854,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,pca_svd_dim64,1,True,,,0.947676,0.9435952,True,0.004527164593489124,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,pca_svd_dim64,2,True,,,0.947676,0.9435952,True,0.004527164593489124,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,pca_svd_dim64,3,True,,,0.947676,0.9435952,True,0.004527164593489124,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,pca_svd_dim64,4,True,,,0.947676,0.9435952,True,0.004527164593489124,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,pca_svd_dim64,5,True,,,0.947676,0.9435952,True,0.004527164593489124,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,pca_svd_dim128,1,True,,,0.9450000000000001,0.9407836,True,0.007157334087695375,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,pca_svd_dim128,2,True,,,0.9450000000000001,0.9407836,True,0.007157334087695375,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,pca_svd_dim128,3,True,,,0.9450000000000001,0.9407836,True,0.007157334087695375,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,pca_svd_dim128,4,True,,,0.9450000000000001,0.9407836,True,0.007157334087695375,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV12,pca_svd_dim128,5,True,,,0.9450000000000001,0.9407836,True,0.007157334087695375,,,,,,,,,,,,,,,,False,True,False
+DBLP,HeSF-RCS-APV16,random_projection_dim64,1,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,random_projection_dim64,2,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,random_projection_dim64,3,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,random_projection_dim64,4,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,random_projection_dim64,5,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,random_projection_dim128,1,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,random_projection_dim128,2,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,random_projection_dim128,3,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,random_projection_dim128,4,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,random_projection_dim128,5,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,int8_per_feature,1,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,int8_per_feature,2,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,int8_per_feature,3,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,int8_per_feature,4,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,int8_per_feature,5,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,fp16_node_features,1,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,fp16_node_features,2,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,fp16_node_features,3,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,fp16_node_features,4,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,fp16_node_features,5,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,pca_svd_dim64,1,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,pca_svd_dim64,2,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,pca_svd_dim64,3,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,pca_svd_dim64,4,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,pca_svd_dim64,5,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,pca_svd_dim128,1,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,pca_svd_dim128,2,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,pca_svd_dim128,3,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,pca_svd_dim128,4,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,HeSF-RCS-APV16,pca_svd_dim128,5,False,adapter_task_metric_missing,No real Gate21.14 adapter task metric is available for this base/adapter/seed.,NaN,NaN,False,,,,,,,,,,,,,,,,,False,False,False
+DBLP,H6-APV-skeleton,random_projection_dim64,1,True,,,0.9490846000000001,0.9454006,True,0.0070469568251660215,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,random_projection_dim64,2,True,,,0.9490846000000001,0.9454006,True,0.0070469568251660215,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,random_projection_dim64,3,True,,,0.9490846000000001,0.9454006,True,0.0070469568251660215,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,random_projection_dim64,4,True,,,0.9490846000000001,0.9454006,True,0.0070469568251660215,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,random_projection_dim64,5,True,,,0.9490846000000001,0.9454006,True,0.0070469568251660215,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,random_projection_dim128,1,True,,,0.94831,0.9444975999999999,True,0.009650363374583568,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,random_projection_dim128,2,True,,,0.94831,0.9444975999999999,True,0.009650363374583568,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,random_projection_dim128,3,True,,,0.94831,0.9444975999999999,True,0.009650363374583568,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,random_projection_dim128,4,True,,,0.94831,0.9444975999999999,True,0.009650363374583568,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,random_projection_dim128,5,True,,,0.94831,0.9444975999999999,True,0.009650363374583568,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,int8_per_feature,1,True,,,0.9494368,0.9457825999999999,True,0.13802136951071398,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,int8_per_feature,2,True,,,0.9494368,0.9457825999999999,True,0.13802136951071398,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,int8_per_feature,3,True,,,0.9494368,0.9457825999999999,True,0.13802136951071398,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,int8_per_feature,4,True,,,0.9494368,0.9457825999999999,True,0.13802136951071398,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,int8_per_feature,5,True,,,0.9494368,0.9457825999999999,True,0.13802136951071398,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,fp16_node_features,1,True,,,0.9481691999999999,0.944491,True,0.2679083415576552,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,fp16_node_features,2,True,,,0.9481691999999999,0.944491,True,0.2679083415576552,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,fp16_node_features,3,True,,,0.9481691999999999,0.944491,True,0.2679083415576552,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,fp16_node_features,4,True,,,0.9481691999999999,0.944491,True,0.2679083415576552,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,fp16_node_features,5,True,,,0.9481691999999999,0.944491,True,0.2679083415576552,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,pca_svd_dim64,1,True,,,0.9476762,0.9438038,True,0.0070571529541458115,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,pca_svd_dim64,2,True,,,0.9476762,0.9438038,True,0.0070571529541458115,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,pca_svd_dim64,3,True,,,0.9476762,0.9438038,True,0.0070571529541458115,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,pca_svd_dim64,4,True,,,0.9476762,0.9438038,True,0.0070571529541458115,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,pca_svd_dim64,5,True,,,0.9476762,0.9438038,True,0.0070571529541458115,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,pca_svd_dim128,1,True,,,0.9475352,0.943617,True,0.009687322448352062,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,pca_svd_dim128,2,True,,,0.9475352,0.943617,True,0.009687322448352062,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,pca_svd_dim128,3,True,,,0.9475352,0.943617,True,0.009687322448352062,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,pca_svd_dim128,4,True,,,0.9475352,0.943617,True,0.009687322448352062,,,,,,,,,,,,,,,,False,True,False
+DBLP,H6-APV-skeleton,pca_svd_dim128,5,True,,,0.9475352,0.943617,True,0.009687322448352062,,,,,,,,,,,,,,,,False,True,False

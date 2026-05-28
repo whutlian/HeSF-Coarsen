@@ -1,0 +1,46 @@
+dataset,seed,method,support_node_ratio,support_edge_ratio,total_storage_ratio_vs_full_graph,validation_micro_f1,validation_macro_f1,test_micro_f1,test_macro_f1,test_accuracy_if_single_label,recovery_vs_native_full_micro,recovery_vs_native_full_macro,recovery_vs_export_full_micro,recovery_vs_export_full_macro,status,error_message,stdout_path,stderr_path
+ACM,1,H6-node30,0.3,0.8341546930669937,0.8274864266106432,,,,,,,,,,failed_runtime,"Traceback (most recent call last):
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 588, in <module>
+    main(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 22, in main
+    g, adjs, init_labels, num_classes, dl, trainval_nid, test_nid = load_dataset(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py"", line 383, in load_dataset
+    assert torch.all(row == PK.storage.row()) and torch.all(col == PK.storage.col())
+RuntimeError: The size of tensor a (255619) must match the size of tensor b (213104) at non-singleton dimension 0",outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stdout\ACM_H6-node30_1.log,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stderr\ACM_H6-node30_1.stderr
+ACM,2,H6-node30,0.3,0.8341546930669937,0.8274864266106432,,,,,,,,,,failed_runtime,"Traceback (most recent call last):
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 588, in <module>
+    main(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 22, in main
+    g, adjs, init_labels, num_classes, dl, trainval_nid, test_nid = load_dataset(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py"", line 383, in load_dataset
+    assert torch.all(row == PK.storage.row()) and torch.all(col == PK.storage.col())
+RuntimeError: The size of tensor a (255619) must match the size of tensor b (213104) at non-singleton dimension 0",outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stdout\ACM_H6-node30_2.log,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stderr\ACM_H6-node30_2.stderr
+ACM,3,H6-node30,0.3,0.8341546930669937,0.8274864266106432,,,,,,,,,,failed_runtime,"Traceback (most recent call last):
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 588, in <module>
+    main(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 22, in main
+    g, adjs, init_labels, num_classes, dl, trainval_nid, test_nid = load_dataset(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py"", line 383, in load_dataset
+    assert torch.all(row == PK.storage.row()) and torch.all(col == PK.storage.col())
+RuntimeError: The size of tensor a (255619) must match the size of tensor b (213104) at non-singleton dimension 0",outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stdout\ACM_H6-node30_3.log,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stderr\ACM_H6-node30_3.stderr
+ACM,4,H6-node30,0.3,0.8341546930669937,0.8274864266106432,,,,,,,,,,failed_runtime,"Traceback (most recent call last):
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 588, in <module>
+    main(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 22, in main
+    g, adjs, init_labels, num_classes, dl, trainval_nid, test_nid = load_dataset(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py"", line 383, in load_dataset
+    assert torch.all(row == PK.storage.row()) and torch.all(col == PK.storage.col())
+RuntimeError: The size of tensor a (255619) must match the size of tensor b (213104) at non-singleton dimension 0",outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stdout\ACM_H6-node30_4.log,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stderr\ACM_H6-node30_4.stderr
+ACM,5,H6-node30,0.3,0.8341546930669937,0.8274864266106432,,,,,,,,,,failed_runtime,"Traceback (most recent call last):
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 588, in <module>
+    main(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 22, in main
+    g, adjs, init_labels, num_classes, dl, trainval_nid, test_nid = load_dataset(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py"", line 383, in load_dataset
+    assert torch.all(row == PK.storage.row()) and torch.all(col == PK.storage.col())
+RuntimeError: The size of tensor a (255619) must match the size of tensor b (213104) at non-singleton dimension 0",outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stdout\ACM_H6-node30_5.log,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stderr\ACM_H6-node30_5.stderr
+IMDB,1,H6-node30,0.3,0.9993074952101753,0.8926449630767522,0.649446,0.632814,0.656463,0.63699,,0.9386745711380979,0.950561093535486,0.9386745711380979,0.950561093535486,success,,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stdout\IMDB_H6-node30_1.log,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stderr\IMDB_H6-node30_1.stderr
+IMDB,2,H6-node30,0.3,0.9993074952101753,0.8926449630767522,0.630811,0.604898,0.660485,0.638843,,0.9544098203125564,0.9602604012439858,0.9544098203125564,0.9602604012439858,success,,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stdout\IMDB_H6-node30_2.log,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stderr\IMDB_H6-node30_2.stderr
+IMDB,3,H6-node30,0.3,0.9993074952101753,0.8926449630767522,0.652668,0.632783,0.6587050000000001,0.638645,,0.94981874706203,0.9580173169004789,0.94981874706203,0.9580173169004789,success,,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stdout\IMDB_H6-node30_3.log,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stderr\IMDB_H6-node30_3.stderr
+IMDB,4,H6-node30,0.3,0.9993074952101753,0.8926449630767522,0.634531,0.618931,0.6495869999999999,0.625608,,0.9237834924436239,0.923601586755581,0.9237834924436239,0.923601586755581,success,,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stdout\IMDB_H6-node30_4.log,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stderr\IMDB_H6-node30_4.stderr
+IMDB,5,H6-node30,0.3,0.9993074952101753,0.8926449630767522,0.6730769999999999,0.644966,0.6598430000000001,0.633339,,0.940219180190283,0.935527470287421,0.940219180190283,0.935527470287421,success,,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stdout\IMDB_H6-node30_5.log,outputs\gate21_14_cross_h6_training\compressed\compressed_raw_stderr\IMDB_H6-node30_5.stderr

@@ -1,0 +1,72 @@
+# Gate21.14 Prompt Completion Checklist
+
+- paper_ready_status: `GATE21_14_ANCHORS_PRESERVED_NOT_ICDE_READY`
+
+- [x] Required summary artifact `gate21_14_decision.json` exists
+- [x] Required summary artifact `gate21_14_decision.md` exists
+- [x] Required summary artifact `gate21_14_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_official_main_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_budgeted_selector_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_selector_hash_audit.csv` exists
+- [x] Required summary artifact `gate21_14_external_tp_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_external_tp_runs.csv` exists
+- [x] Required summary artifact `gate21_14_external_tp_budget_audit.csv` exists
+- [x] Required summary artifact `gate21_14_freehgc_standard_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_freehgc_tp_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_freehgc_protocol_audit.csv` exists
+- [x] Required summary artifact `gate21_14_freehgc_score_selector_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_feature_ablation_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_feature_ablation_runs.csv` exists
+- [x] Required summary artifact `gate21_14_metapath_tensor_dump.csv` exists
+- [x] Required summary artifact `gate21_14_cache_hash_assertions.csv` exists
+- [x] Required summary artifact `gate21_14_adapter_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_adapter_package_audit.csv` exists
+- [x] Required summary artifact `gate21_14_system_workload_cost_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_system_workload_cost_runs.csv` exists
+- [x] Required summary artifact `gate21_14_cross_dataset_by_method.csv` exists
+- [x] Required summary artifact `gate21_14_cross_dataset_runs.csv` exists
+- [x] Required summary artifact `gate21_14_coverage_semantic_diagnostics.csv` exists
+- [x] Required summary artifact `gate21_14_pareto_frontier.csv` exists
+- [x] Required summary artifact `gate21_14_requirement_checklist.md` exists
+- [x] Required summary artifact `gate21_14_prompt_completion_checklist.md` exists
+- [x] Required summary artifact `gate21_14_failure_audit.csv` exists
+- [x] Required summary artifact `gate21_14_manifest.json` exists
+- [x] Decision flag `OFFICIAL_DBLP_APV12_ANCHOR_PASS` evaluated
+- [x] Decision flag `OFFICIAL_DBLP_APV16_ANCHOR_PASS` evaluated
+- [x] Decision flag `BUDGETED_SELECTOR_HASH_AUDIT_PASS` evaluated
+- [x] Decision flag `BUDGETED_SELECTOR_LINKAGE_PASS` evaluated
+- [x] Decision flag `BUDGETED_SELECTOR_NO_TEST_LEAKAGE_PASS` evaluated
+- [x] Decision flag `EXTERNAL_TP_5X5_TASK_RESULTS_READY` evaluated
+- [x] Decision flag `FREEHGC_STANDARD_5SEED_READY` evaluated
+- [x] Decision flag `FREEHGC_TP_SELECTION_READY` evaluated
+- [x] Decision flag `FREEHGC_SCORE_SELECTOR_READY` evaluated
+- [x] Decision flag `FEATURE_ABLATION_TASK_RESULTS_READY` evaluated
+- [x] Decision flag `PAPER_FEATURE_REDUNDANCY_TESTED` evaluated
+- [x] Decision flag `SUPPORT_FEATURE_REDUNDANCY_TESTED` evaluated
+- [x] Decision flag `METAPATH_TENSOR_DUMP_READY` evaluated
+- [x] Decision flag `CACHE_HASH_REAL_PASS` evaluated
+- [x] Decision flag `COVERAGE_DISTRIBUTIONAL_MECHANISM_READY` evaluated
+- [x] Decision flag `APV12_RP64_ADAPTER_RESTORED` evaluated
+- [x] Decision flag `APV16_RP64_ADAPTER_READY` evaluated
+- [x] Decision flag `SYSTEM_WORKLOAD_COST_READY` evaluated
+- [x] Decision flag `CROSS_DATASET_ACM_TASK_RESULTS_READY` evaluated
+- [x] Decision flag `CROSS_DATASET_IMDB_TASK_RESULTS_READY` evaluated
+- [x] Decision flag `PARETO_FRONTIER_READY` evaluated
+- [x] Decision flag `ICDE_EVIDENCE_READY` evaluated
+
+## Blocking Issues
+- `EXTERNAL_TP_5X5_TASK_RESULTS_READY`
+- `FREEHGC_STANDARD_5SEED_READY`
+- `FREEHGC_TP_SELECTION_READY`
+- `FREEHGC_SCORE_SELECTOR_READY`
+- `FEATURE_ABLATION_TASK_RESULTS_READY`
+- `PAPER_FEATURE_REDUNDANCY_TESTED`
+- `SUPPORT_FEATURE_REDUNDANCY_TESTED`
+- `METAPATH_TENSOR_DUMP_READY`
+- `CACHE_HASH_REAL_PASS`
+- `COVERAGE_DISTRIBUTIONAL_MECHANISM_READY`
+- `APV16_RP64_ADAPTER_READY`
+- `SYSTEM_WORKLOAD_COST_READY`
+- `CROSS_DATASET_ACM_TASK_RESULTS_READY`
+- `CROSS_DATASET_IMDB_TASK_RESULTS_READY`
+- `ICDE_EVIDENCE_READY`

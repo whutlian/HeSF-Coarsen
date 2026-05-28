@@ -1,0 +1,6 @@
+dataset,method,ratio,seed_count,success_count,expected_seed_count,mean_micro,mean_macro,ready_5seed,training_executed,success,failure_type,failure_reason
+DBLP,FreeHGC-standard,0.012,5,0,5,NaN,NaN,False,False,False,freehgc_standard_not_runnable,freehgc_hgb_required_files_missing_or_help_failed
+DBLP,FreeHGC-standard,0.024,5,0,5,NaN,NaN,False,False,False,freehgc_standard_not_runnable,freehgc_hgb_required_files_missing_or_help_failed
+DBLP,FreeHGC-standard,0.048,5,0,5,NaN,NaN,False,False,False,freehgc_standard_not_runnable,freehgc_hgb_required_files_missing_or_help_failed
+DBLP,FreeHGC-standard,0.096,5,0,5,NaN,NaN,False,False,False,freehgc_standard_not_runnable,freehgc_hgb_required_files_missing_or_help_failed
+DBLP,FreeHGC-standard,0.12,5,0,5,NaN,NaN,False,False,False,freehgc_standard_not_runnable,freehgc_hgb_required_files_missing_or_help_failed
