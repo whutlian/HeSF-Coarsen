@@ -311,3 +311,65 @@ def _float_or_nan(value: Any) -> float:
     except (TypeError, ValueError):
         return math.nan
     return parsed if math.isfinite(parsed) else math.nan
+
+
+def budget_match_status(row: Mapping[str, Any], *, tolerance: float = 0.02) -> dict[str, Any]:
+    budget_type = str(row.get("budget_type", ""))
+    requested = _float_or_nan(row.get("requested_budget", row.get("budget_value")))
+    actual_field = "actual_structural_storage_ratio" if budget_type == "structural_storage_ratio" else "actual_support_node_ratio"
+    actual = _float_or_nan(row.get(actual_field))
+    if math.isnan(requested) or math.isnan(actual):
+        return {"budget_match_pass": False, "budget_match_status": "missing_budget_or_actual"}
+    if budget_type == "structural_storage_ratio":
+        passed = abs(actual - requested) <= tolerance
+    else:
+        passed = actual <= requested + tolerance
+    return {
+        "budget_match_pass": bool(passed),
+        "budget_match_status": "within_tolerance" if passed else "budget_infeasible",
+        "budget_match_error": abs(actual - requested),
+    }
+
+
+def external_tp_by_method(rows: Sequence[Mapping[str, Any]], *, required_methods: Sequence[str]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for method in required_methods:
+        method_rows = [row for row in rows if str(row.get("method", row.get("baseline_name", ""))) == method]
+        ready = [
+            row
+            for row in method_rows
+            if _bool(row.get("training_executed"))
+            and _bool(row.get("official_hgb_exported"))
+            and _bool(row.get("official_sehgnn_unmodified"))
+            and not math.isnan(_float_or_nan(row.get("test_micro_f1")))
+            and not math.isnan(_float_or_nan(row.get("test_macro_f1")))
+        ]
+        graph_seeds = {str(row.get("graph_seed", "")) for row in ready if str(row.get("graph_seed", ""))}
+        training_seeds = {str(row.get("training_seed", "")) for row in ready if str(row.get("training_seed", ""))}
+        first = ready[0] if ready else (method_rows[0] if method_rows else {})
+        out.append(
+            {
+                "dataset": first.get("dataset", ""),
+                "method": method,
+                "budget_type": first.get("budget_type", ""),
+                "requested_budget": first.get("requested_budget", ""),
+                "ready_row_count": len(ready),
+                "expected_row_count": 25,
+                "graph_seed_count": len(graph_seeds),
+                "training_seed_count": len(training_seeds),
+                "test_micro_f1_mean": _mean_field(ready, "test_micro_f1"),
+                "test_micro_f1_std": _std([_float_or_nan(row.get("test_micro_f1")) for row in ready]),
+                "test_macro_f1_mean": _mean_field(ready, "test_macro_f1"),
+                "test_macro_f1_std": _std([_float_or_nan(row.get("test_macro_f1")) for row in ready]),
+                "actual_structural_storage_ratio_mean": _mean_field(ready, "actual_structural_storage_ratio"),
+                "actual_structural_storage_ratio_std": _std([_float_or_nan(row.get("actual_structural_storage_ratio")) for row in ready]),
+                "raw_hgb_text_byte_ratio_mean": _mean_field(ready, "raw_hgb_text_byte_ratio"),
+                "budget_match_pass": bool(ready) and all(budget_match_status(row)["budget_match_pass"] for row in ready),
+                "all_training_executed": bool(ready) and all(_bool(row.get("training_executed")) for row in ready),
+                "all_official_hgb_exported": bool(ready) and all(_bool(row.get("official_hgb_exported")) for row in ready),
+                "all_official_sehgnn_unmodified": bool(ready) and all(_bool(row.get("official_sehgnn_unmodified")) for row in ready),
+                "eligible_for_tp_workload_table": True,
+                "ready_5x5_flag": len(graph_seeds) >= 5 and len(training_seeds) >= 5,
+            }
+        )
+    return out

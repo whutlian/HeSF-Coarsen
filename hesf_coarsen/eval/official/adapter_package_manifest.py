@@ -149,3 +149,64 @@ def _hash_artifact(package_hash: "hashlib._Hash", artifact_name: str, path: Path
 
 def _required_fields_present(manifest: Mapping[str, Any]) -> bool:
     return all(field in manifest for field in GATE21_6_ADAPTER_MANIFEST_REQUIRED_FIELDS)
+
+
+def aggregate_adapter_by_method_gate21_10(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        key = (str(row.get("base_method", row.get("base_graph_method", ""))), str(row.get("adapter_method", row.get("feature_adapter", row.get("adapter_name", "")))))
+        grouped.setdefault(key, []).append(row)
+    out: list[dict[str, Any]] = []
+    for (base_method, adapter_method), group_rows in sorted(grouped.items()):
+        valid = [row for row in group_rows if _gate21_10_row_success(row)]
+        out.append(
+            {
+                "base_method": base_method,
+                "adapter_method": adapter_method,
+                "method": f"{base_method}+{adapter_method}",
+                "success_count": len(valid),
+                "row_count": len(group_rows),
+                "failed_rows_excluded": len(group_rows) - len(valid),
+                "test_micro_f1_mean": _gate21_10_mean(valid, "test_micro_f1"),
+                "test_macro_f1_mean": _gate21_10_mean(valid, "test_macro_f1"),
+                "static_inference_package_ratio_mean": _gate21_10_mean(valid, "static_inference_package_ratio"),
+                "transform_recipe_package_ratio_mean": _gate21_10_mean(valid, "transform_recipe_package_ratio"),
+                "reconstructable_package_ratio_mean": _gate21_10_mean(valid, "reconstructable_package_ratio"),
+                "eligible_for_adapter_table": True,
+                "eligible_for_official_main_table": False,
+            }
+        )
+    return out
+
+
+def _gate21_10_row_success(row: Mapping[str, Any]) -> bool:
+    return _gate21_10_bool(row.get("success", True)) and _gate21_10_bool(row.get("training_executed", True)) and _gate21_10_valid_number(row.get("static_inference_package_ratio"))
+
+
+def _gate21_10_mean(rows: Sequence[Mapping[str, Any]], field: str) -> float | str:
+    values = [_gate21_10_float(row.get(field)) for row in rows]
+    finite = [value for value in values if value is not None]
+    return "" if not finite else sum(finite) / len(finite)
+
+
+def _gate21_10_valid_number(value: Any) -> bool:
+    parsed = _gate21_10_float(value)
+    return parsed is not None and parsed >= 0 and parsed not in {10240.0, 1000000.0}
+
+
+def _gate21_10_float(value: Any) -> float | None:
+    if value in {"", None}:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed != parsed or parsed in {float("inf"), float("-inf")}:
+        return None
+    return parsed
+
+
+def _gate21_10_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "pass", "passed"}
