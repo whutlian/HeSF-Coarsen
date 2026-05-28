@@ -71,3 +71,23 @@ def build_gate21_10_freehgc_tp_audit_rows(*, dataset: str = "DBLP") -> list[dict
             "suggested_adapter_if_any": "patched loader or explicit synthetic node namespace, not eligible for unmodified official table",
         },
     ]
+
+
+def build_gate21_13_freehgc_tp_adapter_audit_rows(
+    *, dataset: str = "DBLP", freehgc_root: str = "external/FreeHGC"
+) -> list[dict[str, Any]]:
+    rows = build_gate21_10_freehgc_tp_audit_rows(dataset=dataset)
+    for row in rows:
+        row.setdefault("freehgc_root", freehgc_root)
+        row.setdefault("official_hgb_exported", False)
+        row.setdefault("official_sehgnn_unmodified", False)
+        row.setdefault("schema_compatible", False)
+        row.setdefault("target_preserving", True)
+        row.setdefault("uses_synthetic_support_nodes", row.get("support_nodes_original_or_synthetic") == "synthetic_support_nodes")
+        row.setdefault("uses_weighted_edges", False)
+        row.setdefault("adapter_free_official_loader", False)
+        row.setdefault("training_executed", False)
+        row.setdefault("failure_type", "hard_incompatibility")
+        row.setdefault("hard_incompatibility_reason", row.get("hard_reason", FREEHGC_TP_HARD_REASON))
+        row.setdefault("minimal_blocking_artifact", row.get("minimal_blocking_artifact", ""))
+    return rows

@@ -1,0 +1,73 @@
+# Gate21.13 Prompt Completion Checklist
+
+- paper_ready_status: `GATE21_13_PARTIAL_EXECUTED_EVIDENCE`
+
+- [x] Required summary artifact `gate21_13_official_main_by_method.csv` exists
+- [x] Required summary artifact `gate21_13_budgeted_selector_by_method.csv` exists
+- [x] Required summary artifact `gate21_13_selector_hash_audit.csv` exists
+- [x] Required summary artifact `gate21_13_deterministic_selector_proof.csv` exists
+- [x] Required summary artifact `gate21_13_external_tp_runs.csv` exists
+- [x] Required summary artifact `gate21_13_external_tp_by_method_budget.csv` exists
+- [x] Required summary artifact `gate21_13_external_tp_budget_fairness.csv` exists
+- [x] Required summary artifact `gate21_13_external_tp_failure_report.csv` exists
+- [x] Required summary artifact `gate21_13_freehgc_env_audit.csv` exists
+- [x] Required summary artifact `gate21_13_freehgc_standard_runs.csv` exists
+- [x] Required summary artifact `gate21_13_freehgc_standard_by_ratio.csv` exists
+- [x] Required summary artifact `gate21_13_freehgc_tp_adapter_audit.csv` exists
+- [x] Required summary artifact `gate21_13_freehgc_tp_runs.csv` exists
+- [x] Required summary artifact `gate21_13_freehgc_tp_failure_proof.json` exists
+- [x] Required summary artifact `gate21_13_metapath_tensor_dump.csv` exists
+- [x] Required summary artifact `gate21_13_cache_hash_assertions.csv` exists
+- [x] Required summary artifact `gate21_13_metapath_key_diff.csv` exists
+- [x] Required summary artifact `gate21_13_feature_ablation_runs.csv` exists
+- [x] Required summary artifact `gate21_13_feature_ablation_by_method.csv` exists
+- [x] Required summary artifact `gate21_13_feature_ablation_shape_assertions.csv` exists
+- [x] Required summary artifact `gate21_13_adapter_runs.csv` exists
+- [x] Required summary artifact `gate21_13_adapter_by_method.csv` exists
+- [x] Required summary artifact `gate21_13_adapter_package_audit.csv` exists
+- [x] Required summary artifact `gate21_13_system_cost_runs.csv` exists
+- [x] Required summary artifact `gate21_13_system_cost_by_method.csv` exists
+- [x] Required summary artifact `gate21_13_cross_dataset_runs.csv` exists
+- [x] Required summary artifact `gate21_13_cross_dataset_by_method.csv` exists
+- [x] Required summary artifact `gate21_13_cross_dataset_selector_plans.csv` exists
+- [x] Required summary artifact `gate21_13_selector_modes.csv` exists
+- [x] Required summary artifact `gate21_13_selector_pareto_frontier.csv` exists
+- [x] Required summary artifact `gate21_13_by_method.csv` exists
+- [x] Required summary artifact `gate21_13_failure_audit.csv` exists
+- [x] Required summary artifact `gate21_13_decision.json` exists
+- [x] Required summary artifact `gate21_13_decision.md` exists
+- [x] Required summary artifact `gate21_13_icde_evidence_manifest.json` exists
+- [x] Required summary artifact `gate21_13_requirement_checklist.md` exists
+- [x] Required summary artifact `gate21_13_prompt_completion_checklist.md` exists
+- [x] Required summary artifact `gate21_13_manifest.json` exists
+- [x] Decision flag `OFFICIAL_DBLP_APV12_PASS` evaluated
+- [x] Decision flag `OFFICIAL_DBLP_APV16_PASS` evaluated
+- [x] Decision flag `BUDGETED_SELECTOR_HASH_AUDIT_PASS` evaluated
+- [x] Decision flag `APV16_DETERMINISTIC_PROOF_PASS` evaluated
+- [x] Decision flag `EXTERNAL_TP_5X5_REQUIRED_READY` evaluated
+- [x] Decision flag `EXTERNAL_TP_BUDGET_FAIRNESS_PASS` evaluated
+- [x] Decision flag `FREEHGC_STANDARD_5SEED_READY` evaluated
+- [x] Decision flag `FREEHGC_TP_SELECTION_READY` evaluated
+- [x] Decision flag `FREEHGC_TP_SYNTHETIC_READY_OR_HARD_INCOMPATIBILITY_PROVEN` evaluated
+- [x] Decision flag `METAPATH_TENSOR_DUMP_READY` evaluated
+- [x] Decision flag `CACHE_HASH_REAL_PASS` evaluated
+- [x] Decision flag `FEATURE_ABLATION_TASK_READY` evaluated
+- [x] Decision flag `APV16_ADAPTER_READY` evaluated
+- [x] Decision flag `SYSTEM_COST_END_TO_END_READY` evaluated
+- [x] Decision flag `CROSS_DATASET_ACM_READY` evaluated
+- [x] Decision flag `CROSS_DATASET_IMDB_READY` evaluated
+- [x] Decision flag `ICDE_EVIDENCE_READY` evaluated
+
+## Blocking Issues
+- `EXTERNAL_TP_5X5_REQUIRED_READY`
+- `EXTERNAL_TP_BUDGET_FAIRNESS_PASS`
+- `FREEHGC_STANDARD_5SEED_READY`
+- `FREEHGC_TP_SELECTION_READY`
+- `METAPATH_TENSOR_DUMP_READY`
+- `CACHE_HASH_REAL_PASS`
+- `FEATURE_ABLATION_TASK_READY`
+- `APV16_ADAPTER_READY`
+- `SYSTEM_COST_END_TO_END_READY`
+- `CROSS_DATASET_ACM_READY`
+- `CROSS_DATASET_IMDB_READY`
+- `ICDE_EVIDENCE_READY`

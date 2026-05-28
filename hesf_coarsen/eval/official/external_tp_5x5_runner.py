@@ -126,6 +126,74 @@ def summarize_gate21_12_external_tp(
     return out
 
 
+def summarize_gate21_13_external_tp(
+    runs: list[dict[str, Any]],
+    *,
+    required_methods: tuple[str, ...] = REQUIRED_EXTERNAL_TP_5X5,
+    expected_run_count: int = 25,
+) -> list[dict[str, Any]]:
+    """Gate21.13 budget-level summary with explicit 5x5 and budget fairness fields."""
+
+    grouped: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+    for row in runs:
+        key = (
+            str(row.get("dataset", "DBLP")),
+            str(row.get("method", "")),
+            str(row.get("budget_type", row.get("budget_family", ""))),
+            str(row.get("requested_budget", "")),
+        )
+        grouped.setdefault(key, []).append(row)
+    out: list[dict[str, Any]] = []
+    for (dataset, method, budget_type, requested_budget), group in sorted(grouped.items()):
+        ready = [row for row in group if _ready(row)]
+        budget_ready = ready and all(_bool(row.get("budget_matched_within_tolerance", row.get("budget_match_pass"))) for row in ready)
+        out.append(
+            {
+                "dataset": dataset,
+                "method": method,
+                "budget_type": budget_type,
+                "requested_budget": requested_budget,
+                "success_count": len(ready),
+                "expected_success_count": int(expected_run_count),
+                "graph_seed_count": len({str(row.get("graph_seed")) for row in ready if str(row.get("graph_seed", ""))}),
+                "training_seed_count": len({str(row.get("training_seed")) for row in ready if str(row.get("training_seed", ""))}),
+                "test_micro_f1_mean": _mean(ready, "test_micro_f1"),
+                "test_micro_f1_std": _std(ready, "test_micro_f1"),
+                "test_macro_f1_mean": _mean(ready, "test_macro_f1"),
+                "test_macro_f1_std": _std(ready, "test_macro_f1"),
+                "actual_structural_storage_ratio_mean": _mean(ready, "actual_structural_storage_ratio"),
+                "actual_structural_storage_ratio_std": _std(ready, "actual_structural_storage_ratio"),
+                "budget_match_rate": _rate(ready, "budget_matched_within_tolerance"),
+                "budget_infeasible_count": sum(1 for row in group if str(row.get("failure_type", "")) == "budget_infeasible"),
+                "budget_fairness_pass": bool(budget_ready and len(ready) >= int(expected_run_count)),
+            }
+        )
+    for method in required_methods:
+        if not any(row["method"] == method for row in out):
+            out.append(
+                {
+                    "dataset": "DBLP",
+                    "method": method,
+                    "budget_type": "",
+                    "requested_budget": "",
+                    "success_count": 0,
+                    "expected_success_count": int(expected_run_count),
+                    "graph_seed_count": 0,
+                    "training_seed_count": 0,
+                    "test_micro_f1_mean": "NaN",
+                    "test_micro_f1_std": "NaN",
+                    "test_macro_f1_mean": "NaN",
+                    "test_macro_f1_std": "NaN",
+                    "actual_structural_storage_ratio_mean": "NaN",
+                    "actual_structural_storage_ratio_std": "NaN",
+                    "budget_match_rate": "NaN",
+                    "budget_infeasible_count": 0,
+                    "budget_fairness_pass": False,
+                }
+            )
+    return out
+
+
 def _summary_row(
     dataset: str,
     method: str,

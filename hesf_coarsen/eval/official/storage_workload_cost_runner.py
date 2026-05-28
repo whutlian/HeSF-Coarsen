@@ -9,6 +9,10 @@ def summarize_gate21_12_system_cost(rows: Sequence[Mapping[str, Any]]) -> list[d
     return summarize_gate21_11_system_cost(rows)
 
 
+def summarize_gate21_13_system_cost(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return summarize_gate21_11_system_cost(rows)
+
+
 def storage_only_baseline_context_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:

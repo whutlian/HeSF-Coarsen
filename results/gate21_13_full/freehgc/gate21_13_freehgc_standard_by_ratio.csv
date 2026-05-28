@@ -1,0 +1,6 @@
+dataset,ratio,success_count,expected_seed_count,test_micro_f1_mean,test_macro_f1_mean,ready,failure_reason
+DBLP,0.012,0,5,NaN,NaN,False,FreeHGC HGB upstream source is missing required model/data-loader files.
+DBLP,0.024,0,5,NaN,NaN,False,FreeHGC HGB upstream source is missing required model/data-loader files.
+DBLP,0.048,0,5,NaN,NaN,False,FreeHGC HGB upstream source is missing required model/data-loader files.
+DBLP,0.096,0,5,NaN,NaN,False,FreeHGC HGB upstream source is missing required model/data-loader files.
+DBLP,0.120,0,5,NaN,NaN,False,FreeHGC HGB upstream source is missing required model/data-loader files.

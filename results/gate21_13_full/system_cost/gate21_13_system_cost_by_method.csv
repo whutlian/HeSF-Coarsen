@@ -1,0 +1,20 @@
+method,row_count,success_count,official_preprocess_time_seconds_mean,training_time_seconds_mean,peak_cpu_rss_mb_mean,preprocessed_cache_bytes_mean,system_cost_end_to_end_ready
+,7,0,NaN,NaN,NaN,NaN,False
+APV12 + RP64 adapter,1,0,NaN,NaN,NaN,NaN,False
+APV12 official text,1,0,NaN,NaN,NaN,NaN,False
+APV12 text,1,0,NaN,NaN,NaN,NaN,False
+APV12+RP64,1,0,NaN,NaN,NaN,NaN,False
+APV16 official text,1,0,NaN,NaN,NaN,NaN,False
+APV16 text,1,0,NaN,NaN,NaN,NaN,False
+FreeHGC-standard,1,0,NaN,NaN,NaN,NaN,False
+HeSF-RCS-APV12 + RP64 adapter,1,0,NaN,NaN,NaN,NaN,False
+HeSF-RCS-APV12 official text,1,0,NaN,NaN,NaN,NaN,False
+HeSF-RCS-APV16 official text,1,0,NaN,NaN,NaN,NaN,False
+best external TP baseline,1,0,NaN,NaN,NaN,NaN,False
+binary CSR + int8 features,1,0,NaN,NaN,NaN,NaN,False
+binary CSR relation tables,1,0,NaN,NaN,NaN,NaN,False
+binary CSR+int8,1,0,NaN,NaN,NaN,NaN,False
+export-full HGB text,1,0,NaN,NaN,NaN,NaN,False
+full/export-full,1,0,NaN,NaN,NaN,NaN,False
+gzip HGB text,1,0,NaN,NaN,NaN,NaN,False
+raw HGB text,1,0,NaN,NaN,NaN,NaN,False

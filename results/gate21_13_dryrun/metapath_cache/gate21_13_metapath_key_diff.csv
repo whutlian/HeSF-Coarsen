@@ -1,0 +1,3 @@
+comparison_name,left_method,right_method,metapath_key_differs,nnz_differs,bytes_differs,assertion_pass,failure_reason
+full_vs_apv12,full/export-full,HeSF-RCS-APV12,False,False,False,False,real metapath tensor keys were not dumped
+apv12_vs_apv16,HeSF-RCS-APV12,HeSF-RCS-APV16,False,False,False,False,real metapath tensor keys were not dumped

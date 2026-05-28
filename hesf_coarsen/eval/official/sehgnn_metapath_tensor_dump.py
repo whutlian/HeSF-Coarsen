@@ -35,3 +35,30 @@ def cache_hash_pass(rows: list[dict[str, Any]]) -> bool:
         and str(row.get("cache_hash_non_empty", "")).lower() in {"1", "true", "yes", "y"}
         for row in rows
     )
+
+
+def summarize_gate21_13_metapath_tensor_dump(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault((str(row.get("dataset", "")), str(row.get("method", ""))), []).append(row)
+
+    out: list[dict[str, Any]] = []
+    for (dataset, method), group in sorted(grouped.items()):
+        real_rows = [
+            row
+            for row in group
+            if bool(row.get("real_tensor_dumped"))
+            and str(row.get("feature_tensor_hash", "")).lower() != EMPTY_SHA256
+            and float(row.get("feature_tensor_bytes", 0) or 0) > 0
+        ]
+        out.append(
+            {
+                "dataset": dataset,
+                "method": method,
+                "row_count": len(group),
+                "real_tensor_dump_count": len(real_rows),
+                "metapath_tensor_dump_ready": len(real_rows) == len(group) and bool(group),
+                "cache_hash_real_pass": all(bool(row.get("cache_hash_non_empty")) for row in real_rows) and bool(real_rows),
+            }
+        )
+    return out

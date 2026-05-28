@@ -1,0 +1,54 @@
+dataset,method,row_count,success_count,test_micro_f1_mean,test_macro_f1_mean,cross_dataset_ready
+ACM,H6-node30,1,0,NaN,NaN,False
+ACM,H6-node30/closest,1,0,NaN,NaN,False
+ACM,HeSF-RCS-auto structural20,1,0,NaN,NaN,False
+ACM,HeSF-RCS-auto structural30,1,0,NaN,NaN,False
+ACM,HeSF-RCS-auto-coverage-structural20,1,0,NaN,NaN,False
+ACM,HeSF-RCS-auto-coverage-structural30,1,0,NaN,NaN,False
+ACM,HeSF-RCS-auto-probe-structural20,1,0,NaN,NaN,False
+ACM,HeSF-RCS-auto-probe-structural30,1,0,NaN,NaN,False
+ACM,HeSF-RCS-auto-structural20,1,0,NaN,NaN,False
+ACM,HeSF-RCS-auto-structural30,1,0,NaN,NaN,False
+ACM,best available external TP baseline,1,0,NaN,NaN,False
+ACM,best external,1,0,NaN,NaN,False
+ACM,best-external-TP,1,0,NaN,NaN,False
+ACM,export-full,1,0,NaN,NaN,False
+ACM,export-full official SeHGNN,1,0,NaN,NaN,False
+ACM,export-full-SeHGNN,1,0,NaN,NaN,False
+ACM,full-native,1,0,NaN,NaN,False
+ACM,full-native official SeHGNN,1,0,NaN,NaN,False
+ACM,full-native-SeHGNN,1,0,NaN,NaN,False
+ACM,random-edge,1,0,NaN,NaN,False
+ACM,random-edge relation-wise,1,0,NaN,NaN,False
+ACM,random-edge-relation-wise,1,0,NaN,NaN,False
+DBLP,H6-node30,1,0,NaN,NaN,False
+DBLP,HeSF-RCS-auto-coverage-structural20,1,0,NaN,NaN,False
+DBLP,HeSF-RCS-auto-coverage-structural30,1,0,NaN,NaN,False
+DBLP,HeSF-RCS-auto-probe-structural20,1,0,NaN,NaN,False
+DBLP,HeSF-RCS-auto-probe-structural30,1,0,NaN,NaN,False
+DBLP,best-external-TP,1,0,NaN,NaN,False
+DBLP,export-full,1,0,NaN,NaN,False
+DBLP,full-native,1,0,NaN,NaN,False
+DBLP,random-edge,1,0,NaN,NaN,False
+IMDB,H6-node30,1,0,NaN,NaN,False
+IMDB,H6-node30/closest,1,0,NaN,NaN,False
+IMDB,HeSF-RCS-auto structural20,1,0,NaN,NaN,False
+IMDB,HeSF-RCS-auto structural30,1,0,NaN,NaN,False
+IMDB,HeSF-RCS-auto-coverage-structural20,1,0,NaN,NaN,False
+IMDB,HeSF-RCS-auto-coverage-structural30,1,0,NaN,NaN,False
+IMDB,HeSF-RCS-auto-probe-structural20,1,0,NaN,NaN,False
+IMDB,HeSF-RCS-auto-probe-structural30,1,0,NaN,NaN,False
+IMDB,HeSF-RCS-auto-structural20,1,0,NaN,NaN,False
+IMDB,HeSF-RCS-auto-structural30,1,0,NaN,NaN,False
+IMDB,best available external TP baseline,1,0,NaN,NaN,False
+IMDB,best external,1,0,NaN,NaN,False
+IMDB,best-external-TP,1,0,NaN,NaN,False
+IMDB,export-full,1,0,NaN,NaN,False
+IMDB,export-full official SeHGNN,1,0,NaN,NaN,False
+IMDB,export-full-SeHGNN,1,0,NaN,NaN,False
+IMDB,full-native,1,0,NaN,NaN,False
+IMDB,full-native official SeHGNN,1,0,NaN,NaN,False
+IMDB,full-native-SeHGNN,1,0,NaN,NaN,False
+IMDB,random-edge,1,0,NaN,NaN,False
+IMDB,random-edge relation-wise,1,0,NaN,NaN,False
+IMDB,random-edge-relation-wise,1,0,NaN,NaN,False

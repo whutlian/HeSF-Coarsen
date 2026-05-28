@@ -1,0 +1,40 @@
+{
+  "gate": "21.13",
+  "objective": "Executed Baselines and Mechanism Lockdown",
+  "dataset": "DBLP",
+  "datasets": [
+    "ACM",
+    "IMDB"
+  ],
+  "mode": "full",
+  "out_dir": "results\\gate21_13_cross_dataset",
+  "gate21_12_root": "experiments\\results\\gate21_12_executed_evidence_completion",
+  "freehgc_root": "external\\FreeHGC",
+  "freehgc_zip": "FreeHGC-main (1).zip",
+  "sehgnn_root": "external\\SeHGNN",
+  "device": "cuda",
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "graph_seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "training_seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "dry_run": false,
+  "hesf_commit": "720b40a638424fc26cf0da18515e853975ca4320",
+  "source_policy": "real rows imported from prior executed evidence retain source_gate; missing cells remain explicit not-ready failures"
+}

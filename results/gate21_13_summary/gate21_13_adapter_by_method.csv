@@ -1,0 +1,8 @@
+base_method,adapter_method,row_count,success_count,test_micro_f1_mean,static_inference_package_ratio_mean,adapter_ready
+HeSF-RCS-APV16,fp16_features,1,0,NaN,NaN,False
+HeSF-RCS-APV16,fp16_node_features,1,0,NaN,NaN,False
+HeSF-RCS-APV16,int8_per_feature,2,0,NaN,NaN,False
+HeSF-RCS-APV16,pca_svd_dim128,1,0,NaN,NaN,False
+HeSF-RCS-APV16,pca_svd_dim64,1,0,NaN,NaN,False
+HeSF-RCS-APV16,random_projection_dim128,1,0,NaN,NaN,False
+HeSF-RCS-APV16,random_projection_dim64,1,0,NaN,NaN,False

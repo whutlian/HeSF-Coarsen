@@ -89,6 +89,10 @@ def summarize_gate21_12_feature_ablation(rows: list[dict[str, object]]) -> list[
     return out
 
 
+def summarize_gate21_13_feature_ablation(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return summarize_gate21_12_feature_ablation(rows)
+
+
 def _mean_or_nan(rows: list[dict[str, object]], field: str) -> float | str:
     values = [_float(row.get(field)) for row in rows]
     finite = [value for value in values if value is not None]
