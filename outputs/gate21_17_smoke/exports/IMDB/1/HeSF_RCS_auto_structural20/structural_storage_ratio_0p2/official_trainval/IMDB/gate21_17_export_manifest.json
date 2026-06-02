@@ -1,0 +1,16 @@
+{
+  "dataset": "IMDB",
+  "method": "HeSF-RCS-auto structural20",
+  "requested_budget_type": "structural_storage_ratio",
+  "requested_budget": 0.2,
+  "graph_seed": 1,
+  "source_dir": "D:\\HeSF-Coarsen\\data\\imdb\\raw\\IMDB",
+  "export_dir": "outputs\\gate21_17_smoke\\exports\\IMDB\\1\\HeSF_RCS_auto_structural20\\structural_storage_ratio_0p2\\official_trainval\\IMDB",
+  "support_node_ratio": 1.0,
+  "support_edge_ratio": 1.0,
+  "raw_hgb_text_byte_ratio": 1.0,
+  "selected_edge_hash": "ee417344ed4486b65c416c12a0ca8848fda3b99f90d372df61fcbe0f881cba3c",
+  "planner_config_hash": "940bb678e401aa999e22ad5712e0a3c6d4b10e9fac736beb0093c41d1c98ad6e",
+  "constraint_safe_fallback": true,
+  "budget_infeasible_reason": "ACM/IMDB official preprocessing constraints require reciprocal and feature-consistency-preserving exports; smoke uses full-HGB fallback and reports actual ratio."
+}

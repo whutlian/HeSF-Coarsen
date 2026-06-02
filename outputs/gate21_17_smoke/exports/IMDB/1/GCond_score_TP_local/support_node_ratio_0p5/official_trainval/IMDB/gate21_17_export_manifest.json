@@ -1,0 +1,16 @@
+{
+  "dataset": "IMDB",
+  "method": "GCond-score-TP-local",
+  "requested_budget_type": "support_node_ratio",
+  "requested_budget": 0.5,
+  "graph_seed": 1,
+  "source_dir": "D:\\HeSF-Coarsen\\data\\imdb\\raw\\IMDB",
+  "export_dir": "outputs\\gate21_17_smoke\\exports\\IMDB\\1\\GCond_score_TP_local\\support_node_ratio_0p5\\official_trainval\\IMDB",
+  "support_node_ratio": 1.0,
+  "support_edge_ratio": 1.0,
+  "raw_hgb_text_byte_ratio": 1.0,
+  "selected_edge_hash": "ee417344ed4486b65c416c12a0ca8848fda3b99f90d372df61fcbe0f881cba3c",
+  "planner_config_hash": "f04e37ec1beb74a12ee4dc9c7c2c92d567264ac61a97831a881d44a24c5e0f2f",
+  "constraint_safe_fallback": true,
+  "budget_infeasible_reason": "ACM/IMDB official preprocessing constraints require reciprocal and feature-consistency-preserving exports; smoke uses full-HGB fallback and reports actual ratio."
+}

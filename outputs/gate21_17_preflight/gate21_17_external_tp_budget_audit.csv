@@ -1,0 +1,5 @@
+dataset,method,requested_budget_type,requested_budget,actual_structural_storage_ratio,budget_match_for_structural_compare,failure_type
+DBLP,Herding-HG-TP,support_node_ratio,0.5,,False,export_schema_failure
+DBLP,FreeHGC-score-TP,structural_storage_ratio,0.2,0.2,True,export_schema_failure
+ACM,Herding-HG-TP,support_node_ratio,0.5,,False,export_schema_failure
+IMDB,Herding-HG-TP,support_node_ratio,0.5,,False,export_schema_failure

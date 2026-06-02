@@ -1,0 +1,75 @@
+{
+  "FULL_NATIVE_READY_BY_DATASET": true,
+  "EXPORT_FULL_FIDELITY_PASS_BY_DATASET": true,
+  "ACM_EXPORT_CONSISTENCY_PASS": true,
+  "IMDB_EXPORT_CONSISTENCY_PASS": true,
+  "STRUCTURAL_BASELINES_SMOKE_EXECUTED_BY_DATASET": true,
+  "STRUCTURAL_BASELINES_QUICK_READY_BY_DATASET": false,
+  "EXTERNAL_TP_SMOKE_EXECUTED_BY_DATASET": true,
+  "EXTERNAL_TP_QUICK_READY_BY_DATASET": true,
+  "FREEHGC_SCORE_TP_SMOKE_EXECUTED_BY_DATASET": true,
+  "CONDENSATION_SCORE_TP_SMOKE_EXECUTED_BY_DATASET": true,
+  "HESF_RCS_AUTO_EXECUTED_BY_DATASET": true,
+  "HESF_RCS_REP_SELECTED_WITHOUT_TEST_LEAKAGE": true,
+  "HESF_RCS_REP_ACTUAL_VALIDATION_READY": false,
+  "STAGE_REPORT_SMOKE_READY": true,
+  "STAGE_REPORT_QUICK_READY": false,
+  "NO_IMPLEMENTED_PENDING_ROWS_IN_FINAL_TABLE": true,
+  "NO_DIAGNOSTIC_OR_ADAPTER_ROWS_IN_MAIN_TABLE": true,
+  "NO_PLACEHOLDER_NUMERIC_VALUES_IN_SUCCESS_ROWS": true,
+  "FULL_NATIVE_READY_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "EXPORT_FULL_FIDELITY_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "STRUCTURAL_BASELINES_SMOKE_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "STRUCTURAL_BASELINES_QUICK_DETAIL_BY_DATASET": {
+    "DBLP": false,
+    "ACM": false,
+    "IMDB": false
+  },
+  "EXTERNAL_TP_SMOKE_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "EXTERNAL_TP_QUICK_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "FREEHGC_SCORE_TP_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": "not_required_for_smoke",
+    "IMDB": "not_required_for_smoke"
+  },
+  "CONDENSATION_SCORE_TP_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "HESF_RCS_AUTO_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "HESF_RCS_REP_SELECTED_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "HESF_RCS_REP_ACTUAL_VALIDATION_DETAIL_BY_DATASET": {
+    "DBLP": false,
+    "ACM": true,
+    "IMDB": true
+  }
+}

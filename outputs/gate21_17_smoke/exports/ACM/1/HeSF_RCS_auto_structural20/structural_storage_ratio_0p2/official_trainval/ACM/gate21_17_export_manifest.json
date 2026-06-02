@@ -1,0 +1,16 @@
+{
+  "dataset": "ACM",
+  "method": "HeSF-RCS-auto structural20",
+  "requested_budget_type": "structural_storage_ratio",
+  "requested_budget": 0.2,
+  "graph_seed": 1,
+  "source_dir": "D:\\HeSF-Coarsen\\data\\acm\\raw\\ACM",
+  "export_dir": "outputs\\gate21_17_smoke\\exports\\ACM\\1\\HeSF_RCS_auto_structural20\\structural_storage_ratio_0p2\\official_trainval\\ACM",
+  "support_node_ratio": 1.0,
+  "support_edge_ratio": 1.0,
+  "raw_hgb_text_byte_ratio": 1.0,
+  "selected_edge_hash": "4744248dc42a722defc8e50db9247117f2f44d7290b6c29f59a6ffe250cf944f",
+  "planner_config_hash": "593b2e1af3041bd6f80a44b5d83f8327ff740b591f0405382e44e28b3b40cba5",
+  "constraint_safe_fallback": true,
+  "budget_infeasible_reason": "ACM/IMDB official preprocessing constraints require reciprocal and feature-consistency-preserving exports; smoke uses full-HGB fallback and reports actual ratio."
+}

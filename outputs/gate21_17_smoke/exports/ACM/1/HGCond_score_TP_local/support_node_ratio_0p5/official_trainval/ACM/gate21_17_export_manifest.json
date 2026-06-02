@@ -1,0 +1,16 @@
+{
+  "dataset": "ACM",
+  "method": "HGCond-score-TP-local",
+  "requested_budget_type": "support_node_ratio",
+  "requested_budget": 0.5,
+  "graph_seed": 1,
+  "source_dir": "D:\\HeSF-Coarsen\\data\\acm\\raw\\ACM",
+  "export_dir": "outputs\\gate21_17_smoke\\exports\\ACM\\1\\HGCond_score_TP_local\\support_node_ratio_0p5\\official_trainval\\ACM",
+  "support_node_ratio": 1.0,
+  "support_edge_ratio": 1.0,
+  "raw_hgb_text_byte_ratio": 1.0,
+  "selected_edge_hash": "4744248dc42a722defc8e50db9247117f2f44d7290b6c29f59a6ffe250cf944f",
+  "planner_config_hash": "14cb3f25b8b35d7faffe35d9dc2ab49a48df7a7c7fecabb71a9bab3dd946e857",
+  "constraint_safe_fallback": true,
+  "budget_infeasible_reason": "ACM/IMDB official preprocessing constraints require reciprocal and feature-consistency-preserving exports; smoke uses full-HGB fallback and reports actual ratio."
+}

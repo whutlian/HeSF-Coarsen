@@ -1,0 +1,5 @@
+dataset,method,rows,success_rows,failure_types
+ACM,Herding-HG-TP,1,1,
+DBLP,FreeHGC-score-TP,1,1,
+DBLP,Herding-HG-TP,1,1,
+IMDB,Herding-HG-TP,1,1,

@@ -1,0 +1,523 @@
+Namespace(seeds=[1], dataset='DBLP', gpu=0, cpu=False, root='D:\\HeSF-Coarsen\\outputs\\gate21_17_smoke\\exports\\DBLP\\1\\GCond_score_TP_local\\support_node_ratio_0p5\\official_trainval', epoch=200, embed_size=512, num_hops=2, label_feats=True, num_label_hops=4, n_fp_layers=2, n_task_layers=3, hidden=512, dropout=0.5, input_drop=0.5, att_drop=0.0, act='none', residual=True, amp=True, lr=0.001, weight_decay=0, batch_size=10000, patience=50)
+SparseTensor(row=tensor([   1,    1,    1,  ..., 4049, 4052, 4056]),
+             col=tensor([1183, 1187, 3122,  ..., 6859, 6868, 6941]),
+             size=(4057, 7164), nnz=11052, density=0.04%)
+SparseTensor(row=tensor([   0,    1,    1,  ..., 7163, 7163, 7163]),
+             col=tensor([ 263,  263,  264,  ...,  324, 1068, 3647]),
+             size=(7164, 4057), nnz=11052, density=0.04%)
+SparseTensor(row=tensor([   0,    0,    0,  ..., 7163, 7163, 7163]),
+             col=tensor([  21,   22,   23,  ...,  538,  673, 1165]),
+             size=(7164, 3598), nnz=50964, density=0.20%)
+SparseTensor(row=tensor([   0,    1,    2,  ..., 6979, 6980, 6981]),
+             col=tensor([0, 0, 0,  ..., 9, 9, 9]),
+             size=(7164, 10), nnz=5810, density=8.11%)
+SparseTensor(row=tensor([   0,    0,    0,  ..., 3595, 3596, 3597]),
+             col=tensor([  87,  180,  222,  ..., 2264, 2497, 2578]),
+             size=(3598, 7164), nnz=50964, density=0.20%)
+SparseTensor(row=tensor([0, 0, 0,  ..., 9, 9, 9]),
+             col=tensor([   0,    1,    2,  ..., 6979, 6980, 6981]),
+             size=(10, 7164), nnz=5810, density=8.11%)
+Current num hops = 2 for feature propagation
+A A-P PA
+P P-A AP
+P P-T TP
+P P-V VP
+T T-P PT
+V V-P PV
+remove ['P']
+remove ['T']
+remove ['V']
+-- hop=1 ---
+A A torch.Size([4057, 334]) tensor(1.) tensor(0.0510)
+A AP torch.Size([4057, 4231]) tensor(0.1538) tensor(3.7921e-05)
+P PA torch.Size([7164, 334]) tensor(1.) tensor(0.1350)
+P PT torch.Size([7164, 50]) tensor(1.0158) tensor(0.0897)
+P PV torch.Size([7164, 10]) tensor(1.) tensor(0.1055)
+T TP torch.Size([3598, 4231]) tensor(0.3333) tensor(0.0002)
+V VP torch.Size([10, 4231]) tensor(0.0026) tensor(0.0003)
+------
+
+PA P-A APA
+PT P-A APT
+PV P-A APV
+remove ['PA', 'PT', 'PV']
+remove ['TP']
+remove ['VP']
+-- hop=2 ---
+A A torch.Size([4057, 334]) tensor(1.) tensor(0.0510)
+A AP torch.Size([4057, 4231]) tensor(0.1538) tensor(3.7921e-05)
+A APA torch.Size([4057, 334]) tensor(1.) tensor(0.0615)
+A APT torch.Size([4057, 50]) tensor(0.8801) tensor(0.0738)
+A APV torch.Size([4057, 10]) tensor(1.) tensor(0.0855)
+------
+
+For tgt type A, feature keys (num=5):
+A torch.Size([4057, 334])
+AP torch.Size([4057, 4231])
+APA torch.Size([4057, 334])
+APT torch.Size([4057, 50])
+APV torch.Size([4057, 10])
+
+Time used for feat prop 0:00:00.217350
+Restart with seed = 1
+checkpt_file ./output/DBLP/393419005f1e4d94b11eca0fbcf529f3
+#Train 974, #Val 243, #Test 2840
+Current num hops = 4 for label propagation
+Generating ... APA
+Generating ... TPA
+Generating ... VPA
+remove ['PA']
+Generating ... PAPA
+Generating ... PTPA
+Generating ... PVPA
+remove ['TPA', 'VPA']
+Generating ... APAPA
+Generating ... APTPA
+Generating ... APVPA
+remove ['PAPA', 'PTPA', 'PVPA']
+For label propagation, meta_adjs: (in SparseTensor mode)
+APA [4057, 4057]
+APAPA [4057, 4057]
+APTPA [4057, 4057]
+APVPA [4057, 4057]
+
+APA tensor(0.4117) tensor(0.4568) tensor(0.4169) tensor(11.2603) tensor(11.2059) tensor(10.8908) tensor(-9.8701) tensor(-1.2466) tensor(-0.4856) tensor(-3.3934)
+APAPA tensor(0.4651) tensor(0.5185) tensor(0.4599) tensor(9.5006) tensor(9.3683) tensor(9.3192) tensor(-10.3036) tensor(1.1380) tensor(-1.4117) tensor(-1.9462)
+APTPA tensor(0.6817) tensor(0.6955) tensor(0.6634) tensor(3.7469) tensor(4.1488) tensor(3.7665) tensor(-1.9768) tensor(2.7653) tensor(9.6882) tensor(0.5218)
+APVPA tensor(0.7351) tensor(0.7284) tensor(0.7303) tensor(3.7348) tensor(4.4643) tensor(3.7961) tensor(0.9223) tensor(0.6616) tensor(16.3409) tensor(1.6164)
+{'APAPA', 'APTPA', 'APVPA', 'APA'}
+tensor(0.8131)
+tensor(0.7984)
+tensor(0.8018)
+Involved label keys dict_keys(['APA', 'APAPA', 'APTPA', 'APVPA'])
+Time used for label prop 0:00:01.125905
+SeHGNN(
+  (input_drop): Dropout(p=0.5, inplace=False)
+  (embeding): ParameterDict(
+      (A): Parameter containing: [torch.cuda.FloatTensor of size 334x512 (cuda:0)]
+      (AP): Parameter containing: [torch.cuda.FloatTensor of size 4231x512 (cuda:0)]
+      (APA): Parameter containing: [torch.cuda.FloatTensor of size 334x512 (cuda:0)]
+      (APT): Parameter containing: [torch.cuda.FloatTensor of size 50x512 (cuda:0)]
+      (APV): Parameter containing: [torch.cuda.FloatTensor of size 10x512 (cuda:0)]
+  )
+  (labels_embeding): ParameterDict(
+      (APA): Parameter containing: [torch.cuda.FloatTensor of size 4x512 (cuda:0)]
+      (APAPA): Parameter containing: [torch.cuda.FloatTensor of size 4x512 (cuda:0)]
+      (APTPA): Parameter containing: [torch.cuda.FloatTensor of size 4x512 (cuda:0)]
+      (APVPA): Parameter containing: [torch.cuda.FloatTensor of size 4x512 (cuda:0)]
+  )
+  (feature_projection): Sequential(
+    (0): LinearPerMetapath()
+    (1): LayerNorm((9, 512), eps=1e-05, elementwise_affine=True)
+    (2): PReLU(num_parameters=1)
+    (3): Dropout(p=0.5, inplace=False)
+    (4): LinearPerMetapath()
+    (5): LayerNorm((9, 512), eps=1e-05, elementwise_affine=True)
+    (6): PReLU(num_parameters=1)
+    (7): Dropout(p=0.5, inplace=False)
+  )
+  (semantic_fusion): Transformer(
+    (query): Linear(in_features=512, out_features=128, bias=True)
+    (key): Linear(in_features=512, out_features=128, bias=True)
+    (value): Linear(in_features=512, out_features=512, bias=True)
+    (att_drop): Dropout(p=0.0, inplace=False)
+  )
+  (fc_after_concat): Linear(in_features=4608, out_features=512, bias=True)
+  (res_fc): Linear(in_features=512, out_features=512, bias=True)
+  (task_mlp): Sequential(
+    (0): PReLU(num_parameters=1)
+    (1): Dropout(p=0.5, inplace=False)
+    (2): Linear(in_features=512, out_features=512, bias=True)
+    (3): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=False, track_running_stats=True)
+    (4): PReLU(num_parameters=1)
+    (5): Dropout(p=0.5, inplace=False)
+    (6): Linear(in_features=512, out_features=512, bias=True)
+    (7): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=False, track_running_stats=True)
+    (8): PReLU(num_parameters=1)
+    (9): Dropout(p=0.5, inplace=False)
+    (10): Linear(in_features=512, out_features=4, bias=True)
+    (11): BatchNorm1d(4, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+  )
+)
+# Params: 10837258
+Epoch 0, training Time(s): 0.2412, estimated train loss 1.6821, acc 25.4620, 25.1158
+evaluation Time: 0.0753, Train loss: 1.5920, Val loss: 1.4870, Test loss: 1.6056
+Train acc: (28.4394, 28.1768), Val acc: (32.5103, 31.1651), Test acc: (28.4859, 27.7920)
+
+Epoch 1, training Time(s): 0.0498, estimated train loss 1.7200, acc 24.5380, 24.2714
+evaluation Time: 0.0360, Train loss: 0.7558, Val loss: 0.7628, Test loss: 0.8244
+Train acc: (75.7700, 75.5574), Val acc: (78.1893, 77.7408), Test acc: (72.2535, 71.7202)
+
+Epoch 2, training Time(s): 0.0220, estimated train loss 1.3170, acc 39.8357, 39.3539
+evaluation Time: 0.0339, Train loss: 0.6480, Val loss: 0.6737, Test loss: 0.7123
+Train acc: (81.0062, 80.7356), Val acc: (82.3045, 81.9859), Test acc: (78.1338, 77.6094)
+
+Epoch 3, training Time(s): 0.0189, estimated train loss 1.1209, acc 51.7454, 51.5519
+evaluation Time: 0.0338, Train loss: 0.5921, Val loss: 0.6325, Test loss: 0.6553
+Train acc: (84.3943, 84.2638), Val acc: (83.9506, 83.6225), Test acc: (81.5845, 81.0931)
+
+Epoch 4, training Time(s): 0.0179, estimated train loss 0.9489, acc 64.3737, 63.8594
+evaluation Time: 0.0326, Train loss: 0.5595, Val loss: 0.6097, Test loss: 0.6217
+Train acc: (87.5770, 87.4193), Val acc: (86.0082, 85.8327), Test acc: (83.9085, 83.4881)
+
+Epoch 5, training Time(s): 0.0196, estimated train loss 0.8621, acc 69.9179, 69.1449
+evaluation Time: 0.0330, Train loss: 0.5387, Val loss: 0.5960, Test loss: 0.6001
+Train acc: (89.0144, 88.8021), Val acc: (86.8313, 86.6509), Test acc: (85.4930, 85.0591)
+
+Epoch 6, training Time(s): 0.0196, estimated train loss 0.7411, acc 77.1047, 76.6439
+evaluation Time: 0.0328, Train loss: 0.5248, Val loss: 0.5879, Test loss: 0.5853
+Train acc: (89.5277, 89.3635), Val acc: (86.8313, 86.7027), Test acc: (86.4085, 85.9935)
+
+Epoch 7, training Time(s): 0.0185, estimated train loss 0.6899, acc 80.5955, 80.0819
+evaluation Time: 0.0340, Train loss: 0.5157, Val loss: 0.5850, Test loss: 0.5755
+Train acc: (89.7331, 89.5815), Val acc: (86.8313, 86.6622), Test acc: (86.9014, 86.4961)
+
+Epoch 8, training Time(s): 0.0186, estimated train loss 0.6519, acc 81.9302, 81.5841
+evaluation Time: 0.0335, Train loss: 0.5095, Val loss: 0.5853, Test loss: 0.5691
+Train acc: (90.2464, 90.1342), Val acc: (86.4198, 86.2218), Test acc: (87.0070, 86.6523)
+
+Epoch 9, training Time(s): 0.0203, estimated train loss 0.6189, acc 83.6756, 83.3206
+evaluation Time: 0.0343, Train loss: 0.5055, Val loss: 0.5875, Test loss: 0.5653
+Train acc: (90.6571, 90.5320), Val acc: (86.8313, 86.5566), Test acc: (87.2887, 86.9546)
+
+Epoch 10, training Time(s): 0.0190, estimated train loss 0.5869, acc 87.4743, 87.2078
+evaluation Time: 0.0337, Train loss: 0.5035, Val loss: 0.5915, Test loss: 0.5636
+Train acc: (90.6571, 90.5184), Val acc: (86.8313, 86.4794), Test acc: (87.3239, 86.9712)
+	Current best at epoch 7 with Val loss 0.5850 (86.8313, 86.6622), Test loss 0.5755 (86.9014, 86.4961)
+Epoch 11, training Time(s): 0.0192, estimated train loss 0.5777, acc 85.5236, 85.3102
+evaluation Time: 0.0331, Train loss: 0.5027, Val loss: 0.5966, Test loss: 0.5634
+Train acc: (90.8624, 90.7277), Val acc: (86.4198, 86.0600), Test acc: (87.4296, 87.1072)
+
+Epoch 12, training Time(s): 0.0205, estimated train loss 0.5707, acc 86.1396, 85.9338
+evaluation Time: 0.0354, Train loss: 0.5021, Val loss: 0.6012, Test loss: 0.5636
+Train acc: (91.4784, 91.3490), Val acc: (86.0082, 85.6946), Test acc: (87.3944, 87.0612)
+
+Epoch 13, training Time(s): 0.0186, estimated train loss 0.5577, acc 87.7823, 87.6531
+evaluation Time: 0.0426, Train loss: 0.5009, Val loss: 0.6043, Test loss: 0.5632
+Train acc: (91.6838, 91.5335), Val acc: (86.0082, 85.6946), Test acc: (87.1479, 86.7649)
+
+Epoch 14, training Time(s): 0.0205, estimated train loss 0.5540, acc 87.4743, 87.2327
+evaluation Time: 0.0338, Train loss: 0.4988, Val loss: 0.6057, Test loss: 0.5623
+Train acc: (91.9918, 91.8088), Val acc: (86.4198, 86.0001), Test acc: (87.1831, 86.8127)
+
+Epoch 15, training Time(s): 0.0191, estimated train loss 0.5414, acc 88.7064, 88.5073
+evaluation Time: 0.0314, Train loss: 0.4956, Val loss: 0.6057, Test loss: 0.5608
+Train acc: (91.7864, 91.5940), Val acc: (86.4198, 86.0001), Test acc: (87.0775, 86.6918)
+
+Epoch 16, training Time(s): 0.0199, estimated train loss 0.5404, acc 88.1930, 88.0629
+evaluation Time: 0.0368, Train loss: 0.4915, Val loss: 0.6041, Test loss: 0.5586
+Train acc: (92.2998, 92.1222), Val acc: (86.8313, 86.4480), Test acc: (87.2183, 86.8526)
+
+Epoch 17, training Time(s): 0.0199, estimated train loss 0.5317, acc 89.5277, 89.2454
+evaluation Time: 0.0345, Train loss: 0.4867, Val loss: 0.6013, Test loss: 0.5560
+Train acc: (92.2998, 92.1222), Val acc: (86.4198, 85.9908), Test acc: (87.3592, 87.0278)
+
+Epoch 18, training Time(s): 0.0200, estimated train loss 0.5306, acc 87.8850, 87.6240
+evaluation Time: 0.0321, Train loss: 0.4813, Val loss: 0.5975, Test loss: 0.5532
+Train acc: (92.4025, 92.2289), Val acc: (86.0082, 85.5719), Test acc: (87.4296, 87.0773)
+
+Epoch 19, training Time(s): 0.0207, estimated train loss 0.5141, acc 90.0411, 89.8703
+evaluation Time: 0.0330, Train loss: 0.4753, Val loss: 0.5931, Test loss: 0.5500
+Train acc: (92.5051, 92.3198), Val acc: (86.4198, 86.0305), Test acc: (87.4648, 87.1345)
+
+Epoch 20, training Time(s): 0.0174, estimated train loss 0.5102, acc 89.4251, 89.1986
+evaluation Time: 0.0338, Train loss: 0.4689, Val loss: 0.5881, Test loss: 0.5467
+Train acc: (92.7105, 92.5130), Val acc: (85.1852, 84.9027), Test acc: (87.4648, 87.1260)
+	Current best at epoch 7 with Val loss 0.5850 (86.8313, 86.6622), Test loss 0.5755 (86.9014, 86.4961)
+Epoch 21, training Time(s): 0.0204, estimated train loss 0.5082, acc 89.7331, 89.5731
+evaluation Time: 0.0335, Train loss: 0.4623, Val loss: 0.5827, Test loss: 0.5434
+Train acc: (92.7105, 92.5130), Val acc: (85.1852, 84.9027), Test acc: (87.2887, 86.9569)
+
+Epoch 22, training Time(s): 0.0184, estimated train loss 0.5068, acc 89.7331, 89.5947
+evaluation Time: 0.0356, Train loss: 0.4555, Val loss: 0.5773, Test loss: 0.5401
+Train acc: (92.8131, 92.6106), Val acc: (84.7737, 84.3108), Test acc: (87.2887, 86.9493)
+
+Epoch 23, training Time(s): 0.0202, estimated train loss 0.5014, acc 90.9651, 90.8246
+evaluation Time: 0.0341, Train loss: 0.4486, Val loss: 0.5720, Test loss: 0.5369
+Train acc: (93.1211, 92.9549), Val acc: (84.7737, 84.3108), Test acc: (87.2887, 86.9447)
+
+Epoch 24, training Time(s): 0.0183, estimated train loss 0.4955, acc 90.4517, 90.2344
+evaluation Time: 0.0319, Train loss: 0.4415, Val loss: 0.5665, Test loss: 0.5337
+Train acc: (93.3265, 93.1883), Val acc: (84.3621, 83.9434), Test acc: (87.4296, 87.0984)
+
+Epoch 25, training Time(s): 0.0199, estimated train loss 0.4866, acc 91.4784, 91.3307
+evaluation Time: 0.0355, Train loss: 0.4344, Val loss: 0.5610, Test loss: 0.5307
+Train acc: (93.6345, 93.5114), Val acc: (84.3621, 83.9434), Test acc: (87.5000, 87.1735)
+
+Epoch 26, training Time(s): 0.0203, estimated train loss 0.4856, acc 91.7864, 91.7036
+evaluation Time: 0.0368, Train loss: 0.4272, Val loss: 0.5559, Test loss: 0.5279
+Train acc: (93.8398, 93.7205), Val acc: (85.1852, 84.6811), Test acc: (87.5000, 87.1819)
+
+Epoch 27, training Time(s): 0.0207, estimated train loss 0.4792, acc 91.3758, 91.2352
+evaluation Time: 0.0363, Train loss: 0.4199, Val loss: 0.5510, Test loss: 0.5252
+Train acc: (94.0452, 93.9557), Val acc: (85.1852, 84.6587), Test acc: (87.6056, 87.2900)
+
+Epoch 28, training Time(s): 0.0197, estimated train loss 0.4801, acc 91.2731, 91.1505
+evaluation Time: 0.0349, Train loss: 0.4130, Val loss: 0.5468, Test loss: 0.5228
+Train acc: (94.1478, 94.0869), Val acc: (85.1852, 84.6088), Test acc: (87.6408, 87.3476)
+
+Epoch 29, training Time(s): 0.0186, estimated train loss 0.4707, acc 91.3758, 91.2751
+evaluation Time: 0.0323, Train loss: 0.4063, Val loss: 0.5430, Test loss: 0.5207
+Train acc: (94.1478, 94.0869), Val acc: (85.1852, 84.6088), Test acc: (87.6056, 87.2942)
+
+Epoch 30, training Time(s): 0.0226, estimated train loss 0.4627, acc 92.4025, 92.2742
+evaluation Time: 0.0334, Train loss: 0.3998, Val loss: 0.5397, Test loss: 0.5188
+Train acc: (94.5585, 94.4784), Val acc: (85.5967, 85.0374), Test acc: (87.6056, 87.2993)
+	Current best at epoch 30 with Val loss 0.5397 (85.5967, 85.0374), Test loss 0.5188 (87.6056, 87.2993)
+Epoch 31, training Time(s): 0.0169, estimated train loss 0.4608, acc 93.1211, 93.0958
+evaluation Time: 0.0325, Train loss: 0.3938, Val loss: 0.5368, Test loss: 0.5172
+Train acc: (94.6612, 94.5914), Val acc: (85.5967, 85.0462), Test acc: (87.4648, 87.1381)
+
+Epoch 32, training Time(s): 0.0196, estimated train loss 0.4556, acc 92.2998, 92.3179
+evaluation Time: 0.0339, Train loss: 0.3879, Val loss: 0.5341, Test loss: 0.5160
+Train acc: (94.6612, 94.5914), Val acc: (85.5967, 85.0462), Test acc: (87.1831, 86.8569)
+
+Epoch 33, training Time(s): 0.0182, estimated train loss 0.4514, acc 92.8131, 92.7693
+evaluation Time: 0.0345, Train loss: 0.3824, Val loss: 0.5318, Test loss: 0.5149
+Train acc: (94.7639, 94.7042), Val acc: (85.5967, 85.0462), Test acc: (87.1479, 86.8151)
+
+Epoch 34, training Time(s): 0.0185, estimated train loss 0.4480, acc 92.0945, 92.0631
+evaluation Time: 0.0343, Train loss: 0.3774, Val loss: 0.5297, Test loss: 0.5142
+Train acc: (94.9692, 94.9365), Val acc: (85.5967, 85.0462), Test acc: (87.0070, 86.6549)
+
+Epoch 35, training Time(s): 0.0186, estimated train loss 0.4462, acc 93.3265, 93.2245
+evaluation Time: 0.0351, Train loss: 0.3726, Val loss: 0.5280, Test loss: 0.5136
+Train acc: (95.4825, 95.4473), Val acc: (85.5967, 85.0462), Test acc: (86.9014, 86.5623)
+
+Epoch 36, training Time(s): 0.0204, estimated train loss 0.4460, acc 91.4784, 91.4323
+evaluation Time: 0.0344, Train loss: 0.3682, Val loss: 0.5266, Test loss: 0.5131
+Train acc: (95.6879, 95.6739), Val acc: (86.0082, 85.5114), Test acc: (86.8662, 86.5090)
+
+Epoch 37, training Time(s): 0.0198, estimated train loss 0.4429, acc 93.8398, 93.7762
+evaluation Time: 0.0329, Train loss: 0.3639, Val loss: 0.5253, Test loss: 0.5127
+Train acc: (95.7906, 95.7869), Val acc: (86.4198, 85.9483), Test acc: (86.8662, 86.5001)
+
+Epoch 38, training Time(s): 0.0194, estimated train loss 0.4419, acc 92.7105, 92.6004
+evaluation Time: 0.0314, Train loss: 0.3599, Val loss: 0.5241, Test loss: 0.5124
+Train acc: (95.7906, 95.7869), Val acc: (86.8313, 86.3812), Test acc: (86.9366, 86.5557)
+
+Epoch 39, training Time(s): 0.0179, estimated train loss 0.4280, acc 94.2505, 94.2281
+evaluation Time: 0.0339, Train loss: 0.3561, Val loss: 0.5230, Test loss: 0.5121
+Train acc: (95.8932, 95.8781), Val acc: (86.8313, 86.3812), Test acc: (86.8310, 86.4615)
+
+Epoch 40, training Time(s): 0.0176, estimated train loss 0.4347, acc 93.9425, 93.9270
+evaluation Time: 0.0344, Train loss: 0.3527, Val loss: 0.5222, Test loss: 0.5120
+Train acc: (96.0986, 96.0935), Val acc: (86.8313, 86.3812), Test acc: (86.8662, 86.5070)
+	Current best at epoch 40 with Val loss 0.5222 (86.8313, 86.3812), Test loss 0.5120 (86.8662, 86.5070)
+Epoch 41, training Time(s): 0.0183, estimated train loss 0.4387, acc 93.1211, 93.0518
+evaluation Time: 0.0330, Train loss: 0.3495, Val loss: 0.5216, Test loss: 0.5119
+Train acc: (96.3039, 96.2994), Val acc: (86.8313, 86.3812), Test acc: (86.8310, 86.4487)
+
+Epoch 42, training Time(s): 0.0202, estimated train loss 0.4235, acc 94.0452, 93.9732
+evaluation Time: 0.0322, Train loss: 0.3466, Val loss: 0.5208, Test loss: 0.5118
+Train acc: (96.5092, 96.5152), Val acc: (86.8313, 86.3812), Test acc: (86.8662, 86.4888)
+
+Epoch 43, training Time(s): 0.0370, estimated train loss 0.4223, acc 93.8398, 93.7942
+evaluation Time: 0.0338, Train loss: 0.3439, Val loss: 0.5204, Test loss: 0.5117
+Train acc: (96.4066, 96.4202), Val acc: (86.8313, 86.3812), Test acc: (86.7254, 86.3435)
+
+Epoch 44, training Time(s): 0.0195, estimated train loss 0.4200, acc 94.7639, 94.7976
+evaluation Time: 0.0317, Train loss: 0.3414, Val loss: 0.5206, Test loss: 0.5117
+Train acc: (96.6119, 96.6338), Val acc: (86.4198, 86.0104), Test acc: (86.6549, 86.2711)
+
+Epoch 45, training Time(s): 0.0176, estimated train loss 0.4189, acc 94.3532, 94.3102
+evaluation Time: 0.0340, Train loss: 0.3392, Val loss: 0.5211, Test loss: 0.5116
+Train acc: (96.8172, 96.8246), Val acc: (86.4198, 86.0104), Test acc: (86.5845, 86.1906)
+
+Epoch 46, training Time(s): 0.0182, estimated train loss 0.4042, acc 95.1745, 95.1514
+evaluation Time: 0.0303, Train loss: 0.3370, Val loss: 0.5217, Test loss: 0.5115
+Train acc: (96.9199, 96.9347), Val acc: (86.4198, 86.0104), Test acc: (86.7958, 86.4274)
+
+Epoch 47, training Time(s): 0.0180, estimated train loss 0.4117, acc 95.5852, 95.5431
+evaluation Time: 0.0343, Train loss: 0.3351, Val loss: 0.5229, Test loss: 0.5116
+Train acc: (96.9199, 96.9347), Val acc: (86.0082, 85.5785), Test acc: (86.7606, 86.4025)
+
+Epoch 48, training Time(s): 0.0204, estimated train loss 0.4108, acc 94.3532, 94.3652
+evaluation Time: 0.0339, Train loss: 0.3330, Val loss: 0.5237, Test loss: 0.5113
+Train acc: (97.0226, 97.0330), Val acc: (85.5967, 85.1299), Test acc: (86.6901, 86.3318)
+
+Epoch 49, training Time(s): 0.0192, estimated train loss 0.4076, acc 94.0452, 94.0071
+evaluation Time: 0.0337, Train loss: 0.3310, Val loss: 0.5246, Test loss: 0.5111
+Train acc: (97.0226, 97.0330), Val acc: (84.7737, 84.2468), Test acc: (86.7254, 86.3698)
+
+Epoch 50, training Time(s): 0.0184, estimated train loss 0.4017, acc 94.4559, 94.4951
+evaluation Time: 0.0329, Train loss: 0.3289, Val loss: 0.5256, Test loss: 0.5108
+Train acc: (97.1253, 97.1334), Val acc: (85.5967, 85.0428), Test acc: (86.6901, 86.3210)
+	Current best at epoch 43 with Val loss 0.5204 (86.8313, 86.3812), Test loss 0.5117 (86.7254, 86.3435)
+Epoch 51, training Time(s): 0.0203, estimated train loss 0.4053, acc 94.6612, 94.6293
+evaluation Time: 0.0347, Train loss: 0.3268, Val loss: 0.5267, Test loss: 0.5106
+Train acc: (97.1253, 97.1334), Val acc: (86.0082, 85.4958), Test acc: (86.6197, 86.2234)
+
+Epoch 52, training Time(s): 0.0192, estimated train loss 0.4015, acc 95.4825, 95.5297
+evaluation Time: 0.0337, Train loss: 0.3244, Val loss: 0.5277, Test loss: 0.5104
+Train acc: (97.1253, 97.1110), Val acc: (85.5967, 85.1299), Test acc: (86.5493, 86.1440)
+
+Epoch 53, training Time(s): 0.0188, estimated train loss 0.4010, acc 95.1745, 95.0528
+evaluation Time: 0.0339, Train loss: 0.3221, Val loss: 0.5286, Test loss: 0.5103
+Train acc: (97.3306, 97.3411), Val acc: (86.0082, 85.5785), Test acc: (86.5845, 86.1694)
+
+Epoch 54, training Time(s): 0.0178, estimated train loss 0.4015, acc 94.7639, 94.6717
+evaluation Time: 0.0318, Train loss: 0.3198, Val loss: 0.5293, Test loss: 0.5102
+Train acc: (97.4333, 97.4548), Val acc: (86.0082, 85.5785), Test acc: (86.5845, 86.1655)
+
+Epoch 55, training Time(s): 0.0195, estimated train loss 0.3974, acc 94.8665, 94.9275
+evaluation Time: 0.0343, Train loss: 0.3176, Val loss: 0.5301, Test loss: 0.5102
+Train acc: (97.5359, 97.5687), Val acc: (86.0082, 85.5785), Test acc: (86.4789, 86.0555)
+
+Epoch 56, training Time(s): 0.0209, estimated train loss 0.3923, acc 96.2012, 96.1666
+evaluation Time: 0.0319, Train loss: 0.3154, Val loss: 0.5310, Test loss: 0.5104
+Train acc: (97.5359, 97.5687), Val acc: (86.0082, 85.5785), Test acc: (86.5141, 86.0907)
+
+Epoch 57, training Time(s): 0.0184, estimated train loss 0.3931, acc 95.6879, 95.6484
+evaluation Time: 0.0340, Train loss: 0.3132, Val loss: 0.5316, Test loss: 0.5107
+Train acc: (97.7413, 97.7880), Val acc: (86.0082, 85.5785), Test acc: (86.6197, 86.2169)
+
+Epoch 58, training Time(s): 0.0194, estimated train loss 0.3809, acc 96.7146, 96.7207
+evaluation Time: 0.0342, Train loss: 0.3111, Val loss: 0.5323, Test loss: 0.5110
+Train acc: (97.8439, 97.9024), Val acc: (86.0082, 85.5785), Test acc: (86.6901, 86.3052)
+
+Epoch 59, training Time(s): 0.0197, estimated train loss 0.3848, acc 95.8932, 95.8270
+evaluation Time: 0.0337, Train loss: 0.3089, Val loss: 0.5329, Test loss: 0.5115
+Train acc: (97.8439, 97.9024), Val acc: (85.5967, 85.1134), Test acc: (86.5845, 86.1903)
+
+Epoch 60, training Time(s): 0.0179, estimated train loss 0.3794, acc 96.4066, 96.3868
+evaluation Time: 0.0328, Train loss: 0.3067, Val loss: 0.5336, Test loss: 0.5120
+Train acc: (97.8439, 97.9024), Val acc: (85.1852, 84.6164), Test acc: (86.4789, 86.0720)
+	Current best at epoch 43 with Val loss 0.5204 (86.8313, 86.3812), Test loss 0.5117 (86.7254, 86.3435)
+Epoch 61, training Time(s): 0.0187, estimated train loss 0.3804, acc 95.6879, 95.6694
+evaluation Time: 0.0345, Train loss: 0.3047, Val loss: 0.5341, Test loss: 0.5125
+Train acc: (97.9466, 98.0023), Val acc: (85.1852, 84.6164), Test acc: (86.4085, 85.9965)
+
+Epoch 62, training Time(s): 0.0187, estimated train loss 0.3802, acc 96.2012, 96.1611
+evaluation Time: 0.0348, Train loss: 0.3025, Val loss: 0.5343, Test loss: 0.5129
+Train acc: (97.9466, 98.0023), Val acc: (84.7737, 84.1806), Test acc: (86.4085, 86.0002)
+
+Epoch 63, training Time(s): 0.0190, estimated train loss 0.3803, acc 95.7906, 95.7400
+evaluation Time: 0.0317, Train loss: 0.3003, Val loss: 0.5345, Test loss: 0.5134
+Train acc: (97.9466, 98.0023), Val acc: (84.7737, 84.1806), Test acc: (86.4437, 86.0426)
+
+Epoch 64, training Time(s): 0.0195, estimated train loss 0.3682, acc 96.9199, 96.9640
+evaluation Time: 0.0334, Train loss: 0.2982, Val loss: 0.5345, Test loss: 0.5142
+Train acc: (98.0493, 98.0999), Val acc: (84.7737, 84.1806), Test acc: (86.3732, 85.9814)
+
+Epoch 65, training Time(s): 0.0198, estimated train loss 0.3650, acc 97.0226, 97.0212
+evaluation Time: 0.0337, Train loss: 0.2962, Val loss: 0.5346, Test loss: 0.5148
+Train acc: (98.0493, 98.0999), Val acc: (84.3621, 83.7062), Test acc: (86.4789, 86.0941)
+
+Epoch 66, training Time(s): 0.0195, estimated train loss 0.3696, acc 96.6119, 96.6066
+evaluation Time: 0.0348, Train loss: 0.2941, Val loss: 0.5338, Test loss: 0.5154
+Train acc: (98.0493, 98.0999), Val acc: (84.3621, 83.7062), Test acc: (86.5845, 86.2079)
+
+Epoch 67, training Time(s): 0.0210, estimated train loss 0.3654, acc 95.7906, 95.7923
+evaluation Time: 0.0332, Train loss: 0.2920, Val loss: 0.5334, Test loss: 0.5161
+Train acc: (98.2546, 98.2967), Val acc: (84.7737, 84.1479), Test acc: (86.5493, 86.1662)
+
+Epoch 68, training Time(s): 0.0191, estimated train loss 0.3615, acc 97.2279, 97.2475
+evaluation Time: 0.0330, Train loss: 0.2900, Val loss: 0.5331, Test loss: 0.5166
+Train acc: (98.2546, 98.2967), Val acc: (84.7737, 84.1479), Test acc: (86.6197, 86.2343)
+
+Epoch 69, training Time(s): 0.0190, estimated train loss 0.3643, acc 97.0226, 97.0545
+evaluation Time: 0.0329, Train loss: 0.2883, Val loss: 0.5331, Test loss: 0.5174
+Train acc: (98.4600, 98.5216), Val acc: (84.7737, 84.1479), Test acc: (86.5141, 86.1288)
+
+Epoch 70, training Time(s): 0.0198, estimated train loss 0.3631, acc 96.8172, 96.8520
+evaluation Time: 0.0339, Train loss: 0.2865, Val loss: 0.5332, Test loss: 0.5179
+Train acc: (98.5626, 98.6118), Val acc: (85.1852, 84.6097), Test acc: (86.4437, 86.0341)
+	Current best at epoch 43 with Val loss 0.5204 (86.8313, 86.3812), Test loss 0.5117 (86.7254, 86.3435)
+Epoch 71, training Time(s): 0.0219, estimated train loss 0.3602, acc 97.1253, 97.1304
+evaluation Time: 0.0358, Train loss: 0.2851, Val loss: 0.5338, Test loss: 0.5185
+Train acc: (98.5626, 98.6118), Val acc: (85.1852, 84.6097), Test acc: (86.4789, 86.0657)
+
+Epoch 72, training Time(s): 0.0196, estimated train loss 0.3588, acc 96.9199, 96.8577
+evaluation Time: 0.0346, Train loss: 0.2839, Val loss: 0.5345, Test loss: 0.5188
+Train acc: (98.6653, 98.7326), Val acc: (85.1852, 84.6097), Test acc: (86.3732, 85.9587)
+
+Epoch 73, training Time(s): 0.0182, estimated train loss 0.3559, acc 97.6386, 97.7174
+evaluation Time: 0.0321, Train loss: 0.2828, Val loss: 0.5355, Test loss: 0.5190
+Train acc: (98.6653, 98.7326), Val acc: (85.5967, 84.9785), Test acc: (86.3028, 85.8872)
+
+Epoch 74, training Time(s): 0.0193, estimated train loss 0.3534, acc 97.6386, 97.5762
+evaluation Time: 0.0334, Train loss: 0.2818, Val loss: 0.5365, Test loss: 0.5193
+Train acc: (98.6653, 98.7326), Val acc: (85.5967, 84.9785), Test acc: (86.3028, 85.8941)
+
+Epoch 75, training Time(s): 0.0187, estimated train loss 0.3534, acc 97.3306, 97.3141
+evaluation Time: 0.0320, Train loss: 0.2807, Val loss: 0.5366, Test loss: 0.5196
+Train acc: (98.6653, 98.7326), Val acc: (85.5967, 84.9785), Test acc: (86.3028, 85.8894)
+
+Epoch 76, training Time(s): 0.0203, estimated train loss 0.3553, acc 97.7413, 97.7687
+evaluation Time: 0.0354, Train loss: 0.2797, Val loss: 0.5367, Test loss: 0.5198
+Train acc: (98.6653, 98.7326), Val acc: (85.5967, 84.9785), Test acc: (86.3380, 85.9337)
+
+Epoch 77, training Time(s): 0.0203, estimated train loss 0.3472, acc 97.1253, 97.1520
+evaluation Time: 0.0364, Train loss: 0.2788, Val loss: 0.5381, Test loss: 0.5199
+Train acc: (98.6653, 98.7326), Val acc: (85.1852, 84.5209), Test acc: (86.3028, 85.8933)
+
+Epoch 78, training Time(s): 0.0203, estimated train loss 0.3510, acc 97.3306, 97.3415
+evaluation Time: 0.0330, Train loss: 0.2779, Val loss: 0.5398, Test loss: 0.5205
+Train acc: (98.6653, 98.7326), Val acc: (85.1852, 84.4985), Test acc: (86.3028, 85.8964)
+
+Epoch 79, training Time(s): 0.0192, estimated train loss 0.3375, acc 98.0493, 98.0836
+evaluation Time: 0.0337, Train loss: 0.2769, Val loss: 0.5414, Test loss: 0.5210
+Train acc: (98.7680, 98.8289), Val acc: (85.1852, 84.5376), Test acc: (86.1972, 85.7968)
+
+Epoch 80, training Time(s): 0.0187, estimated train loss 0.3414, acc 98.2546, 98.2783
+evaluation Time: 0.0348, Train loss: 0.2761, Val loss: 0.5430, Test loss: 0.5215
+Train acc: (98.7680, 98.8289), Val acc: (85.1852, 84.5376), Test acc: (86.1620, 85.7489)
+	Current best at epoch 43 with Val loss 0.5204 (86.8313, 86.3812), Test loss 0.5117 (86.7254, 86.3435)
+Epoch 81, training Time(s): 0.0188, estimated train loss 0.3455, acc 97.7413, 97.7100
+evaluation Time: 0.0336, Train loss: 0.2752, Val loss: 0.5440, Test loss: 0.5220
+Train acc: (98.7680, 98.8289), Val acc: (85.1852, 84.5376), Test acc: (86.1268, 85.6875)
+
+Epoch 82, training Time(s): 0.0204, estimated train loss 0.3429, acc 97.6386, 97.6465
+evaluation Time: 0.0350, Train loss: 0.2742, Val loss: 0.5449, Test loss: 0.5227
+Train acc: (98.8706, 98.9202), Val acc: (85.1852, 84.5231), Test acc: (86.0915, 85.6391)
+
+Epoch 83, training Time(s): 0.0186, estimated train loss 0.3425, acc 97.8439, 97.8553
+evaluation Time: 0.0325, Train loss: 0.2730, Val loss: 0.5452, Test loss: 0.5233
+Train acc: (98.8706, 98.9202), Val acc: (85.1852, 84.5231), Test acc: (85.9859, 85.5319)
+
+Epoch 84, training Time(s): 0.0194, estimated train loss 0.3407, acc 98.1520, 98.1509
+evaluation Time: 0.0348, Train loss: 0.2720, Val loss: 0.5454, Test loss: 0.5237
+Train acc: (98.8706, 98.9202), Val acc: (85.1852, 84.5231), Test acc: (86.0563, 85.6084)
+
+Epoch 85, training Time(s): 0.0193, estimated train loss 0.3362, acc 98.1520, 98.1608
+evaluation Time: 0.0360, Train loss: 0.2713, Val loss: 0.5454, Test loss: 0.5241
+Train acc: (98.8706, 98.9202), Val acc: (85.1852, 84.5231), Test acc: (86.0211, 85.5683)
+
+Epoch 86, training Time(s): 0.0204, estimated train loss 0.3370, acc 98.0493, 98.0563
+evaluation Time: 0.0363, Train loss: 0.2706, Val loss: 0.5454, Test loss: 0.5243
+Train acc: (98.8706, 98.9202), Val acc: (85.1852, 84.5231), Test acc: (86.0563, 85.6037)
+
+Epoch 87, training Time(s): 0.0227, estimated train loss 0.3395, acc 97.5359, 97.5345
+evaluation Time: 0.0346, Train loss: 0.2700, Val loss: 0.5454, Test loss: 0.5245
+Train acc: (98.8706, 98.9202), Val acc: (85.5967, 84.9987), Test acc: (86.0563, 85.6102)
+
+Epoch 88, training Time(s): 0.0221, estimated train loss 0.3409, acc 98.0493, 98.0884
+evaluation Time: 0.0334, Train loss: 0.2693, Val loss: 0.5452, Test loss: 0.5247
+Train acc: (98.8706, 98.9202), Val acc: (85.5967, 84.9591), Test acc: (85.9859, 85.5298)
+
+Epoch 89, training Time(s): 0.0197, estimated train loss 0.3318, acc 98.1520, 98.1408
+evaluation Time: 0.0326, Train loss: 0.2687, Val loss: 0.5457, Test loss: 0.5251
+Train acc: (98.8706, 98.9202), Val acc: (85.5967, 84.9591), Test acc: (85.9155, 85.4410)
+
+Epoch 90, training Time(s): 0.0195, estimated train loss 0.3361, acc 98.2546, 98.3176
+evaluation Time: 0.0327, Train loss: 0.2681, Val loss: 0.5459, Test loss: 0.5256
+Train acc: (98.8706, 98.9202), Val acc: (85.5967, 84.9591), Test acc: (85.8803, 85.4256)
+	Current best at epoch 43 with Val loss 0.5204 (86.8313, 86.3812), Test loss 0.5117 (86.7254, 86.3435)
+Epoch 91, training Time(s): 0.0199, estimated train loss 0.3363, acc 97.8439, 97.9402
+evaluation Time: 0.0352, Train loss: 0.2676, Val loss: 0.5462, Test loss: 0.5261
+Train acc: (98.8706, 98.9202), Val acc: (85.1852, 84.5595), Test acc: (85.8803, 85.4255)
+
+Epoch 92, training Time(s): 0.0195, estimated train loss 0.3302, acc 98.1520, 98.2235
+evaluation Time: 0.0357, Train loss: 0.2670, Val loss: 0.5464, Test loss: 0.5267
+Train acc: (98.8706, 98.9202), Val acc: (84.7737, 84.1568), Test acc: (85.8451, 85.3962)
+
+Epoch 93, training Time(s): 0.0230, estimated train loss 0.3330, acc 97.8439, 97.9227
+evaluation Time: 0.0348, Train loss: 0.2664, Val loss: 0.5469, Test loss: 0.5274
+Train acc: (98.8706, 98.9202), Val acc: (84.3621, 83.6862), Test acc: (85.7042, 85.2536)
+
+average train times 0.022303244942112974
+Best Epoch 43 at 393419005f1e4d94b11eca0fbcf529f3
+	Final Val loss 0.5204 (86.8313, 86.3812), Test loss 0.5117 (86.7254, 86.3435)
+train_acc (96.41, 96.42) val_acc (86.83, 86.38) test_acc (86.73, 86.34)
+393419005f1e4d94b11eca0fbcf529f3

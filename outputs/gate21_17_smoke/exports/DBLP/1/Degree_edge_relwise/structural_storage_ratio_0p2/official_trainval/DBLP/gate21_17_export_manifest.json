@@ -1,0 +1,14 @@
+{
+  "dataset": "DBLP",
+  "method": "Degree-edge-relwise",
+  "requested_budget_type": "structural_storage_ratio",
+  "requested_budget": 0.2,
+  "graph_seed": 1,
+  "source_dir": "D:\\HeSF-Coarsen\\data\\dblp\\raw\\DBLP",
+  "export_dir": "outputs\\gate21_17_smoke\\exports\\DBLP\\1\\Degree_edge_relwise\\structural_storage_ratio_0p2\\official_trainval\\DBLP",
+  "support_node_ratio": "all_target_preserved",
+  "support_edge_ratio": 0.2000158620171477,
+  "raw_hgb_text_byte_ratio": 0.9733514448741529,
+  "selected_edge_hash": "a8ee7ca10cb29926e83a22fc83d88749f5031ddf733695bfcc5d0f315682b62d",
+  "planner_config_hash": "83f4e703207cd1259b1c9ea7ca10cf261bc75aadfc23e953c3a61c10ca72fb22"
+}

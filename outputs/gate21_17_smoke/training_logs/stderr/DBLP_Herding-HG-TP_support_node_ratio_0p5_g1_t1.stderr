@@ -1,0 +1,276 @@
+D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py:148: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scalar = torch.cuda.amp.GradScaler()
+C:\Users\slian\anaconda3\envs\pytorch\lib\site-packages\torch_sparse\matmul.py:97: UserWarning: Sparse CSR tensor support is in beta state. If you miss a functionality in the sparse tensor support, please submit a feature request to https://github.com/pytorch/pytorch/issues. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\SparseCsrTensorImpl.cpp:55.)
+  C = torch.sparse.mm(A, B)
+
+  0%|          | 0/4 [00:00<?, ?it/s]
+100%|██████████| 4/4 [00:00<00:00, 144.72it/s]
+
+  0%|          | 0/200 [00:00<?, ?it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  0%|          | 1/200 [00:00<01:38,  2.03it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  1%|          | 2/200 [00:00<01:02,  3.17it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  2%|▏         | 3/200 [00:00<00:48,  4.06it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  2%|▏         | 4/200 [00:01<00:41,  4.68it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  2%|▎         | 5/200 [00:01<00:37,  5.15it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  3%|▎         | 6/200 [00:01<00:35,  5.48it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  4%|▎         | 7/200 [00:01<00:34,  5.67it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  4%|▍         | 8/200 [00:01<00:34,  5.52it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  4%|▍         | 9/200 [00:01<00:33,  5.69it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  5%|▌         | 10/200 [00:01<00:29,  6.39it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  6%|▌         | 11/200 [00:02<00:27,  6.94it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  6%|▌         | 12/200 [00:02<00:25,  7.27it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  6%|▋         | 13/200 [00:02<00:24,  7.56it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  7%|▋         | 14/200 [00:02<00:24,  7.70it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  8%|▊         | 15/200 [00:02<00:23,  7.86it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  8%|▊         | 16/200 [00:02<00:23,  7.95it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  8%|▊         | 17/200 [00:02<00:22,  8.04it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+  9%|▉         | 18/200 [00:02<00:22,  8.18it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 10%|▉         | 19/200 [00:03<00:24,  7.34it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 10%|█         | 20/200 [00:03<00:24,  7.45it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 10%|█         | 21/200 [00:03<00:24,  7.26it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 11%|█         | 22/200 [00:03<00:26,  6.66it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 12%|█▏        | 23/200 [00:03<00:27,  6.40it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 12%|█▏        | 24/200 [00:03<00:28,  6.21it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 12%|█▎        | 25/200 [00:04<00:28,  6.19it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 13%|█▎        | 26/200 [00:04<00:28,  6.02it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 14%|█▎        | 27/200 [00:04<00:28,  5.99it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 14%|█▍        | 28/200 [00:04<00:30,  5.70it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 14%|█▍        | 29/200 [00:04<00:31,  5.50it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 15%|█▌        | 30/200 [00:04<00:31,  5.46it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 16%|█▌        | 31/200 [00:05<00:30,  5.57it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 16%|█▌        | 32/200 [00:05<00:29,  5.70it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 16%|█▋        | 33/200 [00:05<00:28,  5.81it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 17%|█▋        | 34/200 [00:05<00:28,  5.88it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 18%|█▊        | 35/200 [00:05<00:27,  5.90it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 18%|█▊        | 36/200 [00:05<00:27,  6.03it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 18%|█▊        | 37/200 [00:06<00:27,  5.87it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 19%|█▉        | 38/200 [00:06<00:27,  5.97it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 20%|█▉        | 39/200 [00:06<00:25,  6.32it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 20%|██        | 40/200 [00:06<00:23,  6.85it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 20%|██        | 41/200 [00:06<00:21,  7.26it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 21%|██        | 42/200 [00:06<00:21,  7.31it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 22%|██▏       | 43/200 [00:06<00:21,  7.39it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 22%|██▏       | 44/200 [00:07<00:21,  7.27it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 22%|██▎       | 45/200 [00:07<00:20,  7.55it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 23%|██▎       | 46/200 [00:07<00:20,  7.47it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 24%|██▎       | 47/200 [00:07<00:20,  7.63it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 24%|██▍       | 48/200 [00:07<00:20,  7.58it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 24%|██▍       | 49/200 [00:07<00:19,  7.89it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 25%|██▌       | 50/200 [00:07<00:18,  7.99it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 26%|██▌       | 51/200 [00:07<00:18,  8.09it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 26%|██▌       | 52/200 [00:08<00:18,  8.15it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 26%|██▋       | 53/200 [00:08<00:18,  8.01it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 27%|██▋       | 54/200 [00:08<00:18,  8.10it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 28%|██▊       | 55/200 [00:08<00:18,  8.03it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 28%|██▊       | 56/200 [00:08<00:17,  8.04it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 28%|██▊       | 57/200 [00:08<00:17,  7.98it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 29%|██▉       | 58/200 [00:08<00:18,  7.77it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 30%|██▉       | 59/200 [00:09<00:19,  7.38it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 30%|███       | 60/200 [00:09<00:19,  7.06it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 30%|███       | 61/200 [00:09<00:19,  7.12it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 31%|███       | 62/200 [00:09<00:19,  7.14it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 32%|███▏      | 63/200 [00:09<00:18,  7.42it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 32%|███▏      | 64/200 [00:09<00:17,  7.64it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 32%|███▎      | 65/200 [00:09<00:17,  7.80it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 33%|███▎      | 66/200 [00:09<00:16,  7.93it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 34%|███▎      | 67/200 [00:10<00:16,  7.91it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 34%|███▍      | 68/200 [00:10<00:16,  7.94it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 34%|███▍      | 69/200 [00:10<00:16,  7.98it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 35%|███▌      | 70/200 [00:10<00:15,  8.14it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 36%|███▌      | 71/200 [00:10<00:16,  7.97it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 36%|███▌      | 72/200 [00:10<00:16,  7.93it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 36%|███▋      | 73/200 [00:10<00:15,  7.99it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 37%|███▋      | 74/200 [00:10<00:16,  7.61it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 38%|███▊      | 75/200 [00:11<00:16,  7.63it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 38%|███▊      | 76/200 [00:11<00:16,  7.70it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 38%|███▊      | 77/200 [00:11<00:15,  7.84it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 39%|███▉      | 78/200 [00:11<00:15,  7.85it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 40%|███▉      | 79/200 [00:11<00:15,  8.06it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 40%|████      | 80/200 [00:11<00:14,  8.01it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 40%|████      | 81/200 [00:11<00:14,  8.13it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 41%|████      | 82/200 [00:11<00:14,  8.03it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 42%|████▏     | 83/200 [00:12<00:14,  8.09it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 42%|████▏     | 84/200 [00:12<00:14,  8.22it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 42%|████▎     | 85/200 [00:12<00:13,  8.45it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 43%|████▎     | 86/200 [00:12<00:13,  8.47it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 44%|████▎     | 87/200 [00:12<00:13,  8.23it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 44%|████▍     | 88/200 [00:12<00:13,  8.11it/s]D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py:214: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+
+ 44%|████▍     | 88/200 [00:12<00:16,  6.88it/s]

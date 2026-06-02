@@ -1,0 +1,723 @@
+Namespace(seeds=[1], dataset='ACM', gpu=0, cpu=False, root='D:\\HeSF-Coarsen\\outputs\\gate21_17_smoke\\exports\\ACM\\1\\Random_edge_relwise\\structural_storage_ratio_0p2\\official_trainval', epoch=200, embed_size=512, num_hops=4, label_feats=True, num_label_hops=4, n_fp_layers=2, n_task_layers=1, hidden=512, dropout=0.5, input_drop=0.5, att_drop=0.0, act='none', residual=False, amp=True, lr=0.001, weight_decay=0, batch_size=10000, patience=50, ACM_keep_F=False)
+SparseTensor(row=tensor([   0,    0,    1,  ..., 3019, 3021, 3021]),
+             col=tensor([ 179, 2697, 2523,  ..., 2547, 1001, 1110]),
+             size=(3025, 3025), nnz=5343, density=0.06%)
+SparseTensor(row=tensor([   0,    0,    0,  ..., 3019, 3019, 3022]),
+             col=tensor([ 526,  583,  589,  ..., 2591, 2648, 2584]),
+             size=(3025, 3025), nnz=5343, density=0.06%)
+SparseTensor(row=tensor([   0,    0,    0,  ..., 3024, 3024, 3024]),
+             col=tensor([   0,    1,    2,  ..., 5956, 5957, 5958]),
+             size=(3025, 5959), nnz=9949, density=0.06%)
+SparseTensor(row=tensor([   0,    0,    0,  ..., 5956, 5957, 5958]),
+             col=tensor([   0,  734, 3015,  ..., 3024, 3024, 3024]),
+             size=(5959, 3025), nnz=9949, density=0.06%)
+SparseTensor(row=tensor([   0,    1,    2,  ..., 3022, 3023, 3024]),
+             col=tensor([0, 1, 2,  ..., 5, 2, 2]),
+             size=(3025, 56), nnz=3025, density=1.79%)
+SparseTensor(row=tensor([ 0,  0,  0,  ..., 53, 54, 55]),
+             col=tensor([   0,   75,  586,  ..., 2796, 2607, 3014]),
+             size=(56, 3025), nnz=3025, density=1.79%)
+SparseTensor(row=tensor([   0,    0,    0,  ..., 3024, 3024, 3024]),
+             col=tensor([   0,    1,    2,  ..., 1687, 1719, 1809]),
+             size=(3025, 1902), nnz=255619, density=4.44%)
+SparseTensor(row=tensor([   0,    0,    0,  ..., 1901, 1901, 1901]),
+             col=tensor([   0,   32,   41,  ..., 2269, 2459, 2528]),
+             size=(1902, 3025), nnz=255619, density=4.44%)
+Current num hops = 4 for feature propagation
+A A-P PA
+C C-P PC
+P P-A AP
+P P-C CP
+P P-P PP
+remove ['A']
+remove ['C']
+-- hop=1 ---
+A AP torch.Size([5959, 1902]) tensor(1.) tensor(0.0020)
+C CP torch.Size([56, 1902]) tensor(0.1000) tensor(0.0058)
+P P torch.Size([3025, 1902]) tensor(1.) tensor(0.0026)
+P PA torch.Size([3025, 1902]) tensor(1.) tensor(0.0078)
+P PC torch.Size([3025, 1902]) tensor(1.) tensor(0.5312)
+P PP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+------
+
+AP A-P PAP
+CP C-P PCP
+PA P-A APA
+PC P-A APC
+PP P-A APP
+PA P-C CPA
+PC P-C CPC
+PP P-C CPP
+PA P-P PPA
+PC P-P PPC
+PP P-P PPP
+remove ['AP']
+remove ['CP']
+-- hop=2 ---
+A APA torch.Size([5959, 1902]) tensor(1.) tensor(0.0050)
+A APC torch.Size([5959, 1902]) tensor(1.) tensor(0.5038)
+A APP torch.Size([5959, 1902]) tensor(1.) tensor(0.0022)
+C CPA torch.Size([56, 1902]) tensor(0.5000) tensor(0.0176)
+C CPC torch.Size([56, 1902]) tensor(1.) tensor(0.1250)
+C CPP torch.Size([56, 1902]) tensor(0.1000) tensor(0.0049)
+P P torch.Size([3025, 1902]) tensor(1.) tensor(0.0026)
+P PA torch.Size([3025, 1902]) tensor(1.) tensor(0.0078)
+P PC torch.Size([3025, 1902]) tensor(1.) tensor(0.5312)
+P PP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+P PAP torch.Size([3025, 1902]) tensor(1.) tensor(0.0026)
+P PCP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0026)
+P PPA torch.Size([3025, 1902]) tensor(1.) tensor(0.0080)
+P PPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5313)
+P PPP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+------
+
+APA A-P PAPA
+APC A-P PAPC
+APP A-P PAPP
+CPA C-P PCPA
+CPC C-P PCPC
+CPP C-P PCPP
+PAP P-A APAP
+PCP P-A APCP
+PPA P-A APPA
+PPC P-A APPC
+PPP P-A APPP
+PAP P-C CPAP
+PCP P-C CPCP
+PPA P-C CPPA
+PPC P-C CPPC
+PPP P-C CPPP
+PAP P-P PPAP
+PCP P-P PPCP
+PPA P-P PPPA
+PPC P-P PPPC
+PPP P-P PPPP
+remove ['APA', 'APC', 'APP']
+remove ['CPA', 'CPC', 'CPP']
+-- hop=3 ---
+A APAP torch.Size([5959, 1902]) tensor(1.) tensor(0.0020)
+A APCP torch.Size([5959, 1902]) tensor(0.1000) tensor(0.0026)
+A APPA torch.Size([5959, 1902]) tensor(1.) tensor(0.0066)
+A APPC torch.Size([5959, 1902]) tensor(1.) tensor(0.5083)
+A APPP torch.Size([5959, 1902]) tensor(1.) tensor(0.0020)
+C CPAP torch.Size([56, 1902]) tensor(0.1667) tensor(0.0081)
+C CPCP torch.Size([56, 1902]) tensor(0.1000) tensor(0.0058)
+C CPPA torch.Size([56, 1902]) tensor(0.1250) tensor(0.0098)
+C CPPC torch.Size([56, 1902]) tensor(0.9045) tensor(0.3314)
+C CPPP torch.Size([56, 1902]) tensor(0.1000) tensor(0.0050)
+P P torch.Size([3025, 1902]) tensor(1.) tensor(0.0026)
+P PA torch.Size([3025, 1902]) tensor(1.) tensor(0.0078)
+P PC torch.Size([3025, 1902]) tensor(1.) tensor(0.5312)
+P PP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+P PAP torch.Size([3025, 1902]) tensor(1.) tensor(0.0026)
+P PCP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0026)
+P PPA torch.Size([3025, 1902]) tensor(1.) tensor(0.0080)
+P PPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5313)
+P PPP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+P PAPA torch.Size([3025, 1902]) tensor(1.) tensor(0.0075)
+P PAPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5301)
+P PAPP torch.Size([3025, 1902]) tensor(1.) tensor(0.0024)
+P PCPA torch.Size([3025, 1902]) tensor(0.5000) tensor(0.0078)
+P PCPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5312)
+P PCPP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0023)
+P PPAP torch.Size([3025, 1902]) tensor(1.) tensor(0.0025)
+P PPCP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0026)
+P PPPA torch.Size([3025, 1902]) tensor(1.) tensor(0.0082)
+P PPPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5329)
+P PPPP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+------
+
+APAP A-P PAPAP
+APCP A-P PAPCP
+APPA A-P PAPPA
+APPC A-P PAPPC
+APPP A-P PAPPP
+CPAP C-P PCPAP
+CPCP C-P PCPCP
+CPPA C-P PCPPA
+CPPC C-P PCPPC
+CPPP C-P PCPPP
+PAPA P-P PPAPA
+PAPC P-P PPAPC
+PAPP P-P PPAPP
+PCPA P-P PPCPA
+PCPC P-P PPCPC
+PCPP P-P PPCPP
+PPAP P-P PPPAP
+PPCP P-P PPPCP
+PPPA P-P PPPPA
+PPPC P-P PPPPC
+PPPP P-P PPPPP
+remove ['APAP', 'APCP', 'APPA', 'APPC', 'APPP']
+remove ['CPAP', 'CPCP', 'CPPA', 'CPPC', 'CPPP']
+-- hop=4 ---
+P P torch.Size([3025, 1902]) tensor(1.) tensor(0.0026)
+P PA torch.Size([3025, 1902]) tensor(1.) tensor(0.0078)
+P PC torch.Size([3025, 1902]) tensor(1.) tensor(0.5312)
+P PP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+P PAP torch.Size([3025, 1902]) tensor(1.) tensor(0.0026)
+P PCP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0026)
+P PPA torch.Size([3025, 1902]) tensor(1.) tensor(0.0080)
+P PPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5313)
+P PPP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+P PAPA torch.Size([3025, 1902]) tensor(1.) tensor(0.0075)
+P PAPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5301)
+P PAPP torch.Size([3025, 1902]) tensor(1.) tensor(0.0024)
+P PCPA torch.Size([3025, 1902]) tensor(0.5000) tensor(0.0078)
+P PCPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5312)
+P PCPP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0023)
+P PPAP torch.Size([3025, 1902]) tensor(1.) tensor(0.0025)
+P PPCP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0026)
+P PPPA torch.Size([3025, 1902]) tensor(1.) tensor(0.0082)
+P PPPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5329)
+P PPPP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+P PAPAP torch.Size([3025, 1902]) tensor(1.) tensor(0.0026)
+P PAPCP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0026)
+P PAPPA torch.Size([3025, 1902]) tensor(1.) tensor(0.0080)
+P PAPPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5306)
+P PAPPP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+P PCPAP torch.Size([3025, 1902]) tensor(0.1667) tensor(0.0026)
+P PCPCP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0026)
+P PCPPA torch.Size([3025, 1902]) tensor(0.1250) tensor(0.0080)
+P PCPPC torch.Size([3025, 1902]) tensor(0.9045) tensor(0.5313)
+P PCPPP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0023)
+P PPAPA torch.Size([3025, 1902]) tensor(1.) tensor(0.0077)
+P PPAPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5298)
+P PPAPP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+P PPCPA torch.Size([3025, 1902]) tensor(0.1734) tensor(0.0078)
+P PPCPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5313)
+P PPCPP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0023)
+P PPPAP torch.Size([3025, 1902]) tensor(1.) tensor(0.0025)
+P PPPCP torch.Size([3025, 1902]) tensor(0.1000) tensor(0.0026)
+P PPPPA torch.Size([3025, 1902]) tensor(1.) tensor(0.0083)
+P PPPPC torch.Size([3025, 1902]) tensor(1.) tensor(0.5328)
+P PPPPP torch.Size([3025, 1902]) tensor(1.) tensor(0.0023)
+------
+
+For tgt type P, feature keys (num=41):
+P torch.Size([3025, 1902])
+PA torch.Size([3025, 1902])
+PC torch.Size([3025, 1902])
+PP torch.Size([3025, 1902])
+PAP torch.Size([3025, 1902])
+PCP torch.Size([3025, 1902])
+PPA torch.Size([3025, 1902])
+PPC torch.Size([3025, 1902])
+PPP torch.Size([3025, 1902])
+PAPA torch.Size([3025, 1902])
+PAPC torch.Size([3025, 1902])
+PAPP torch.Size([3025, 1902])
+PCPA torch.Size([3025, 1902])
+PCPC torch.Size([3025, 1902])
+PCPP torch.Size([3025, 1902])
+PPAP torch.Size([3025, 1902])
+PPCP torch.Size([3025, 1902])
+PPPA torch.Size([3025, 1902])
+PPPC torch.Size([3025, 1902])
+PPPP torch.Size([3025, 1902])
+PAPAP torch.Size([3025, 1902])
+PAPCP torch.Size([3025, 1902])
+PAPPA torch.Size([3025, 1902])
+PAPPC torch.Size([3025, 1902])
+PAPPP torch.Size([3025, 1902])
+PCPAP torch.Size([3025, 1902])
+PCPCP torch.Size([3025, 1902])
+PCPPA torch.Size([3025, 1902])
+PCPPC torch.Size([3025, 1902])
+PCPPP torch.Size([3025, 1902])
+PPAPA torch.Size([3025, 1902])
+PPAPC torch.Size([3025, 1902])
+PPAPP torch.Size([3025, 1902])
+PPCPA torch.Size([3025, 1902])
+PPCPC torch.Size([3025, 1902])
+PPCPP torch.Size([3025, 1902])
+PPPAP torch.Size([3025, 1902])
+PPPCP torch.Size([3025, 1902])
+PPPPA torch.Size([3025, 1902])
+PPPPC torch.Size([3025, 1902])
+PPPPP torch.Size([3025, 1902])
+
+Time used for feat prop 0:00:00.546889
+Restart with seed = 1
+checkpt_file ./output/ACM/73be626277704e02ac22c1ad4f7f898e
+#Train 726, #Val 181, #Test 2118
+Current num hops = 4 for label propagation
+Generating ... PPP
+Generating ... APP
+Generating ... CPP
+Generating ... PAP
+Generating ... PCP
+remove ['AP', 'CP']
+Generating ... PPPP
+Generating ... APPP
+Generating ... CPPP
+Generating ... PAPP
+Generating ... PCPP
+Generating ... PPAP
+Generating ... APAP
+Generating ... CPAP
+Generating ... PPCP
+Generating ... APCP
+Generating ... CPCP
+remove ['APP', 'CPP']
+Generating ... PPPPP
+Generating ... PAPPP
+Generating ... PCPPP
+Generating ... PPAPP
+Generating ... PPCPP
+Generating ... PPPAP
+Generating ... PAPAP
+Generating ... PCPAP
+Generating ... PPPCP
+Generating ... PAPCP
+Generating ... PCPCP
+remove ['APPP', 'CPPP', 'APAP', 'CPAP', 'APCP', 'CPCP']
+For label propagation, meta_adjs: (in SparseTensor mode)
+PP [3025, 3025]
+PPP [3025, 3025]
+PAP [3025, 3025]
+PCP [3025, 3025]
+PPPP [3025, 3025]
+PAPP [3025, 3025]
+PCPP [3025, 3025]
+PPAP [3025, 3025]
+PPCP [3025, 3025]
+PPPPP [3025, 3025]
+PAPPP [3025, 3025]
+PCPPP [3025, 3025]
+PPAPP [3025, 3025]
+PPCPP [3025, 3025]
+PPPAP [3025, 3025]
+PAPAP [3025, 3025]
+PCPAP [3025, 3025]
+PPPCP [3025, 3025]
+PAPCP [3025, 3025]
+PCPCP [3025, 3025]
+
+PP tensor(0.5923) tensor(0.6464) tensor(0.6147) tensor(7.9728) tensor(7.9523) tensor(8.0070) tensor(-8.3728) tensor(-3.6511) tensor(-0.2576) tensor(0.4279)
+PPP tensor(0.7231) tensor(0.7348) tensor(0.7398) tensor(4.6659) tensor(4.6740) tensor(4.6234) tensor(-1.5877) tensor(-2.2584) tensor(0.1733) tensor(-0.9196)
+PAP tensor(0.6474) tensor(0.6298) tensor(0.6379) tensor(5.9903) tensor(5.9764) tensor(6.1706) tensor(2.7862) tensor(1.4920) tensor(-0.2326) tensor(2.9216)
+PCP tensor(0.7273) tensor(0.6740) tensor(0.6695) tensor(1.0162) tensor(0.9769) tensor(1.1152) tensor(7.8987) tensor(8.6293) tensor(-4.0215) tensor(8.8782)
+PPPP tensor(0.7410) tensor(0.7403) tensor(0.7677) tensor(4.1057) tensor(3.9026) tensor(3.8465) tensor(0.0966) tensor(-3.4725) tensor(-5.2024) tensor(-6.7368)
+PAPP tensor(0.7548) tensor(0.7569) tensor(0.7616) tensor(3.4020) tensor(3.0312) tensor(3.1907) tensor(-0.2755) tensor(-0.8859) tensor(-12.2313) tensor(-6.6223)
+PCPP tensor(0.7300) tensor(0.6740) tensor(0.6761) tensor(0.6883) tensor(0.9098) tensor(0.7511) tensor(8.3074) tensor(7.9747) tensor(24.3435) tensor(8.3576)
+PPAP tensor(0.7631) tensor(0.7790) tensor(0.7852) tensor(3.1110) tensor(3.2051) tensor(2.8900) tensor(-2.0436) tensor(-2.8133) tensor(2.9362) tensor(-7.6485)
+PPCP tensor(0.7466) tensor(0.7293) tensor(0.7318) tensor(0.5748) tensor(0.7464) tensor(0.7412) tensor(2.3687) tensor(2.0133) tensor(22.9852) tensor(22.4443)
+PPPPP tensor(0.7548) tensor(0.7514) tensor(0.7743) tensor(3.9195) tensor(3.8300) tensor(3.6766) tensor(0.4578) tensor(-2.5176) tensor(-2.3367) tensor(-6.6044)
+PAPPP tensor(0.8099) tensor(0.7845) tensor(0.8149) tensor(2.3103) tensor(2.1511) tensor(2.0496) tensor(3.2359) tensor(-0.6139) tensor(-7.4004) tensor(-12.7195)
+PCPPP tensor(0.7259) tensor(0.6851) tensor(0.6775) tensor(0.5998) tensor(0.5094) tensor(0.6577) tensor(5.9573) tensor(7.1391) tensor(-17.7461) tensor(8.8004)
+PPAPP tensor(0.8085) tensor(0.8177) tensor(0.8196) tensor(2.1964) tensor(2.2820) tensor(2.0685) tensor(-1.1178) tensor(-1.3544) tensor(3.7486) tensor(-6.1866)
+PPCPP tensor(0.7521) tensor(0.7624) tensor(0.7479) tensor(0.5391) tensor(0.6820) tensor(0.6428) tensor(-1.3594) tensor(0.5604) tensor(20.9541) tensor(16.1305)
+PPPAP tensor(0.7961) tensor(0.8122) tensor(0.8244) tensor(2.6328) tensor(2.6155) tensor(2.3866) tensor(-1.9715) tensor(-3.4232) tensor(-0.6603) tensor(-10.3118)
+PAPAP tensor(0.6887) tensor(0.6851) tensor(0.6799) tensor(4.6129) tensor(4.2766) tensor(4.4334) tensor(0.5287) tensor(1.2971) tensor(-7.8635) tensor(-4.0492)
+PCPAP tensor(0.7355) tensor(0.6740) tensor(0.6728) tensor(0.6611) tensor(0.7793) tensor(0.7792) tensor(9.1248) tensor(9.3240) tensor(15.1698) tensor(15.1588)
+PPPCP tensor(0.7782) tensor(0.7514) tensor(0.7602) tensor(0.5611) tensor(0.7515) tensor(0.7293) tensor(3.5742) tensor(2.3792) tensor(25.3351) tensor(23.0658)
+PAPCP tensor(0.7603) tensor(0.6961) tensor(0.7115) tensor(0.5209) tensor(0.8522) tensor(0.7706) tensor(9.2221) tensor(6.8600) tensor(38.8777) tensor(32.4036)
+PCPCP tensor(0.7273) tensor(0.6740) tensor(0.6695) tensor(1.0162) tensor(0.9769) tensor(1.1152) tensor(7.8987) tensor(8.6293) tensor(-4.0215) tensor(8.8782)
+{'PAP', 'PPCP', 'PAPPP', 'PPAPP', 'PCPPP', 'PCPAP', 'PPPCP', 'PAPCP', 'PPPAP', 'PPP', 'PAPAP', 'PCPCP', 'PPPP', 'PCPP', 'PPPPP', 'PCP', 'PAPP', 'PPAP', 'PP', 'PPCPP'}
+tensor(0.9725)
+tensor(0.9779)
+tensor(0.9712)
+Involved label keys dict_keys(['PP', 'PPP', 'PAP', 'PCP', 'PPPP', 'PAPP', 'PCPP', 'PPAP', 'PPCP', 'PPPPP', 'PAPPP', 'PCPPP', 'PPAPP', 'PPCPP', 'PPPAP', 'PAPAP', 'PCPAP', 'PPPCP', 'PAPCP', 'PCPCP'])
+Time used for label prop 0:00:02.067818
+SeHGNN(
+  (input_drop): Dropout(p=0.5, inplace=False)
+  (embeding): ParameterDict(
+      (P): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PA): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PC): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PAP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PCP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPA): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPC): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PAPA): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PAPC): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PAPP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PCPA): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PCPC): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PCPP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPAP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPCP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPPA): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPPC): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPPP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PAPAP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PAPCP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PAPPA): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PAPPC): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PAPPP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PCPAP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PCPCP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PCPPA): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PCPPC): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PCPPP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPAPA): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPAPC): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPAPP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPCPA): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPCPC): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPCPP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPPAP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPPCP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPPPA): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPPPC): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+      (PPPPP): Parameter containing: [torch.cuda.FloatTensor of size 1902x512 (cuda:0)]
+  )
+  (labels_embeding): ParameterDict(
+      (PAP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PAPAP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PAPCP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PAPP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PAPPP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PCP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PCPAP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PCPCP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PCPP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PCPPP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PPAP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PPAPP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PPCP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PPCPP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PPP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PPPAP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PPPCP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PPPP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+      (PPPPP): Parameter containing: [torch.cuda.FloatTensor of size 3x512 (cuda:0)]
+  )
+  (feature_projection): Sequential(
+    (0): LinearPerMetapath()
+    (1): LayerNorm((61, 512), eps=1e-05, elementwise_affine=True)
+    (2): PReLU(num_parameters=1)
+    (3): Dropout(p=0.5, inplace=False)
+    (4): LinearPerMetapath()
+    (5): LayerNorm((61, 512), eps=1e-05, elementwise_affine=True)
+    (6): PReLU(num_parameters=1)
+    (7): Dropout(p=0.5, inplace=False)
+  )
+  (semantic_fusion): Transformer(
+    (query): Linear(in_features=512, out_features=128, bias=True)
+    (key): Linear(in_features=512, out_features=128, bias=True)
+    (value): Linear(in_features=512, out_features=512, bias=True)
+    (att_drop): Dropout(p=0.0, inplace=False)
+  )
+  (fc_after_concat): Linear(in_features=31232, out_features=512, bias=True)
+  (task_mlp): Sequential(
+    (0): PReLU(num_parameters=1)
+    (1): Dropout(p=0.5, inplace=False)
+    (2): Linear(in_features=512, out_features=3, bias=True)
+    (3): BatchNorm1d(3, eps=1e-05, momentum=0.1, affine=False, track_running_stats=False)
+  )
+)
+# Params: 88513287
+Epoch 0, training Time(s): 0.3716, estimated train loss 1.4195, acc 30.9917, 30.6965
+evaluation Time: 0.3269, Train loss: 0.4360, Val loss: 0.4665, Test loss: 0.4894
+Train acc: (86.3636, 86.3699), Val acc: (85.6354, 86.0148), Test acc: (85.0803, 85.3257)
+
+Epoch 1, training Time(s): 0.0980, estimated train loss 0.7916, acc 66.3912, 65.8451
+evaluation Time: 0.1735, Train loss: 0.4103, Val loss: 0.4378, Test loss: 0.4544
+Train acc: (88.7052, 88.6685), Val acc: (91.1602, 91.3523), Test acc: (87.5826, 87.7640)
+
+Epoch 2, training Time(s): 0.1036, estimated train loss 0.6359, acc 75.0689, 74.7346
+evaluation Time: 0.1757, Train loss: 0.4053, Val loss: 0.4308, Test loss: 0.4444
+Train acc: (90.2204, 90.1576), Val acc: (92.8177, 92.9548), Test acc: (89.6128, 89.7424)
+
+Epoch 3, training Time(s): 0.1009, estimated train loss 0.5453, acc 81.6804, 81.5130
+evaluation Time: 0.1775, Train loss: 0.3948, Val loss: 0.4186, Test loss: 0.4317
+Train acc: (91.3223, 91.2112), Val acc: (94.4751, 94.5503), Test acc: (90.8876, 90.9950)
+
+Epoch 4, training Time(s): 0.1012, estimated train loss 0.4833, acc 86.9146, 86.7612
+evaluation Time: 0.1766, Train loss: 0.3785, Val loss: 0.4009, Test loss: 0.4151
+Train acc: (93.2507, 93.1313), Val acc: (96.1326, 96.1384), Test acc: (91.2181, 91.3133)
+
+Epoch 5, training Time(s): 0.1159, estimated train loss 0.4592, acc 88.5675, 88.4060
+evaluation Time: 0.1746, Train loss: 0.3591, Val loss: 0.3800, Test loss: 0.3962
+Train acc: (93.9394, 93.8250), Val acc: (95.5801, 95.6002), Test acc: (91.5958, 91.6832)
+
+Epoch 6, training Time(s): 0.0961, estimated train loss 0.4190, acc 90.6336, 90.5753
+evaluation Time: 0.1765, Train loss: 0.3396, Val loss: 0.3586, Test loss: 0.3776
+Train acc: (94.2149, 94.1155), Val acc: (96.1326, 96.1172), Test acc: (92.4929, 92.5611)
+
+Epoch 7, training Time(s): 0.0981, estimated train loss 0.3969, acc 92.4242, 92.3369
+evaluation Time: 0.1736, Train loss: 0.3257, Val loss: 0.3431, Test loss: 0.3655
+Train acc: (94.3526, 94.2518), Val acc: (95.5801, 95.5765), Test acc: (92.9651, 93.0268)
+
+Epoch 8, training Time(s): 0.0994, estimated train loss 0.3749, acc 93.2507, 93.1601
+evaluation Time: 0.1749, Train loss: 0.3173, Val loss: 0.3343, Test loss: 0.3591
+Train acc: (94.9036, 94.8216), Val acc: (95.5801, 95.5765), Test acc: (93.6261, 93.6848)
+
+Epoch 9, training Time(s): 0.0986, estimated train loss 0.3652, acc 92.9752, 92.8555
+evaluation Time: 0.1730, Train loss: 0.3111, Val loss: 0.3287, Test loss: 0.3550
+Train acc: (95.7300, 95.6656), Val acc: (96.1326, 96.1172), Test acc: (93.7205, 93.7752)
+
+Epoch 10, training Time(s): 0.1042, estimated train loss 0.3531, acc 95.0413, 94.9901
+evaluation Time: 0.1771, Train loss: 0.3054, Val loss: 0.3243, Test loss: 0.3514
+Train acc: (95.8678, 95.8119), Val acc: (96.1326, 96.1172), Test acc: (93.8149, 93.8719)
+	Current best at epoch 10 with Val loss 0.3243 (96.1326, 96.1172), Test loss 0.3514 (93.8149, 93.8719)
+Epoch 11, training Time(s): 0.1057, estimated train loss 0.3437, acc 94.4904, 94.4399
+evaluation Time: 0.1772, Train loss: 0.3001, Val loss: 0.3210, Test loss: 0.3484
+Train acc: (95.7300, 95.6842), Val acc: (97.2376, 97.2310), Test acc: (93.8621, 93.9231)
+
+Epoch 12, training Time(s): 0.0980, estimated train loss 0.3364, acc 95.5923, 95.5731
+evaluation Time: 0.1762, Train loss: 0.2955, Val loss: 0.3190, Test loss: 0.3462
+Train acc: (96.0055, 95.9656), Val acc: (97.2376, 97.2310), Test acc: (93.8149, 93.8824)
+
+Epoch 13, training Time(s): 0.1057, estimated train loss 0.3260, acc 95.0413, 95.0188
+evaluation Time: 0.1747, Train loss: 0.2918, Val loss: 0.3180, Test loss: 0.3447
+Train acc: (96.4187, 96.3864), Val acc: (97.2376, 97.2364), Test acc: (93.8149, 93.8853)
+
+Epoch 14, training Time(s): 0.0982, estimated train loss 0.3233, acc 95.7300, 95.7123
+evaluation Time: 0.1762, Train loss: 0.2887, Val loss: 0.3175, Test loss: 0.3437
+Train acc: (96.6942, 96.6631), Val acc: (96.6851, 96.7076), Test acc: (93.9093, 93.9842)
+
+Epoch 15, training Time(s): 0.1030, estimated train loss 0.3157, acc 96.2810, 96.2532
+evaluation Time: 0.1740, Train loss: 0.2857, Val loss: 0.3171, Test loss: 0.3429
+Train acc: (96.9697, 96.9368), Val acc: (96.6851, 96.7076), Test acc: (93.5788, 93.6640)
+
+Epoch 16, training Time(s): 0.1320, estimated train loss 0.3138, acc 96.5565, 96.5264
+evaluation Time: 0.1743, Train loss: 0.2827, Val loss: 0.3165, Test loss: 0.3419
+Train acc: (97.1074, 97.0768), Val acc: (97.2376, 97.2364), Test acc: (93.8149, 93.8942)
+
+Epoch 17, training Time(s): 0.1001, estimated train loss 0.3134, acc 96.1433, 96.1098
+evaluation Time: 0.1785, Train loss: 0.2795, Val loss: 0.3156, Test loss: 0.3408
+Train acc: (97.2452, 97.2138), Val acc: (97.2376, 97.2364), Test acc: (94.0038, 94.0741)
+
+Epoch 18, training Time(s): 0.0977, estimated train loss 0.3051, acc 96.8320, 96.8179
+evaluation Time: 0.1754, Train loss: 0.2764, Val loss: 0.3145, Test loss: 0.3397
+Train acc: (97.2452, 97.2138), Val acc: (96.6851, 96.7076), Test acc: (94.0982, 94.1637)
+
+Epoch 19, training Time(s): 0.0982, estimated train loss 0.3062, acc 96.5565, 96.5397
+evaluation Time: 0.1724, Train loss: 0.2734, Val loss: 0.3136, Test loss: 0.3386
+Train acc: (97.2452, 97.2207), Val acc: (96.6851, 96.7076), Test acc: (94.0510, 94.1153)
+
+Epoch 20, training Time(s): 0.0987, estimated train loss 0.3036, acc 96.2810, 96.2442
+evaluation Time: 0.1744, Train loss: 0.2705, Val loss: 0.3128, Test loss: 0.3377
+Train acc: (97.5207, 97.4952), Val acc: (96.6851, 96.7076), Test acc: (93.8621, 93.9289)
+	Current best at epoch 20 with Val loss 0.3128 (96.6851, 96.7076), Test loss 0.3377 (93.8621, 93.9289)
+Epoch 21, training Time(s): 0.1009, estimated train loss 0.3005, acc 96.4187, 96.3608
+evaluation Time: 0.1755, Train loss: 0.2676, Val loss: 0.3121, Test loss: 0.3369
+Train acc: (97.6584, 97.6326), Val acc: (96.1326, 96.1739), Test acc: (93.8621, 93.9280)
+
+Epoch 22, training Time(s): 0.1026, estimated train loss 0.2960, acc 96.8320, 96.7968
+evaluation Time: 0.1720, Train loss: 0.2647, Val loss: 0.3115, Test loss: 0.3362
+Train acc: (97.7961, 97.7678), Val acc: (96.1326, 96.1739), Test acc: (93.9093, 93.9737)
+
+Epoch 23, training Time(s): 0.0965, estimated train loss 0.2916, acc 97.5207, 97.5049
+evaluation Time: 0.1726, Train loss: 0.2617, Val loss: 0.3110, Test loss: 0.3356
+Train acc: (97.7961, 97.7678), Val acc: (96.1326, 96.1739), Test acc: (93.9566, 94.0235)
+
+Epoch 24, training Time(s): 0.0983, estimated train loss 0.2860, acc 97.5207, 97.4927
+evaluation Time: 0.1750, Train loss: 0.2587, Val loss: 0.3108, Test loss: 0.3353
+Train acc: (98.0716, 98.0477), Val acc: (96.1326, 96.1739), Test acc: (93.9093, 93.9766)
+
+Epoch 25, training Time(s): 0.1114, estimated train loss 0.2856, acc 97.6584, 97.6350
+evaluation Time: 0.2047, Train loss: 0.2558, Val loss: 0.3108, Test loss: 0.3352
+Train acc: (98.2094, 98.1873), Val acc: (96.6851, 96.7076), Test acc: (93.9566, 94.0237)
+
+Epoch 26, training Time(s): 0.0975, estimated train loss 0.2796, acc 98.0716, 98.0460
+evaluation Time: 0.1713, Train loss: 0.2531, Val loss: 0.3108, Test loss: 0.3352
+Train acc: (98.3471, 98.3269), Val acc: (96.6851, 96.7076), Test acc: (93.9566, 94.0237)
+
+Epoch 27, training Time(s): 0.0983, estimated train loss 0.2827, acc 97.9339, 97.9043
+evaluation Time: 0.1776, Train loss: 0.2504, Val loss: 0.3109, Test loss: 0.3353
+Train acc: (98.6226, 98.6041), Val acc: (96.6851, 96.7076), Test acc: (94.0038, 94.0746)
+
+Epoch 28, training Time(s): 0.0975, estimated train loss 0.2769, acc 98.4848, 98.4781
+evaluation Time: 0.1787, Train loss: 0.2479, Val loss: 0.3110, Test loss: 0.3354
+Train acc: (98.7603, 98.7525), Val acc: (96.6851, 96.7076), Test acc: (94.0982, 94.1664)
+
+Epoch 29, training Time(s): 0.0982, estimated train loss 0.2750, acc 98.0716, 98.0516
+evaluation Time: 0.1736, Train loss: 0.2454, Val loss: 0.3110, Test loss: 0.3353
+Train acc: (98.7603, 98.7525), Val acc: (96.6851, 96.7076), Test acc: (94.0510, 94.1209)
+
+Epoch 30, training Time(s): 0.0992, estimated train loss 0.2718, acc 98.4848, 98.4598
+evaluation Time: 0.1731, Train loss: 0.2431, Val loss: 0.3110, Test loss: 0.3352
+Train acc: (98.7603, 98.7525), Val acc: (96.6851, 96.7076), Test acc: (93.9566, 94.0273)
+	Current best at epoch 25 with Val loss 0.3108 (96.6851, 96.7076), Test loss 0.3352 (93.9566, 94.0237)
+Epoch 31, training Time(s): 0.1000, estimated train loss 0.2690, acc 98.6226, 98.5917
+evaluation Time: 0.1713, Train loss: 0.2408, Val loss: 0.3110, Test loss: 0.3350
+Train acc: (99.0358, 99.0233), Val acc: (96.6851, 96.7076), Test acc: (93.9566, 94.0282)
+
+Epoch 32, training Time(s): 0.1024, estimated train loss 0.2685, acc 98.6226, 98.6041
+evaluation Time: 0.1732, Train loss: 0.2387, Val loss: 0.3112, Test loss: 0.3350
+Train acc: (99.1736, 99.1611), Val acc: (96.6851, 96.7076), Test acc: (93.9093, 93.9832)
+
+Epoch 33, training Time(s): 0.0993, estimated train loss 0.2671, acc 98.8981, 98.8825
+evaluation Time: 0.1744, Train loss: 0.2365, Val loss: 0.3117, Test loss: 0.3350
+Train acc: (99.3113, 99.2998), Val acc: (96.6851, 96.7076), Test acc: (93.8149, 93.8925)
+
+Epoch 34, training Time(s): 0.1008, estimated train loss 0.2624, acc 98.8981, 98.8825
+evaluation Time: 0.1754, Train loss: 0.2345, Val loss: 0.3123, Test loss: 0.3353
+Train acc: (99.4490, 99.4384), Val acc: (96.6851, 96.7115), Test acc: (93.7677, 93.8480)
+
+Epoch 35, training Time(s): 0.1025, estimated train loss 0.2654, acc 99.1736, 99.1611
+evaluation Time: 0.1782, Train loss: 0.2325, Val loss: 0.3130, Test loss: 0.3356
+Train acc: (99.4490, 99.4384), Val acc: (96.6851, 96.7115), Test acc: (93.6733, 93.7578)
+
+Epoch 36, training Time(s): 0.1010, estimated train loss 0.2610, acc 99.3113, 99.3007
+evaluation Time: 0.1750, Train loss: 0.2307, Val loss: 0.3138, Test loss: 0.3361
+Train acc: (99.5868, 99.5769), Val acc: (96.1326, 96.1785), Test acc: (93.5788, 93.6658)
+
+Epoch 37, training Time(s): 0.1033, estimated train loss 0.2571, acc 99.5868, 99.5769
+evaluation Time: 0.1743, Train loss: 0.2288, Val loss: 0.3146, Test loss: 0.3367
+Train acc: (99.5868, 99.5769), Val acc: (96.1326, 96.1785), Test acc: (93.5316, 93.6206)
+
+Epoch 38, training Time(s): 0.0973, estimated train loss 0.2594, acc 99.0358, 99.0039
+evaluation Time: 0.1744, Train loss: 0.2270, Val loss: 0.3156, Test loss: 0.3373
+Train acc: (99.5868, 99.5769), Val acc: (96.1326, 96.1785), Test acc: (93.3900, 93.4841)
+
+Epoch 39, training Time(s): 0.0990, estimated train loss 0.2546, acc 99.4490, 99.4392
+evaluation Time: 0.1765, Train loss: 0.2253, Val loss: 0.3164, Test loss: 0.3380
+Train acc: (99.7245, 99.7153), Val acc: (95.5801, 95.6451), Test acc: (93.1067, 93.2089)
+
+Epoch 40, training Time(s): 0.1006, estimated train loss 0.2544, acc 99.5868, 99.5769
+evaluation Time: 0.1737, Train loss: 0.2236, Val loss: 0.3172, Test loss: 0.3387
+Train acc: (99.7245, 99.7153), Val acc: (95.0276, 95.1113), Test acc: (93.2011, 93.3018)
+	Current best at epoch 25 with Val loss 0.3108 (96.6851, 96.7076), Test loss 0.3352 (93.9566, 94.0237)
+Epoch 41, training Time(s): 0.0978, estimated train loss 0.2537, acc 99.7245, 99.7148
+evaluation Time: 0.1737, Train loss: 0.2219, Val loss: 0.3177, Test loss: 0.3392
+Train acc: (99.7245, 99.7153), Val acc: (95.0276, 95.1113), Test acc: (93.1539, 93.2563)
+
+Epoch 42, training Time(s): 0.1014, estimated train loss 0.2526, acc 99.3113, 99.3007
+evaluation Time: 0.1734, Train loss: 0.2203, Val loss: 0.3183, Test loss: 0.3397
+Train acc: (99.8623, 99.8532), Val acc: (95.0276, 95.1113), Test acc: (93.1539, 93.2559)
+
+Epoch 43, training Time(s): 0.1024, estimated train loss 0.2516, acc 99.8623, 99.8532
+evaluation Time: 0.1718, Train loss: 0.2188, Val loss: 0.3189, Test loss: 0.3403
+Train acc: (99.8623, 99.8532), Val acc: (95.0276, 95.1113), Test acc: (93.0595, 93.1634)
+
+Epoch 44, training Time(s): 0.0967, estimated train loss 0.2512, acc 99.8623, 99.8532
+evaluation Time: 0.1729, Train loss: 0.2174, Val loss: 0.3198, Test loss: 0.3411
+Train acc: (99.8623, 99.8532), Val acc: (95.0276, 95.1113), Test acc: (93.0595, 93.1634)
+
+Epoch 45, training Time(s): 0.1008, estimated train loss 0.2504, acc 99.8623, 99.8532
+evaluation Time: 0.1757, Train loss: 0.2160, Val loss: 0.3210, Test loss: 0.3421
+Train acc: (99.8623, 99.8532), Val acc: (95.0276, 95.1113), Test acc: (93.0123, 93.1144)
+
+Epoch 46, training Time(s): 0.0961, estimated train loss 0.2486, acc 99.7245, 99.7148
+evaluation Time: 0.1724, Train loss: 0.2146, Val loss: 0.3219, Test loss: 0.3429
+Train acc: (99.8623, 99.8532), Val acc: (95.0276, 95.1113), Test acc: (92.9178, 93.0230)
+
+Epoch 47, training Time(s): 0.1022, estimated train loss 0.2467, acc 99.8623, 99.8532
+evaluation Time: 0.1767, Train loss: 0.2134, Val loss: 0.3227, Test loss: 0.3437
+Train acc: (99.8623, 99.8532), Val acc: (95.0276, 95.1113), Test acc: (92.8706, 92.9772)
+
+Epoch 48, training Time(s): 0.0992, estimated train loss 0.2461, acc 99.8623, 99.8532
+evaluation Time: 0.1769, Train loss: 0.2123, Val loss: 0.3233, Test loss: 0.3443
+Train acc: (99.8623, 99.8532), Val acc: (95.0276, 95.1113), Test acc: (92.9178, 93.0230)
+
+Epoch 49, training Time(s): 0.1006, estimated train loss 0.2435, acc 99.8623, 99.8532
+evaluation Time: 0.1701, Train loss: 0.2113, Val loss: 0.3238, Test loss: 0.3448
+Train acc: (99.8623, 99.8532), Val acc: (95.0276, 95.1113), Test acc: (92.8234, 92.9305)
+
+Epoch 50, training Time(s): 0.0964, estimated train loss 0.2447, acc 99.7245, 99.7148
+evaluation Time: 0.1736, Train loss: 0.2103, Val loss: 0.3244, Test loss: 0.3453
+Train acc: (99.8623, 99.8532), Val acc: (95.0276, 95.1113), Test acc: (92.8706, 92.9763)
+	Current best at epoch 25 with Val loss 0.3108 (96.6851, 96.7076), Test loss 0.3352 (93.9566, 94.0237)
+Epoch 51, training Time(s): 0.0970, estimated train loss 0.2424, acc 99.8623, 99.8532
+evaluation Time: 0.1724, Train loss: 0.2094, Val loss: 0.3249, Test loss: 0.3459
+Train acc: (99.8623, 99.8532), Val acc: (95.0276, 95.1113), Test acc: (92.7290, 92.8375)
+
+Epoch 52, training Time(s): 0.0970, estimated train loss 0.2423, acc 100.0000, 100.0000
+evaluation Time: 0.1738, Train loss: 0.2085, Val loss: 0.3255, Test loss: 0.3465
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.6346, 92.7492)
+
+Epoch 53, training Time(s): 0.0978, estimated train loss 0.2427, acc 99.8623, 99.8532
+evaluation Time: 0.1741, Train loss: 0.2076, Val loss: 0.3263, Test loss: 0.3471
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.4929, 92.6117)
+
+Epoch 54, training Time(s): 0.1004, estimated train loss 0.2408, acc 99.8623, 99.8532
+evaluation Time: 0.1747, Train loss: 0.2068, Val loss: 0.3271, Test loss: 0.3478
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.3985, 92.5196)
+
+Epoch 55, training Time(s): 0.1000, estimated train loss 0.2406, acc 99.8623, 99.8532
+evaluation Time: 0.1741, Train loss: 0.2059, Val loss: 0.3280, Test loss: 0.3485
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.3513, 92.4738)
+
+Epoch 56, training Time(s): 0.0975, estimated train loss 0.2405, acc 100.0000, 100.0000
+evaluation Time: 0.1745, Train loss: 0.2051, Val loss: 0.3290, Test loss: 0.3493
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.3513, 92.4781)
+
+Epoch 57, training Time(s): 0.0979, estimated train loss 0.2386, acc 100.0000, 100.0000
+evaluation Time: 0.1746, Train loss: 0.2044, Val loss: 0.3299, Test loss: 0.3500
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.4457, 92.5708)
+
+Epoch 58, training Time(s): 0.0973, estimated train loss 0.2397, acc 100.0000, 100.0000
+evaluation Time: 0.1752, Train loss: 0.2038, Val loss: 0.3308, Test loss: 0.3506
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.2096, 92.3338)
+
+Epoch 59, training Time(s): 0.0974, estimated train loss 0.2382, acc 100.0000, 100.0000
+evaluation Time: 0.1718, Train loss: 0.2032, Val loss: 0.3314, Test loss: 0.3510
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.1624, 92.2879)
+
+Epoch 60, training Time(s): 0.0977, estimated train loss 0.2375, acc 100.0000, 100.0000
+evaluation Time: 0.1768, Train loss: 0.2026, Val loss: 0.3320, Test loss: 0.3512
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.1152, 92.2416)
+	Current best at epoch 25 with Val loss 0.3108 (96.6851, 96.7076), Test loss 0.3352 (93.9566, 94.0237)
+Epoch 61, training Time(s): 0.1003, estimated train loss 0.2372, acc 100.0000, 100.0000
+evaluation Time: 0.1750, Train loss: 0.2022, Val loss: 0.3325, Test loss: 0.3513
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.0208, 92.1492)
+
+Epoch 62, training Time(s): 0.1027, estimated train loss 0.2376, acc 100.0000, 100.0000
+evaluation Time: 0.1676, Train loss: 0.2017, Val loss: 0.3328, Test loss: 0.3513
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.9736, 92.1027)
+
+Epoch 63, training Time(s): 0.0985, estimated train loss 0.2368, acc 100.0000, 100.0000
+evaluation Time: 0.1717, Train loss: 0.2013, Val loss: 0.3330, Test loss: 0.3513
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.8791, 92.0094)
+
+Epoch 64, training Time(s): 0.0965, estimated train loss 0.2376, acc 100.0000, 100.0000
+evaluation Time: 0.1716, Train loss: 0.2009, Val loss: 0.3332, Test loss: 0.3514
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.8791, 92.0094)
+
+Epoch 65, training Time(s): 0.0968, estimated train loss 0.2357, acc 100.0000, 100.0000
+evaluation Time: 0.1717, Train loss: 0.2005, Val loss: 0.3335, Test loss: 0.3515
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.9263, 92.0552)
+
+Epoch 66, training Time(s): 0.0984, estimated train loss 0.2353, acc 100.0000, 100.0000
+evaluation Time: 0.1717, Train loss: 0.2001, Val loss: 0.3338, Test loss: 0.3517
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.8791, 92.0098)
+
+Epoch 67, training Time(s): 0.1014, estimated train loss 0.2362, acc 100.0000, 100.0000
+evaluation Time: 0.1714, Train loss: 0.1997, Val loss: 0.3341, Test loss: 0.3518
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.9263, 92.0564)
+
+Epoch 68, training Time(s): 0.0995, estimated train loss 0.2345, acc 100.0000, 100.0000
+evaluation Time: 0.1725, Train loss: 0.1994, Val loss: 0.3344, Test loss: 0.3520
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.9263, 92.0568)
+
+Epoch 69, training Time(s): 0.0952, estimated train loss 0.2355, acc 100.0000, 100.0000
+evaluation Time: 0.1706, Train loss: 0.1990, Val loss: 0.3347, Test loss: 0.3521
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.8791, 92.0109)
+
+Epoch 70, training Time(s): 0.0980, estimated train loss 0.2339, acc 100.0000, 100.0000
+evaluation Time: 0.1761, Train loss: 0.1987, Val loss: 0.3348, Test loss: 0.3520
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.9736, 92.1033)
+	Current best at epoch 25 with Val loss 0.3108 (96.6851, 96.7076), Test loss 0.3352 (93.9566, 94.0237)
+Epoch 71, training Time(s): 0.0979, estimated train loss 0.2342, acc 100.0000, 100.0000
+evaluation Time: 0.1736, Train loss: 0.1984, Val loss: 0.3350, Test loss: 0.3519
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.9736, 92.1030)
+
+Epoch 72, training Time(s): 0.1004, estimated train loss 0.2348, acc 100.0000, 100.0000
+evaluation Time: 0.1744, Train loss: 0.1981, Val loss: 0.3352, Test loss: 0.3518
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (91.9736, 92.1030)
+
+Epoch 73, training Time(s): 0.1016, estimated train loss 0.2335, acc 100.0000, 100.0000
+evaluation Time: 0.1759, Train loss: 0.1979, Val loss: 0.3354, Test loss: 0.3516
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.0208, 92.1489)
+
+Epoch 74, training Time(s): 0.0976, estimated train loss 0.2332, acc 100.0000, 100.0000
+evaluation Time: 0.1737, Train loss: 0.1976, Val loss: 0.3357, Test loss: 0.3514
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.0208, 92.1487)
+
+Epoch 75, training Time(s): 0.1016, estimated train loss 0.2331, acc 100.0000, 100.0000
+evaluation Time: 0.1765, Train loss: 0.1974, Val loss: 0.3360, Test loss: 0.3512
+Train acc: (100.0000, 100.0000), Val acc: (94.4751, 94.5827), Test acc: (92.0208, 92.1487)
+
+average train times 0.10375797903382933
+Best Epoch 25 at 73be626277704e02ac22c1ad4f7f898e
+	Final Val loss 0.3108 (96.6851, 96.7076), Test loss 0.3352 (93.9566, 94.0237)
+train_acc (98.21, 98.19) val_acc (96.69, 96.71) test_acc (93.96, 94.02)
+73be626277704e02ac22c1ad4f7f898e

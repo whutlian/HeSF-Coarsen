@@ -1,0 +1,14 @@
+{
+  "dataset": "DBLP",
+  "method": "HGCond-score-TP-local",
+  "requested_budget_type": "support_node_ratio",
+  "requested_budget": 0.5,
+  "graph_seed": 1,
+  "source_dir": "D:\\HeSF-Coarsen\\data\\dblp\\raw\\DBLP",
+  "export_dir": "outputs\\gate21_17_smoke\\exports\\DBLP\\1\\HGCond_score_TP_local\\support_node_ratio_0p5\\official_trainval\\DBLP",
+  "support_node_ratio": 0.4876081736214943,
+  "support_edge_ratio": 0.5661654825810006,
+  "raw_hgb_text_byte_ratio": 0.5118805814025809,
+  "selected_edge_hash": "bff7996ff505279aa56ae1a4709f2af52c4453c5c996275b5353ba3902436ceb",
+  "planner_config_hash": "7a61f116740ff764184ab974cbd661a1ab5353e0ecac0377cce9900e3afbdfac"
+}

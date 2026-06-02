@@ -1,0 +1,14 @@
+{
+  "dataset": "DBLP",
+  "method": "FreeHGC-score-TP",
+  "requested_budget_type": "structural_storage_ratio",
+  "requested_budget": 0.2,
+  "graph_seed": 1,
+  "source_dir": "D:\\HeSF-Coarsen\\data\\dblp\\raw\\DBLP",
+  "export_dir": "outputs\\gate21_17_smoke\\exports\\DBLP\\1\\FreeHGC_score_TP\\structural_storage_ratio_0p2\\official_trainval\\DBLP",
+  "support_node_ratio": 0.43849395133886093,
+  "support_edge_ratio": 0.11327567350959653,
+  "raw_hgb_text_byte_ratio": 0.48523595039340783,
+  "selected_edge_hash": "babd368aebf30b77ce8c28332b72719655c28e856fdbf0ef064a7267c425264b",
+  "planner_config_hash": "0a9de59a99ccdcd6d36911a33fe81a00cf8b1853c6399c37b40a0893aeb0eddb"
+}

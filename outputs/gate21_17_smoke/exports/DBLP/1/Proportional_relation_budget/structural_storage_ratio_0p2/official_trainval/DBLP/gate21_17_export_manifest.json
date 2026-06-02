@@ -1,0 +1,14 @@
+{
+  "dataset": "DBLP",
+  "method": "Proportional-relation-budget",
+  "requested_budget_type": "structural_storage_ratio",
+  "requested_budget": 0.2,
+  "graph_seed": 1,
+  "source_dir": "D:\\HeSF-Coarsen\\data\\dblp\\raw\\DBLP",
+  "export_dir": "outputs\\gate21_17_smoke\\exports\\DBLP\\1\\Proportional_relation_budget\\structural_storage_ratio_0p2\\official_trainval\\DBLP",
+  "support_node_ratio": "all_target_preserved",
+  "support_edge_ratio": 0.2000158620171477,
+  "raw_hgb_text_byte_ratio": 0.9731947453502058,
+  "selected_edge_hash": "1f258538b0ece5ea8c89cbc718c71747acfbd897c88c37715d6cde5309031996",
+  "planner_config_hash": "3626a28b2e10ce0658ce2df206397d3ba26b2c123a10545c1bb6af4f57ac6421"
+}
