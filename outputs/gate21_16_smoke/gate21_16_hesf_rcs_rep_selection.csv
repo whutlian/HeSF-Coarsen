@@ -1,0 +1,8 @@
+dataset,candidate_method,requested_budget,actual_structural_ratio,validation_micro_f1,validation_macro_f1,validation_proxy_score,test_micro_f1,test_macro_f1,selected_as_rep,selection_source,uses_test_for_selection,selected_edge_hash,planner_config_hash,selection_rank
+DBLP,HeSF-RCS-auto structural12,0.12,0.11951718894668302,,,0.953770196,0.9447888000000001,0.9405382,True,validation_proxy,False,240529d8a23de77b2e84e2982b97536b1afd41eb1648bc112ccbca988d736476,e1573e8488ad75bf47007b991bb6325033ffcdda25001aa4e662dbadf0b58630,1
+DBLP,HeSF-RCS-auto structural16,0.16,0.15916430179078186,,,0.937695148,0.9497888,0.946167,False,validation_proxy,False,bea49e9a3e68d44baafd75257133b6024ee628509587c8c9a9be189930c837a8,23e285fede80cb0af48e105d629b50806ad6773502857f9444fbabd39ffcd3d7,2
+DBLP,HeSF-RCS-auto structural20,0.2,0.15916430179078186,,,0.937695148,0.9497888,0.946167,False,validation_proxy,False,bea49e9a3e68d44baafd75257133b6024ee628509587c8c9a9be189930c837a8,a50d9876706afcf510325c453596941e5ee7726cecc060d7ffc110b1fa8cb151,3
+DBLP,HeSF-RCS-auto structural30,0.3,0.15916430179078186,,,0.937695148,0.9497888,0.946167,False,validation_proxy,False,bea49e9a3e68d44baafd75257133b6024ee628509587c8c9a9be189930c837a8,4a704b138d4d134cc142bcfebfb23abd61f86d64f8894590a2db7da04263ff91,4
+DBLP,HeSF-RCS-auto structural50,0.5,0.15916430179078186,,,0.937695148,0.9497888,0.946167,False,validation_proxy,False,bea49e9a3e68d44baafd75257133b6024ee628509587c8c9a9be189930c837a8,1277b32f74f4f4cc2452627faca0d7628c67faf0db4d51ebd0880ae9b44c0036,5
+ACM,,,,,,,,,False,missing_candidate,False,,,
+IMDB,,,,,,,,,False,missing_candidate,False,,,

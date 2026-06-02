@@ -1,0 +1,5 @@
+baseline_name,repo_url,local_path,clone_attempted,clone_success,commit_hash,branch_or_tag,remote_url,required_files_present,missing_required_files,adapter_implemented,protocol_supported,failure_type,failure_reason
+FreeHGC,https://github.com/GooLiang/FreeHGC,external_repos\FreeHGC,False,True,5b19ece44b58c0f07732d68bb91291c257455de2,main,https://github.com/GooLiang/FreeHGC,False,HGB/model_hgb.py,True,False,missing_required_file,Missing required files: HGB/model_hgb.py
+HGCond,https://github.com/jianjianGJ/hgcond,external_repos\hgcond,False,True,ee7cdfba3bcbcaa645d0caff1c0f379e9f7c4e24,main,https://github.com/jianjianGJ/hgcond,True,,False,False,,
+GCond,https://github.com/ChandlerBang/GCond,external_repos\GCond,False,True,e0065cfdfd95963d988c359266a4fb0a4bdf60a1,main,https://github.com/ChandlerBang/GCond,True,,False,False,,
+GCondenser,https://github.com/superallen13/GCondenser,external_repos\GCondenser,False,True,decfd6a86b91a1f64b54c541534f72b4b7c9b381,master,https://github.com/superallen13/GCondenser,True,,False,False,,

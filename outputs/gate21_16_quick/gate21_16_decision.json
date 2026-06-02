@@ -1,0 +1,58 @@
+{
+  "FULL_NATIVE_READY_BY_DATASET": true,
+  "EXPORT_FULL_FIDELITY_PASS_BY_DATASET": true,
+  "ACM_EXPORT_CONSISTENCY_PASS": true,
+  "IMDB_EXPORT_CONSISTENCY_PASS": true,
+  "STRUCTURAL_BASELINES_EXECUTED_BY_DATASET": false,
+  "EXTERNAL_TP_SMOKE_EXECUTED_BY_DATASET": true,
+  "EXTERNAL_TP_QUICK_READY_BY_DATASET": false,
+  "FREEHGC_STANDARD_ATTEMPTED": true,
+  "FREEHGC_SCORE_TP_EXECUTED": false,
+  "HESF_RCS_AUTO_EXECUTED_BY_DATASET": false,
+  "HESF_RCS_REP_SELECTED_WITHOUT_TEST_LEAKAGE": false,
+  "HESF_RCS_REP_TASK_RESULTS_READY": false,
+  "STAGE_REPORT_SMOKE_READY": false,
+  "STAGE_REPORT_QUICK_READY": false,
+  "NO_DIAGNOSTIC_OR_ADAPTER_ROWS_IN_MAIN_TABLE": true,
+  "NO_PLACEHOLDER_NUMERIC_VALUES_IN_SUCCESS_ROWS": true,
+  "FULL_NATIVE_READY_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "EXPORT_FULL_FIDELITY_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "STRUCTURAL_BASELINES_EXECUTED_DETAIL_BY_DATASET": {
+    "DBLP": false,
+    "ACM": false,
+    "IMDB": false
+  },
+  "EXTERNAL_TP_SMOKE_EXECUTED_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "EXTERNAL_TP_QUICK_READY_DETAIL_BY_DATASET": {
+    "DBLP": false,
+    "ACM": false,
+    "IMDB": false
+  },
+  "HESF_RCS_AUTO_EXECUTED_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": false,
+    "IMDB": false
+  },
+  "HESF_RCS_REP_SELECTED_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": false,
+    "IMDB": false
+  },
+  "HESF_RCS_REP_TASK_READY_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": false,
+    "IMDB": false
+  }
+}

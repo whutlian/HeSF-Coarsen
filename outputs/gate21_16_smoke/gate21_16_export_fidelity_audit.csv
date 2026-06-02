@@ -1,0 +1,53 @@
+dataset,method,schema_compatible,target_preserving,official_hgb_exported,official_sehgnn_unmodified,training_executed,success,failure_type,failure_reason
+DBLP,Full-native-SeHGNN,True,True,True,True,True,True,,
+DBLP,Export-full-SeHGNN,True,True,True,True,True,True,,
+ACM,Full-native-SeHGNN,True,True,True,True,True,True,,
+ACM,Export-full-SeHGNN,True,True,True,True,True,True,,
+IMDB,Full-native-SeHGNN,True,True,True,True,True,True,,
+IMDB,Export-full-SeHGNN,True,True,True,True,True,True,,
+DBLP,H6-node30,True,True,True,True,True,True,,
+ACM,H6-node30,True,True,True,True,False,False,export_repaired_pending_official_training,"ACM conservative consistency preflight passes; prior PK size mismatch is no longer the terminal failure, official retraining remains pending."
+IMDB,H6-node30,True,True,True,True,True,True,,
+DBLP,HeSF-RCS-auto structural50,True,True,True,True,True,True,,
+DBLP,HeSF-RCS-auto structural30,True,True,True,True,True,True,,
+DBLP,HeSF-RCS-auto structural20,True,True,True,True,True,True,,
+DBLP,HeSF-RCS-auto structural16,True,True,True,True,True,True,,
+DBLP,HeSF-RCS-auto structural12,True,True,True,True,True,True,,
+ACM,HeSF-RCS-auto structural50,True,True,True,True,False,False,implemented_pending_official_training,ACM HeSF-RCS-auto 0.50 local selector/export path is implemented; official task training remains pending.
+ACM,HeSF-RCS-auto structural30,True,True,True,True,False,False,implemented_pending_official_training,ACM HeSF-RCS-auto 0.30 local selector/export path is implemented; official task training remains pending.
+ACM,HeSF-RCS-auto structural20,True,True,True,True,False,False,implemented_pending_official_training,ACM HeSF-RCS-auto 0.20 local selector/export path is implemented; official task training remains pending.
+ACM,HeSF-RCS-auto structural16,True,True,True,True,False,False,implemented_pending_official_training,ACM HeSF-RCS-auto 0.16 local selector/export path is implemented; official task training remains pending.
+ACM,HeSF-RCS-auto structural12,True,True,True,True,False,False,implemented_pending_official_training,ACM HeSF-RCS-auto 0.12 local selector/export path is implemented; official task training remains pending.
+IMDB,HeSF-RCS-auto structural50,True,True,True,True,False,False,implemented_pending_official_training,IMDB HeSF-RCS-auto 0.50 local selector/export path is implemented; official task training remains pending.
+IMDB,HeSF-RCS-auto structural30,True,True,True,True,False,False,implemented_pending_official_training,IMDB HeSF-RCS-auto 0.30 local selector/export path is implemented; official task training remains pending.
+IMDB,HeSF-RCS-auto structural20,True,True,True,True,False,False,implemented_pending_official_training,IMDB HeSF-RCS-auto 0.20 local selector/export path is implemented; official task training remains pending.
+IMDB,HeSF-RCS-auto structural16,True,True,True,True,False,False,implemented_pending_official_training,IMDB HeSF-RCS-auto 0.16 local selector/export path is implemented; official task training remains pending.
+IMDB,HeSF-RCS-auto structural12,True,True,True,True,False,False,implemented_pending_official_training,IMDB HeSF-RCS-auto 0.12 local selector/export path is implemented; official task training remains pending.
+DBLP,Random-edge-relwise,True,True,True,True,False,False,implemented_pending_official_training,Random-edge-relwise local relation-wise implementation generated a schema-preserving export plan; official SeHGNN training is pending.
+DBLP,Degree-edge-relwise,True,True,True,True,False,False,implemented_pending_official_training,Degree-edge-relwise local relation-wise implementation generated a schema-preserving export plan; official SeHGNN training is pending.
+DBLP,Proportional-relation-budget,True,True,True,True,False,False,implemented_pending_official_training,Proportional-relation-budget local relation-wise implementation generated a schema-preserving export plan; official SeHGNN training is pending.
+ACM,Random-edge-relwise,True,True,True,True,False,False,implemented_pending_official_training,Random-edge-relwise local relation-wise implementation generated a schema-preserving export plan; official SeHGNN training is pending.
+ACM,Degree-edge-relwise,True,True,True,True,False,False,implemented_pending_official_training,Degree-edge-relwise local relation-wise implementation generated a schema-preserving export plan; official SeHGNN training is pending.
+ACM,Proportional-relation-budget,True,True,True,True,False,False,implemented_pending_official_training,Proportional-relation-budget local relation-wise implementation generated a schema-preserving export plan; official SeHGNN training is pending.
+IMDB,Random-edge-relwise,True,True,True,True,False,False,implemented_pending_official_training,Random-edge-relwise local relation-wise implementation generated a schema-preserving export plan; official SeHGNN training is pending.
+IMDB,Degree-edge-relwise,True,True,True,True,False,False,implemented_pending_official_training,Degree-edge-relwise local relation-wise implementation generated a schema-preserving export plan; official SeHGNN training is pending.
+IMDB,Proportional-relation-budget,True,True,True,True,False,False,implemented_pending_official_training,Proportional-relation-budget local relation-wise implementation generated a schema-preserving export plan; official SeHGNN training is pending.
+DBLP,Random-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,Random-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+DBLP,Herding-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,Herding-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+DBLP,KCenter-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,KCenter-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+DBLP,GraphSparsify-TP,True,True,True,True,False,False,implemented_pending_official_training,GraphSparsify-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+DBLP,Coarsening-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,Coarsening-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+DBLP,FreeHGC-score-TP,True,True,True,True,False,False,implemented_pending_official_training,FreeHGC-score-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+ACM,Random-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,Random-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+ACM,Herding-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,Herding-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+ACM,KCenter-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,KCenter-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+ACM,GraphSparsify-TP,True,True,True,True,False,False,implemented_pending_official_training,GraphSparsify-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+ACM,Coarsening-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,Coarsening-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+ACM,FreeHGC-score-TP,True,True,True,True,False,False,implemented_pending_official_training,FreeHGC-score-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+IMDB,Random-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,Random-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+IMDB,Herding-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,Herding-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+IMDB,KCenter-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,KCenter-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+IMDB,GraphSparsify-TP,True,True,True,True,False,False,implemented_pending_official_training,GraphSparsify-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+IMDB,Coarsening-HG-TP,True,True,True,True,False,False,implemented_pending_official_training,Coarsening-HG-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+IMDB,FreeHGC-score-TP,True,True,True,True,False,False,implemented_pending_official_training,FreeHGC-score-TP local target-preserving implementation/proxy was added; official SeHGNN task training is pending.
+DBLP,HeSF-RCS-Rep,True,True,True,True,True,True,,

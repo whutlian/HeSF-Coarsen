@@ -1,0 +1,2 @@
+dataset,method,protocol,repo_url,clone_success,required_files_present,training_executed,success,failure_type,failure_reason
+ALL,FreeHGC-standard,upstream_standard_condensation,https://github.com/GooLiang/FreeHGC,True,False,False,False,upstream_incomplete_local_score_fallback_added,Upstream FreeHGC standard HGB files are incomplete in this checkout; Gate21.16 adds FreeHGC-score-TP local fallback instead of stopping at hard failure.

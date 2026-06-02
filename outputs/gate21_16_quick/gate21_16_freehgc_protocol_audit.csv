@@ -1,0 +1,3 @@
+protocol,upstream_attempted,clone_success,required_files_present,local_fallback_implemented,current_status,remaining_gap
+FreeHGC-standard,True,True,False,True,upstream_incomplete_local_score_fallback_added,Run upstream standard condensation only after required HGB model files/dependencies are available.
+FreeHGC-score-TP,True,True,False,True,implemented_pending_official_training,15 local score-TP rows need official SeHGNN training.
