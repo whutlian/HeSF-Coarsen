@@ -1,0 +1,4 @@
+dataset,candidate_method,candidate_requested_budget,candidate_actual_structural_ratio,validation_micro_f1,validation_macro_f1,test_micro_f1,test_macro_f1,selected_as_rep,selection_rank,selection_reason,uses_test_for_selection,selected_edge_hash,planner_config_hash,failure_type,failure_reason
+DBLP,,,,,,,,False,,validation_metrics_missing,False,,,validation_metrics_missing,No eligible HeSF-RCS-auto row has validation_micro_f1 and validation_macro_f1.
+ACM,,,,,,,,False,,validation_metrics_missing,False,,,validation_metrics_missing,No eligible HeSF-RCS-auto row has validation_micro_f1 and validation_macro_f1.
+IMDB,,,,,,,,False,,validation_metrics_missing,False,,,validation_metrics_missing,No eligible HeSF-RCS-auto row has validation_micro_f1 and validation_macro_f1.

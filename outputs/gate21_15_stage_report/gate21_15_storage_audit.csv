@@ -1,0 +1,176 @@
+dataset,method,requested_budget_type,requested_budget,actual_structural_storage_ratio,support_node_ratio,support_edge_ratio,total_node_ratio,total_edge_ratio,raw_hgb_text_byte_ratio,link_dat_bytes,node_dat_bytes,export_total_bytes,native_full_total_bytes,success,failure_type,failure_reason
+DBLP,Full-native-SeHGNN,,,,,,,,,,,,,True,,
+DBLP,Export-full-SeHGNN,,,,,,,,,,,,,True,,
+ACM,Full-native-SeHGNN,,,,,,,,,,,,,True,,
+ACM,Export-full-SeHGNN,,,,,,,,,,,,,True,,
+IMDB,Full-native-SeHGNN,,,,,,,,,,,,,True,,
+IMDB,Export-full-SeHGNN,,,,,,,,,,,,,True,,
+DBLP,H6-node30,support_node_ratio,0.3,0.7765286382078632,0.3,0.8166434302029504,,,0.7765286382078632,,,,,True,,
+DBLP,flatten-node30,support_node_ratio,0.3,0.8210460153409561,0.3,0.8660160456826094,,,0.8210460153409561,,,,,True,,
+DBLP,TypedHash-node30,support_node_ratio,0.3,0.8866101605606449,0.3,0.9387308716595845,,,0.8866101605606449,,,,,True,,
+ACM,H6-node30,support_node_ratio,0.3,0.8274864266106432,0.3,0.8341546930669937,,,,,,,,False,failed_runtime,"Traceback (most recent call last):
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 588, in <module>
+    main(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\main.py"", line 22, in main
+    g, adjs, init_labels, num_classes, dl, trainval_nid, test_nid = load_dataset(args)
+  File ""D:\HeSF-Coarsen\external\SeHGNN\hgb\utils.py"", line 383, in load_dataset
+    assert torch.all(row == PK.storage.row()) and torch.all(col == PK.storage.col())
+RuntimeError: The size of tensor a (255619) must match the size of tensor b (213104) at non-singleton dimension 0"
+ACM,flatten-node30,support_node_ratio,0.3,,0.3,,,,,,,,,False,missing_task_metric,flatten-node30 has no official SeHGNN task metric for ACM.
+ACM,TypedHash-node30,support_node_ratio,0.3,,0.3,,,,,,,,,False,missing_task_metric,TypedHash-node30 has no official SeHGNN task metric for ACM.
+IMDB,H6-node30,support_node_ratio,0.3,0.8926449630767522,0.3,0.9993074952101753,,,0.8926449630767522,,,,,True,,
+IMDB,flatten-node30,support_node_ratio,0.3,,0.3,,,,,,,,,False,missing_task_metric,flatten-node30 has no official SeHGNN task metric for IMDB.
+IMDB,TypedHash-node30,support_node_ratio,0.3,,0.3,,,,,,,,,False,missing_task_metric,TypedHash-node30 has no official SeHGNN task metric for IMDB.
+DBLP,Random-edge-relwise,structural_storage_ratio,0.5,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.50 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Random-edge-relwise,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.30 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Random-edge-relwise,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.20 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Random-edge-relwise,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.16 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Random-edge-relwise,structural_storage_ratio,0.12,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.12 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Degree-edge-relwise,structural_storage_ratio,0.5,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.50 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Degree-edge-relwise,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.30 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Degree-edge-relwise,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.20 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Degree-edge-relwise,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.16 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Degree-edge-relwise,structural_storage_ratio,0.12,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.12 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Proportional-relation-budget,structural_storage_ratio,0.5,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.50 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Proportional-relation-budget,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.30 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Proportional-relation-budget,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.20 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Proportional-relation-budget,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.16 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Proportional-relation-budget,structural_storage_ratio,0.12,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.12 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Random-edge-relwise,structural_storage_ratio,0.5,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.50 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Random-edge-relwise,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.30 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Random-edge-relwise,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.20 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Random-edge-relwise,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.16 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Random-edge-relwise,structural_storage_ratio,0.12,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.12 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Degree-edge-relwise,structural_storage_ratio,0.5,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.50 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Degree-edge-relwise,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.30 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Degree-edge-relwise,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.20 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Degree-edge-relwise,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.16 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Degree-edge-relwise,structural_storage_ratio,0.12,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.12 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Proportional-relation-budget,structural_storage_ratio,0.5,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.50 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Proportional-relation-budget,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.30 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Proportional-relation-budget,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.20 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Proportional-relation-budget,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.16 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+ACM,Proportional-relation-budget,structural_storage_ratio,0.12,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.12 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Random-edge-relwise,structural_storage_ratio,0.5,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.50 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Random-edge-relwise,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.30 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Random-edge-relwise,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.20 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Random-edge-relwise,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.16 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Random-edge-relwise,structural_storage_ratio,0.12,,,,,,,,,,,False,not_executed,"Random-edge-relwise at structural budget 0.12 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Degree-edge-relwise,structural_storage_ratio,0.5,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.50 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Degree-edge-relwise,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.30 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Degree-edge-relwise,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.20 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Degree-edge-relwise,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.16 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Degree-edge-relwise,structural_storage_ratio,0.12,,,,,,,,,,,False,not_executed,"Degree-edge-relwise at structural budget 0.12 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Proportional-relation-budget,structural_storage_ratio,0.5,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.50 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Proportional-relation-budget,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.30 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Proportional-relation-budget,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.20 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Proportional-relation-budget,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.16 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+IMDB,Proportional-relation-budget,structural_storage_ratio,0.12,,,,,,,,,,,False,not_executed,"Proportional-relation-budget at structural budget 0.12 is planned for Gate21.15 quick, but no official SeHGNN task metric exists locally."
+DBLP,Random-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,Random-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Random-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,Random-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Random-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,Random-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Random-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,Random-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Random-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,Random-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Herding-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,Herding-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Herding-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,Herding-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Herding-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,Herding-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Herding-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,Herding-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Herding-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,Herding-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,KCenter-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,KCenter-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,KCenter-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,KCenter-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,KCenter-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,KCenter-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,KCenter-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,KCenter-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,KCenter-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,KCenter-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,GraphSparsify-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,GraphSparsify-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,GraphSparsify-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,GraphSparsify-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,GraphSparsify-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,GraphSparsify-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,GraphSparsify-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,GraphSparsify-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,GraphSparsify-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,GraphSparsify-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Coarsening-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,Coarsening-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Coarsening-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,Coarsening-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Coarsening-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,Coarsening-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Coarsening-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,Coarsening-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,Coarsening-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,Coarsening-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Random-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,Random-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Random-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,Random-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Random-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,Random-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Random-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,Random-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Random-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,Random-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Herding-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,Herding-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Herding-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,Herding-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Herding-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,Herding-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Herding-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,Herding-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Herding-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,Herding-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,KCenter-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,KCenter-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,KCenter-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,KCenter-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,KCenter-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,KCenter-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,KCenter-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,KCenter-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,KCenter-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,KCenter-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,GraphSparsify-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,GraphSparsify-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,GraphSparsify-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,GraphSparsify-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,GraphSparsify-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,GraphSparsify-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,GraphSparsify-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,GraphSparsify-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,GraphSparsify-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,GraphSparsify-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Coarsening-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,Coarsening-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Coarsening-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,Coarsening-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Coarsening-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,Coarsening-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Coarsening-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,Coarsening-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+ACM,Coarsening-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,Coarsening-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Random-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,Random-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Random-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,Random-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Random-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,Random-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Random-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,Random-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Random-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,Random-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Herding-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,Herding-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Herding-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,Herding-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Herding-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,Herding-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Herding-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,Herding-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Herding-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,Herding-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,KCenter-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,KCenter-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,KCenter-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,KCenter-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,KCenter-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,KCenter-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,KCenter-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,KCenter-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,KCenter-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,KCenter-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,GraphSparsify-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,GraphSparsify-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,GraphSparsify-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,GraphSparsify-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,GraphSparsify-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,GraphSparsify-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,GraphSparsify-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,GraphSparsify-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,GraphSparsify-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,GraphSparsify-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Coarsening-HG-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,not_executed,Coarsening-HG-TP support_node_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Coarsening-HG-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,not_executed,Coarsening-HG-TP support_node_ratio=0.50 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Coarsening-HG-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,not_executed,Coarsening-HG-TP structural_storage_ratio=0.30 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Coarsening-HG-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,not_executed,Coarsening-HG-TP structural_storage_ratio=0.20 has no complete official SeHGNN 3x3 TP task result locally.
+IMDB,Coarsening-HG-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,not_executed,Coarsening-HG-TP structural_storage_ratio=0.16 has no complete official SeHGNN 3x3 TP task result locally.
+DBLP,FreeHGC-score-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+DBLP,FreeHGC-score-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+DBLP,FreeHGC-score-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+DBLP,FreeHGC-score-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+DBLP,FreeHGC-score-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+ACM,FreeHGC-score-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+ACM,FreeHGC-score-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+ACM,FreeHGC-score-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+ACM,FreeHGC-score-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+ACM,FreeHGC-score-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+IMDB,FreeHGC-score-TP,support_node_ratio,0.3,,0.3,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+IMDB,FreeHGC-score-TP,support_node_ratio,0.5,,0.5,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+IMDB,FreeHGC-score-TP,structural_storage_ratio,0.3,,,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+IMDB,FreeHGC-score-TP,structural_storage_ratio,0.2,,,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+IMDB,FreeHGC-score-TP,structural_storage_ratio,0.16,,,,,,,,,,,False,edge_provenance_missing,FreeHGC scoring artifacts do not expose original official HGB edge provenance needed to construct TP link.dat endpoints without a loader adapter.
+DBLP,HeSF-RCS-auto structural50,structural_storage_ratio,0.5,0.15916430179078186,0.30003171582619725,0.131946937378426,,,0.5312848976907086,,,,,True,,
+DBLP,HeSF-RCS-auto structural30,structural_storage_ratio,0.3,0.15916430179078186,0.30003171582619725,0.131946937378426,,,0.5312848976907086,,,,,True,,
+DBLP,HeSF-RCS-auto structural20,structural_storage_ratio,0.2,0.15916430179078186,0.30003171582619725,0.131946937378426,,,0.5312848976907086,,,,,True,,
+DBLP,HeSF-RCS-auto structural16,structural_storage_ratio,0.16,0.15916430179078186,0.30003171582619725,0.131946937378426,,,0.5312848976907086,,,,,True,,
+DBLP,HeSF-RCS-auto structural12,structural_storage_ratio,0.12,0.11951718894668302,0.30003171582619725,0.08797575615905429,,,0.5300203883188904,,,,,True,,
+ACM,HeSF-RCS-auto structural50,structural_storage_ratio,0.5,,,,,,,,,,,False,missing_official_task_metric,No official-unmodified HeSF-RCS-auto task metric with validation fields exists for ACM at structural budget 0.50.
+ACM,HeSF-RCS-auto structural30,structural_storage_ratio,0.3,,,,,,,,,,,False,missing_official_task_metric,No official-unmodified HeSF-RCS-auto task metric with validation fields exists for ACM at structural budget 0.30.
+ACM,HeSF-RCS-auto structural20,structural_storage_ratio,0.2,,,,,,,,,,,False,missing_official_task_metric,No official-unmodified HeSF-RCS-auto task metric with validation fields exists for ACM at structural budget 0.20.
+ACM,HeSF-RCS-auto structural16,structural_storage_ratio,0.16,,,,,,,,,,,False,missing_official_task_metric,No official-unmodified HeSF-RCS-auto task metric with validation fields exists for ACM at structural budget 0.16.
+ACM,HeSF-RCS-auto structural12,structural_storage_ratio,0.12,,,,,,,,,,,False,missing_official_task_metric,No official-unmodified HeSF-RCS-auto task metric with validation fields exists for ACM at structural budget 0.12.
+IMDB,HeSF-RCS-auto structural50,structural_storage_ratio,0.5,,,,,,,,,,,False,missing_official_task_metric,No official-unmodified HeSF-RCS-auto task metric with validation fields exists for IMDB at structural budget 0.50.
+IMDB,HeSF-RCS-auto structural30,structural_storage_ratio,0.3,,,,,,,,,,,False,missing_official_task_metric,No official-unmodified HeSF-RCS-auto task metric with validation fields exists for IMDB at structural budget 0.30.
+IMDB,HeSF-RCS-auto structural20,structural_storage_ratio,0.2,,,,,,,,,,,False,missing_official_task_metric,No official-unmodified HeSF-RCS-auto task metric with validation fields exists for IMDB at structural budget 0.20.
+IMDB,HeSF-RCS-auto structural16,structural_storage_ratio,0.16,,,,,,,,,,,False,missing_official_task_metric,No official-unmodified HeSF-RCS-auto task metric with validation fields exists for IMDB at structural budget 0.16.
+IMDB,HeSF-RCS-auto structural12,structural_storage_ratio,0.12,,,,,,,,,,,False,missing_official_task_metric,No official-unmodified HeSF-RCS-auto task metric with validation fields exists for IMDB at structural budget 0.12.
+DBLP,HeSF-RCS-Rep,,,,,,,,,,,,,False,validation_metrics_missing,No HeSF-RCS-auto representative can be selected without validation metrics; test metrics were not used.
+ACM,HeSF-RCS-Rep,,,,,,,,,,,,,False,validation_metrics_missing,No HeSF-RCS-auto representative can be selected without validation metrics; test metrics were not used.
+IMDB,HeSF-RCS-Rep,,,,,,,,,,,,,False,validation_metrics_missing,No HeSF-RCS-auto representative can be selected without validation metrics; test metrics were not used.

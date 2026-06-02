@@ -16,6 +16,15 @@ EXTERNAL_TP_BUDGETS = (
 )
 
 
+GATE21_15_EXTERNAL_TP_BUDGETS = (
+    ("support_node_ratio", 0.30),
+    ("support_node_ratio", 0.50),
+    ("structural_storage_ratio", 0.30),
+    ("structural_storage_ratio", 0.20),
+    ("structural_storage_ratio", 0.16),
+)
+
+
 def build_external_tp_5x5_grid(graph_seeds: list[int], training_seeds: list[int]) -> list[dict[str, Any]]:
     return [
         {
@@ -31,6 +40,52 @@ def build_external_tp_5x5_grid(graph_seeds: list[int], training_seeds: list[int]
         for graph_seed in graph_seeds
         for training_seed in training_seeds
     ]
+
+
+def build_gate21_15_external_tp_rows(
+    *,
+    datasets: list[str],
+    methods: tuple[str, ...],
+    support_node_budgets: list[float],
+    structural_budgets: list[float],
+    mode: str,
+) -> list[dict[str, Any]]:
+    graph_seed_count = 3 if mode == "quick" else 5
+    training_seed_count = 3 if mode == "quick" else 5
+    rows: list[dict[str, Any]] = []
+    budget_pairs = [("support_node_ratio", float(value)) for value in support_node_budgets]
+    budget_pairs.extend(("structural_storage_ratio", float(value)) for value in structural_budgets)
+    for dataset in datasets:
+        for method in methods:
+            for budget_type, budget in budget_pairs:
+                rows.append(
+                    {
+                        "dataset": str(dataset).upper(),
+                        "method": method,
+                        "baseline_name": method,
+                        "method_family": "external_tp_baseline",
+                        "protocol": "schema_preserving_target_preserving_official_sehgnn",
+                        "requested_budget_type": budget_type,
+                        "requested_budget": budget,
+                        "support_node_ratio": budget if budget_type == "support_node_ratio" else "",
+                        "structural_budget": budget if budget_type == "structural_storage_ratio" else "",
+                        "graph_seed_count": graph_seed_count,
+                        "training_seed_count": training_seed_count,
+                        "expected_success_count": graph_seed_count * training_seed_count,
+                        "success_count": 0,
+                        "success": False,
+                        "training_executed": False,
+                        "official_hgb_exported": False,
+                        "official_sehgnn_unmodified": True,
+                        "schema_compatible": True,
+                        "target_preserving": True,
+                        "budget_infeasible": False,
+                        "ready_5x5": False,
+                        "failure_type": "not_executed",
+                        "failure_reason": f"{method} {budget_type}={budget:.2f} has no complete official SeHGNN {graph_seed_count}x{training_seed_count} TP task result locally.",
+                    }
+                )
+    return rows
 
 
 def summarize_gate21_11_external_tp(
