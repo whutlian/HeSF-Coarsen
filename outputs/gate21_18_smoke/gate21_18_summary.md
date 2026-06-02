@@ -1,0 +1,55 @@
+# Gate21.18 Budget Truth Real Compression Summary
+
+- rows: 27
+- training failures: 0
+
+- FULL_NATIVE_READY_BY_DATASET: True
+- EXPORT_FULL_FIDELITY_PASS_BY_DATASET: True
+- BUDGET_METRIC_SEMANTICS_PASS: True
+- NO_MIXED_ACTUAL_STRUCTURAL_RATIO_PASS: True
+- NO_FULL_FALLBACK_IN_MAIN_COMPRESSION_TABLE: True
+- FULL_HASH_ROWS_ONLY_IN_SANITY_TABLE: True
+- REQUESTED_BUDGET_MATCH_PASS_BY_ROW: True
+- DBLP_EDGE_BASELINE_SUPPORT_EDGE20_READY: True
+- DBLP_EXTERNAL_TP_SMOKE_READY: True
+- ACM_REAL_COMPRESSED_ROW_READY: True
+- IMDB_REAL_COMPRESSED_ROW_READY: True
+- HESF_RCS_REP_ACTUAL_VALIDATION_READY: True
+- HESF_RCS_REP_SELECTED_WITHOUT_TEST_LEAKAGE: True
+- FREEHGC_SCORE_TP_LOCAL_READY: True
+- STAGE_REPORT_SMOKE_READY: True
+- STAGE_REPORT_BUDGET_TRUTH_READY: True
+
+## Successful Task Metrics
+
+- DBLP Full-native-SeHGNN = semantic=1.0 edge=1.0 raw=1.0 micro=0.9533802 macro=0.9498198
+- DBLP Export-full-SeHGNN = semantic=1.0 edge=1.0 raw=1.0 micro=0.9533802 macro=0.9498198
+- ACM Full-native-SeHGNN = semantic=1.0 edge=1.0 raw=1.0 micro=0.9384324 macro=0.93918
+- ACM Export-full-SeHGNN = semantic=1.0 edge=1.0 raw=1.0 micro=0.9384324 macro=0.93918
+- IMDB Full-native-SeHGNN = semantic=1.0 edge=1.0 raw=1.0 micro=0.697974 macro=0.6712752
+- IMDB Export-full-SeHGNN = semantic=1.0 edge=1.0 raw=1.0 micro=0.697974 macro=0.6712752
+- DBLP HeSF-RCS-auto structural12 structural_storage_ratio=0.12 semantic=0.11951718894668302 edge=0.08797575615905429 raw=0.5300203883188904 micro=0.9447888000000001 macro=0.9405382
+- DBLP HeSF-RCS-auto structural16 structural_storage_ratio=0.16 semantic=0.15916430179078186 edge=0.131946937378426 raw=0.5312848976907086 micro=0.9497888 macro=0.946167
+- DBLP Random-edge-relwise support_edge_ratio=0.2 semantic=0.20000751358706995 edge=0.20000751358706995 raw=0.973352050915338 micro=0.785211 macro=0.7811929999999999
+- DBLP Degree-edge-relwise support_edge_ratio=0.2 semantic=0.2000158620171477 edge=0.2000158620171477 raw=0.9733514448741529 micro=0.7859149999999999 macro=0.78125
+- DBLP Proportional-relation-budget support_edge_ratio=0.2 semantic=0.2000158620171477 edge=0.2000158620171477 raw=0.9731947453502058 micro=0.796831 macro=0.7913209999999999
+- DBLP Herding-HG-TP support_node_ratio=0.5 semantic=0.511910701649485 edge=0.5664075870532547 raw=0.511910701649485 micro=0.870775 macro=0.867442
+- DBLP FreeHGC-score-TP-local support_edge_ratio=0.2 semantic=0.48523595039340783 edge=0.11327567350959653 raw=0.48523595039340783 micro=0.780282 macro=0.775069
+- DBLP HGCond-score-TP-local support_node_ratio=0.5 semantic=0.5118805814025809 edge=0.5661654825810006 raw=0.5118805814025809 micro=0.874296 macro=0.8713219999999999
+- DBLP GCond-score-TP-local support_node_ratio=0.5 semantic=0.5119158908771333 edge=0.5662406184517002 raw=0.5119158908771333 micro=0.867254 macro=0.8634350000000001
+- ACM ACM-HeSF-RCS-auto-field30 keyword_feature_ratio=0.3 semantic=0.745856137454571 edge=0.7628497167221541 raw=0.9463457221587845 micro=0.9390930000000001 macro=0.939717
+- ACM ACM-HeSF-RCS-auto-field20 keyword_feature_ratio=0.2 semantic=0.6603186774066091 edge=0.6830318030488873 raw=0.9324116870777805 micro=0.941926 macro=0.942533
+- ACM ACM-Random-field20 keyword_feature_ratio=0.2 semantic=0.18319451996917288 edge=0.2378110215524794 raw=0.8562937315596114 micro=0.9249290000000001 macro=0.926032
+- ACM ACM-Degree-field20 keyword_feature_ratio=0.2 semantic=0.6603186774066091 edge=0.6830318030488873 raw=0.9324121997150036 micro=0.9414539999999999 macro=0.942075
+- IMDB IMDB-HeSF-RCS-auto structural30 structural_storage_ratio=0.3 semantic=0.24683179058655155 edge=0.24683179058655155 raw=0.9950086215692024 micro=0.6600050000000001 macro=0.629468
+- IMDB IMDB-HeSF-RCS-auto structural20 structural_storage_ratio=0.2 semantic=0.15819117748897762 edge=0.15819117748897762 raw=0.9943698626518918 micro=0.658415 macro=0.62861
+- IMDB IMDB-Random-channel20 channel_edge_ratio=0.2 semantic=0.2911059301493502 edge=0.2911059301493502 raw=0.9953320013708484 micro=0.663572 macro=0.627043
+- IMDB IMDB-Degree-channel20 channel_edge_ratio=0.2 semantic=0.29112901364234434 edge=0.29112901364234434 raw=0.9953279528309543 micro=0.664435 macro=0.633713
+- IMDB IMDB-MDfull-MA50-MK20 channel_edge_ratio=0.5 semantic=0.3934812215784492 edge=0.3934812215784492 raw=0.996053776776834 micro=0.6780750000000001 macro=0.6424120000000001
+- IMDB IMDB-MDfull-MA20-MK50 channel_edge_ratio=0.5 semantic=0.4546063110269846 edge=0.4546063110269846 raw=0.9965237822693531 micro=0.680686 macro=0.652721
+- ACM HeSF-RCS-Rep-Validated keyword_feature_ratio=0.2 semantic=0.6603186774066091 edge=0.6830318030488873 raw=0.9324116870777805 micro=0.941926 macro=0.942533
+- IMDB HeSF-RCS-Rep-Validated structural_storage_ratio=0.2 semantic=0.15819117748897762 edge=0.15819117748897762 raw=0.9943698626518918 micro=0.658415 macro=0.62861
+
+## Failures
+
+- none

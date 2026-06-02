@@ -1,0 +1,269 @@
+{
+  "FULL_NATIVE_READY_BY_DATASET": true,
+  "EXPORT_FULL_FIDELITY_PASS_BY_DATASET": true,
+  "BUDGET_METRIC_SEMANTICS_PASS": true,
+  "NO_MIXED_ACTUAL_STRUCTURAL_RATIO_PASS": true,
+  "NO_FULL_FALLBACK_IN_MAIN_COMPRESSION_TABLE": true,
+  "FULL_HASH_ROWS_ONLY_IN_SANITY_TABLE": true,
+  "REQUESTED_BUDGET_MATCH_PASS_BY_ROW": true,
+  "DBLP_EDGE_BASELINE_SUPPORT_EDGE20_READY": true,
+  "DBLP_EXTERNAL_TP_SMOKE_READY": true,
+  "ACM_REAL_COMPRESSED_ROW_READY": true,
+  "IMDB_REAL_COMPRESSED_ROW_READY": true,
+  "HESF_RCS_REP_ACTUAL_VALIDATION_READY": true,
+  "HESF_RCS_REP_SELECTED_WITHOUT_TEST_LEAKAGE": true,
+  "FREEHGC_SCORE_TP_LOCAL_READY": true,
+  "STAGE_REPORT_SMOKE_READY": true,
+  "STAGE_REPORT_BUDGET_TRUTH_READY": true,
+  "FULL_NATIVE_READY_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "EXPORT_FULL_FIDELITY_DETAIL_BY_DATASET": {
+    "DBLP": true,
+    "ACM": true,
+    "IMDB": true
+  },
+  "REQUESTED_BUDGET_MATCH_DETAIL_BY_ROW": {
+    "DBLP|HeSF-RCS-auto structural12|structural_storage_ratio|0.12": true,
+    "DBLP|HeSF-RCS-auto structural16|structural_storage_ratio|0.16": true,
+    "DBLP|Random-edge-relwise|support_edge_ratio|0.2": true,
+    "DBLP|Degree-edge-relwise|support_edge_ratio|0.2": true,
+    "DBLP|Proportional-relation-budget|support_edge_ratio|0.2": true,
+    "DBLP|Herding-HG-TP|support_node_ratio|0.5": true,
+    "DBLP|FreeHGC-score-TP-local|support_edge_ratio|0.2": true,
+    "DBLP|HGCond-score-TP-local|support_node_ratio|0.5": true,
+    "DBLP|GCond-score-TP-local|support_node_ratio|0.5": true,
+    "ACM|ACM-HeSF-RCS-auto-field30|keyword_feature_ratio|0.3": true,
+    "ACM|ACM-HeSF-RCS-auto-field20|keyword_feature_ratio|0.2": true,
+    "ACM|ACM-Random-field20|keyword_feature_ratio|0.2": true,
+    "ACM|ACM-Degree-field20|keyword_feature_ratio|0.2": true,
+    "IMDB|IMDB-HeSF-RCS-auto structural30|structural_storage_ratio|0.3": true,
+    "IMDB|IMDB-HeSF-RCS-auto structural20|structural_storage_ratio|0.2": true,
+    "IMDB|IMDB-Random-channel20|channel_edge_ratio|0.2": true,
+    "IMDB|IMDB-Degree-channel20|channel_edge_ratio|0.2": true,
+    "IMDB|IMDB-MDfull-MA50-MK20|channel_edge_ratio|0.5": true,
+    "IMDB|IMDB-MDfull-MA20-MK50|channel_edge_ratio|0.5": true,
+    "ACM|HeSF-RCS-Rep-Validated|keyword_feature_ratio|0.2": true,
+    "IMDB|HeSF-RCS-Rep-Validated|structural_storage_ratio|0.2": true
+  },
+  "REQUESTED_BUDGET_AUDIT_DETAIL": [
+    {
+      "row": "DBLP|Full-native-SeHGNN||",
+      "requested_budget_type": "",
+      "requested_budget": "",
+      "metric": "",
+      "match": false,
+      "failure_type": "missing_requested_budget_type"
+    },
+    {
+      "row": "DBLP|Export-full-SeHGNN||",
+      "requested_budget_type": "",
+      "requested_budget": "",
+      "metric": "",
+      "match": false,
+      "failure_type": "missing_requested_budget_type"
+    },
+    {
+      "row": "ACM|Full-native-SeHGNN||",
+      "requested_budget_type": "",
+      "requested_budget": "",
+      "metric": "",
+      "match": false,
+      "failure_type": "missing_requested_budget_type"
+    },
+    {
+      "row": "ACM|Export-full-SeHGNN||",
+      "requested_budget_type": "",
+      "requested_budget": "",
+      "metric": "",
+      "match": false,
+      "failure_type": "missing_requested_budget_type"
+    },
+    {
+      "row": "IMDB|Full-native-SeHGNN||",
+      "requested_budget_type": "",
+      "requested_budget": "",
+      "metric": "",
+      "match": false,
+      "failure_type": "missing_requested_budget_type"
+    },
+    {
+      "row": "IMDB|Export-full-SeHGNN||",
+      "requested_budget_type": "",
+      "requested_budget": "",
+      "metric": "",
+      "match": false,
+      "failure_type": "missing_requested_budget_type"
+    },
+    {
+      "row": "DBLP|HeSF-RCS-auto structural12|structural_storage_ratio|0.12",
+      "requested_budget_type": "structural_storage_ratio",
+      "requested_budget": "0.12",
+      "metric": "semantic_structural_storage_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "DBLP|HeSF-RCS-auto structural16|structural_storage_ratio|0.16",
+      "requested_budget_type": "structural_storage_ratio",
+      "requested_budget": "0.16",
+      "metric": "semantic_structural_storage_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "DBLP|Random-edge-relwise|support_edge_ratio|0.2",
+      "requested_budget_type": "support_edge_ratio",
+      "requested_budget": "0.2",
+      "metric": "actual_support_edge_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "DBLP|Degree-edge-relwise|support_edge_ratio|0.2",
+      "requested_budget_type": "support_edge_ratio",
+      "requested_budget": "0.2",
+      "metric": "actual_support_edge_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "DBLP|Proportional-relation-budget|support_edge_ratio|0.2",
+      "requested_budget_type": "support_edge_ratio",
+      "requested_budget": "0.2",
+      "metric": "actual_support_edge_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "DBLP|Herding-HG-TP|support_node_ratio|0.5",
+      "requested_budget_type": "support_node_ratio",
+      "requested_budget": "0.5",
+      "metric": "actual_support_node_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "DBLP|FreeHGC-score-TP-local|support_edge_ratio|0.2",
+      "requested_budget_type": "support_edge_ratio",
+      "requested_budget": "0.2",
+      "metric": "actual_support_edge_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "DBLP|HGCond-score-TP-local|support_node_ratio|0.5",
+      "requested_budget_type": "support_node_ratio",
+      "requested_budget": "0.5",
+      "metric": "actual_support_node_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "DBLP|GCond-score-TP-local|support_node_ratio|0.5",
+      "requested_budget_type": "support_node_ratio",
+      "requested_budget": "0.5",
+      "metric": "actual_support_node_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "ACM|ACM-HeSF-RCS-auto-field30|keyword_feature_ratio|0.3",
+      "requested_budget_type": "keyword_feature_ratio",
+      "requested_budget": "0.3",
+      "metric": "keyword_feature_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "ACM|ACM-HeSF-RCS-auto-field20|keyword_feature_ratio|0.2",
+      "requested_budget_type": "keyword_feature_ratio",
+      "requested_budget": "0.2",
+      "metric": "keyword_feature_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "ACM|ACM-Random-field20|keyword_feature_ratio|0.2",
+      "requested_budget_type": "keyword_feature_ratio",
+      "requested_budget": "0.2",
+      "metric": "keyword_feature_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "ACM|ACM-Degree-field20|keyword_feature_ratio|0.2",
+      "requested_budget_type": "keyword_feature_ratio",
+      "requested_budget": "0.2",
+      "metric": "keyword_feature_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "IMDB|IMDB-HeSF-RCS-auto structural30|structural_storage_ratio|0.3",
+      "requested_budget_type": "structural_storage_ratio",
+      "requested_budget": "0.3",
+      "metric": "semantic_structural_storage_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "IMDB|IMDB-HeSF-RCS-auto structural20|structural_storage_ratio|0.2",
+      "requested_budget_type": "structural_storage_ratio",
+      "requested_budget": "0.2",
+      "metric": "semantic_structural_storage_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "IMDB|IMDB-Random-channel20|channel_edge_ratio|0.2",
+      "requested_budget_type": "channel_edge_ratio",
+      "requested_budget": "0.2",
+      "metric": "channel_edge_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "IMDB|IMDB-Degree-channel20|channel_edge_ratio|0.2",
+      "requested_budget_type": "channel_edge_ratio",
+      "requested_budget": "0.2",
+      "metric": "channel_edge_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "IMDB|IMDB-MDfull-MA50-MK20|channel_edge_ratio|0.5",
+      "requested_budget_type": "channel_edge_ratio",
+      "requested_budget": "0.5",
+      "metric": "channel_edge_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "IMDB|IMDB-MDfull-MA20-MK50|channel_edge_ratio|0.5",
+      "requested_budget_type": "channel_edge_ratio",
+      "requested_budget": "0.5",
+      "metric": "channel_edge_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "ACM|HeSF-RCS-Rep-Validated|keyword_feature_ratio|0.2",
+      "requested_budget_type": "keyword_feature_ratio",
+      "requested_budget": "0.2",
+      "metric": "keyword_feature_ratio",
+      "match": true,
+      "failure_type": ""
+    },
+    {
+      "row": "IMDB|HeSF-RCS-Rep-Validated|structural_storage_ratio|0.2",
+      "requested_budget_type": "structural_storage_ratio",
+      "requested_budget": "0.2",
+      "metric": "semantic_structural_storage_ratio",
+      "match": true,
+      "failure_type": ""
+    }
+  ]
+}

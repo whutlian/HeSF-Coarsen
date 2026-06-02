@@ -1,0 +1,5 @@
+dataset,method,rows,success_rows,budget_match_rows,failure_types
+DBLP,FreeHGC-score-TP-local,1,1,1,
+DBLP,GCond-score-TP-local,1,1,1,
+DBLP,HGCond-score-TP-local,1,1,1,
+DBLP,Herding-HG-TP,1,1,1,

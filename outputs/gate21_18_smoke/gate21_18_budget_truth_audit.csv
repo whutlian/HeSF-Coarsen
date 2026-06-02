@@ -1,0 +1,28 @@
+dataset,method,requested_budget_type,requested_budget,actual_support_edge_ratio,semantic_structural_storage_ratio,raw_hgb_text_byte_ratio,budget_match,budget_metric_used_for_match,why_raw_bytes_differ_from_edge_budget,budget_match_failure_type,budget_match_failure_reason
+DBLP,Full-native-SeHGNN,,,1.0,1.0,1.0,False,,,missing_requested_budget_type,requested_budget_type is missing.
+DBLP,Export-full-SeHGNN,,,1.0,1.0,1.0,False,,,missing_requested_budget_type,requested_budget_type is missing.
+ACM,Full-native-SeHGNN,,,1.0,1.0,1.0,False,,,missing_requested_budget_type,requested_budget_type is missing.
+ACM,Export-full-SeHGNN,,,1.0,1.0,1.0,False,,,missing_requested_budget_type,requested_budget_type is missing.
+IMDB,Full-native-SeHGNN,,,1.0,1.0,1.0,False,,,missing_requested_budget_type,requested_budget_type is missing.
+IMDB,Export-full-SeHGNN,,,1.0,1.0,1.0,False,,,missing_requested_budget_type,requested_budget_type is missing.
+DBLP,HeSF-RCS-auto structural12,structural_storage_ratio,0.12,0.08797575615905429,0.11951718894668302,0.5300203883188904,True,semantic_structural_storage_ratio,"structural budget is matched against semantic_structural_storage_ratio, not raw HGB text bytes.",,
+DBLP,HeSF-RCS-auto structural16,structural_storage_ratio,0.16,0.131946937378426,0.15916430179078186,0.5312848976907086,True,semantic_structural_storage_ratio,"structural budget is matched against semantic_structural_storage_ratio, not raw HGB text bytes.",,
+DBLP,Random-edge-relwise,support_edge_ratio,0.2,0.20000751358706995,0.20000751358706995,0.973352050915338,True,actual_support_edge_ratio,node.dat/features dominate raw HGB text bytes; edge budget is not a raw-byte deployment budget.,,
+DBLP,Degree-edge-relwise,support_edge_ratio,0.2,0.2000158620171477,0.2000158620171477,0.9733514448741529,True,actual_support_edge_ratio,node.dat/features dominate raw HGB text bytes; edge budget is not a raw-byte deployment budget.,,
+DBLP,Proportional-relation-budget,support_edge_ratio,0.2,0.2000158620171477,0.2000158620171477,0.9731947453502058,True,actual_support_edge_ratio,node.dat/features dominate raw HGB text bytes; edge budget is not a raw-byte deployment budget.,,
+DBLP,Herding-HG-TP,support_node_ratio,0.5,0.5664075870532547,0.511910701649485,0.511910701649485,True,actual_support_node_ratio,,,
+DBLP,FreeHGC-score-TP-local,support_edge_ratio,0.2,0.11327567350959653,0.48523595039340783,0.48523595039340783,True,actual_support_edge_ratio,node.dat/features dominate raw HGB text bytes; edge budget is not a raw-byte deployment budget.,,
+DBLP,HGCond-score-TP-local,support_node_ratio,0.5,0.5661654825810006,0.5118805814025809,0.5118805814025809,True,actual_support_node_ratio,,,
+DBLP,GCond-score-TP-local,support_node_ratio,0.5,0.5662406184517002,0.5119158908771333,0.5119158908771333,True,actual_support_node_ratio,,,
+ACM,ACM-HeSF-RCS-auto-field30,keyword_feature_ratio,0.3,0.7628497167221541,0.745856137454571,0.9463457221587845,True,keyword_feature_ratio,,,
+ACM,ACM-HeSF-RCS-auto-field20,keyword_feature_ratio,0.2,0.6830318030488873,0.6603186774066091,0.9324116870777805,True,keyword_feature_ratio,,,
+ACM,ACM-Random-field20,keyword_feature_ratio,0.2,0.2378110215524794,0.18319451996917288,0.8562937315596114,True,keyword_feature_ratio,,,
+ACM,ACM-Degree-field20,keyword_feature_ratio,0.2,0.6830318030488873,0.6603186774066091,0.9324121997150036,True,keyword_feature_ratio,,,
+IMDB,IMDB-HeSF-RCS-auto structural30,structural_storage_ratio,0.3,0.24683179058655155,0.24683179058655155,0.9950086215692024,True,semantic_structural_storage_ratio,"structural budget is matched against semantic_structural_storage_ratio, not raw HGB text bytes.",,
+IMDB,IMDB-HeSF-RCS-auto structural20,structural_storage_ratio,0.2,0.15819117748897762,0.15819117748897762,0.9943698626518918,True,semantic_structural_storage_ratio,"structural budget is matched against semantic_structural_storage_ratio, not raw HGB text bytes.",,
+IMDB,IMDB-Random-channel20,channel_edge_ratio,0.2,0.2911059301493502,0.2911059301493502,0.9953320013708484,True,channel_edge_ratio,,,
+IMDB,IMDB-Degree-channel20,channel_edge_ratio,0.2,0.29112901364234434,0.29112901364234434,0.9953279528309543,True,channel_edge_ratio,,,
+IMDB,IMDB-MDfull-MA50-MK20,channel_edge_ratio,0.5,0.3934812215784492,0.3934812215784492,0.996053776776834,True,channel_edge_ratio,,,
+IMDB,IMDB-MDfull-MA20-MK50,channel_edge_ratio,0.5,0.4546063110269846,0.4546063110269846,0.9965237822693531,True,channel_edge_ratio,,,
+ACM,HeSF-RCS-Rep-Validated,keyword_feature_ratio,0.2,0.6830318030488873,0.6603186774066091,0.9324116870777805,True,keyword_feature_ratio,,,
+IMDB,HeSF-RCS-Rep-Validated,structural_storage_ratio,0.2,0.15819117748897762,0.15819117748897762,0.9943698626518918,True,semantic_structural_storage_ratio,"structural budget is matched against semantic_structural_storage_ratio, not raw HGB text bytes.",,

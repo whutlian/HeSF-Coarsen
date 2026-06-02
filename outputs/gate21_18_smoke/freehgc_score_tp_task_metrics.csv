@@ -1,0 +1,2 @@
+dataset,method,training_executed,test_micro_f1_mean,test_macro_f1_mean,validation_micro_f1_mean,validation_macro_f1_mean
+DBLP,FreeHGC-score-TP-local,True,0.780282,0.775069,0.802469,0.796887

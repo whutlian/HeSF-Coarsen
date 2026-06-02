@@ -1,0 +1,2 @@
+dataset,method,requested_budget_type,requested_budget,actual_support_edge_ratio,semantic_structural_storage_ratio,budget_match,budget_failure_type
+DBLP,FreeHGC-score-TP-local,support_edge_ratio,0.2,0.11327567350959653,0.48523595039340783,True,

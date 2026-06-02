@@ -48,6 +48,60 @@ def select_gate21_17_representatives(
     return out
 
 
+def select_gate21_18_representatives(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    datasets: Sequence[str] = DATASETS,
+) -> list[dict[str, Any]]:
+    source_rows = [dict(row) for row in rows]
+    out: list[dict[str, Any]] = []
+    for dataset in [normalize_dataset(item) for item in datasets]:
+        candidates = [
+            row
+            for row in source_rows
+            if normalize_dataset(row.get("dataset")) == dataset
+            and "HeSF-RCS-auto" in str(row.get("method", ""))
+            and bool_value(row.get("eligible_for_main_table", True))
+            and bool_value(row.get("success"))
+            and bool_value(row.get("training_executed"))
+        ]
+        actual = [
+            row
+            for row in candidates
+            if float_value(row.get("validation_micro_f1_mean")) is not None and float_value(row.get("validation_macro_f1_mean")) is not None
+        ]
+        if actual:
+            selected = max(
+                actual,
+                key=lambda row: (
+                    float_value(row.get("validation_micro_f1_mean")) or -1.0,
+                    float_value(row.get("validation_macro_f1_mean")) or -1.0,
+                    -(float_value(row.get("semantic_structural_storage_ratio")) or float_value(row.get("actual_structural_storage_ratio")) or 999.0),
+                ),
+            )
+            out.append(_rep_row(selected, method="HeSF-RCS-Rep-Validated", selection_source="actual_validation", diagnostic=False))
+        else:
+            out.append(
+                {
+                    "dataset": dataset,
+                    "method": "HeSF-RCS-Rep-Validated",
+                    "source_method": "",
+                    "selected_as_rep": False,
+                    "selection_source": "validation_missing",
+                    "rep_selection_confidence": "missing",
+                    "uses_test_for_selection": False,
+                    "eligible_for_main_table": False,
+                    "eligible_for_decision": False,
+                    "failure_type": "validation_missing",
+                    "failure_reason": "Gate21.18 does not allow proxy-only HeSF-RCS representative selection.",
+                }
+            )
+        oracle = _select_test_oracle(candidates)
+        if oracle is not None:
+            out.append(_rep_row(oracle, method="HeSF-RCS-TestOracleRep", selection_source="test_oracle_diagnostic_only", diagnostic=True))
+    return out
+
+
 def _select_main_rep(candidates: Sequence[Mapping[str, Any]]) -> tuple[Mapping[str, Any], str] | None:
     with_actual = [row for row in candidates if float_value(row.get("validation_micro_f1_mean")) is not None and float_value(row.get("validation_macro_f1_mean")) is not None]
     if with_actual:
@@ -100,9 +154,20 @@ def _rep_row(source: Mapping[str, Any], *, method: str, selection_source: str, d
         "requested_budget_type": source.get("requested_budget_type", ""),
         "requested_budget": source.get("requested_budget", ""),
         "actual_structural_storage_ratio": source.get("actual_structural_storage_ratio", ""),
+        "actual_edge_ratio": source.get("actual_edge_ratio", ""),
+        "actual_support_edge_ratio": source.get("actual_support_edge_ratio", ""),
+        "actual_support_node_ratio": source.get("actual_support_node_ratio", ""),
+        "semantic_structural_storage_ratio": source.get("semantic_structural_storage_ratio", ""),
         "support_node_ratio": source.get("support_node_ratio", ""),
         "support_edge_ratio": source.get("support_edge_ratio", ""),
         "raw_hgb_text_byte_ratio": source.get("raw_hgb_text_byte_ratio", ""),
+        "static_inference_package_ratio": source.get("static_inference_package_ratio", ""),
+        "reconstructable_package_ratio": source.get("reconstructable_package_ratio", ""),
+        "keyword_feature_ratio": source.get("keyword_feature_ratio", ""),
+        "PK_edge_ratio": source.get("PK_edge_ratio", ""),
+        "actor_channel_ratio": source.get("actor_channel_ratio", ""),
+        "keyword_channel_ratio": source.get("keyword_channel_ratio", ""),
+        "channel_edge_ratio": source.get("channel_edge_ratio", ""),
         "test_micro_f1_mean": source.get("test_micro_f1_mean", ""),
         "test_macro_f1_mean": source.get("test_macro_f1_mean", ""),
         "validation_micro_f1_mean": source.get("validation_micro_f1_mean", ""),

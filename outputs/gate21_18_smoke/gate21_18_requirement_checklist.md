@@ -1,0 +1,39 @@
+# Gate21.18 Requirement Checklist
+
+- mode: smoke
+
+## Decision Flags
+
+- [PASS] FULL_NATIVE_READY_BY_DATASET
+- [PASS] EXPORT_FULL_FIDELITY_PASS_BY_DATASET
+- [PASS] BUDGET_METRIC_SEMANTICS_PASS
+- [PASS] NO_MIXED_ACTUAL_STRUCTURAL_RATIO_PASS
+- [PASS] NO_FULL_FALLBACK_IN_MAIN_COMPRESSION_TABLE
+- [PASS] FULL_HASH_ROWS_ONLY_IN_SANITY_TABLE
+- [PASS] REQUESTED_BUDGET_MATCH_PASS_BY_ROW
+- [PASS] DBLP_EDGE_BASELINE_SUPPORT_EDGE20_READY
+- [PASS] DBLP_EXTERNAL_TP_SMOKE_READY
+- [PASS] ACM_REAL_COMPRESSED_ROW_READY
+- [PASS] IMDB_REAL_COMPRESSED_ROW_READY
+- [PASS] HESF_RCS_REP_ACTUAL_VALIDATION_READY
+- [PASS] HESF_RCS_REP_SELECTED_WITHOUT_TEST_LEAKAGE
+- [PASS] FREEHGC_SCORE_TP_LOCAL_READY
+- [PASS] STAGE_REPORT_SMOKE_READY
+- [PASS] STAGE_REPORT_BUDGET_TRUTH_READY
+
+## Attachment Sections
+
+- [PASS] P0 Fix Budget Metric Semantics
+- [PASS] P1 Separate Edge/Structural and Raw Text Tables
+- [PASS] P2 Stop Full-HGB Fallback From Main Results
+- [PASS] P3 Implement Real ACM Compression
+- [PASS] P4 Implement Real IMDB Compression
+- [PASS] P5 Repair DBLP Structural Baseline Budgets
+- [PASS] P6 Upgrade HeSF-RCS-Rep Selection
+- [PASS] P7 Budget-Comparable Local External Baselines
+- [PASS] P8 FreeHGC-score-TP-local Ready
+- [PASS] P9 Smoke Execution Plan
+- [PASS] P10 Main Output Files
+- [PASS] P11 Decision Flags
+- [PASS] P12 Repository Integration
+- [PASS] P13 Non-Negotiable Rules
