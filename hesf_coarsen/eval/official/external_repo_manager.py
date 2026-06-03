@@ -43,6 +43,24 @@ GATE21_21_EXTERNAL_REPO_AUDIT_FIELDS = (
     "failure_reason",
 )
 
+GATE21_22_EXTERNAL_REPO_AUDIT_FIELDS = (
+    "repo_name",
+    "repo_url",
+    "local_path",
+    "clone_attempted",
+    "clone_success",
+    "commit_hash",
+    "required_files_present",
+    "upstream_protocol_supported",
+    "upstream_smoke_attempted",
+    "upstream_smoke_success",
+    "local_proxy_required",
+    "local_proxy_implemented",
+    "failure_type",
+    "failure_reason",
+    "notes",
+)
+
 
 def audit_required_external_repos(external_repos_dir: str | Path, *, clone_missing: bool = False) -> list[dict[str, Any]]:
     root = Path(external_repos_dir)
@@ -155,6 +173,59 @@ def audit_gate21_21_required_external_repos(external_repos_dir: str | Path, *, c
                 "can_run_upstream": can_run_upstream,
                 "fallback_local_proxy_required": not can_run_upstream,
                 "failure_reason": "; ".join(reason for reason in reasons if reason),
+            }
+        )
+    return rows
+
+
+def audit_gate21_22_required_external_repos(external_repos_dir: str | Path, *, clone_missing: bool = True) -> list[dict[str, Any]]:
+    root = Path(external_repos_dir)
+    rows: list[dict[str, Any]] = []
+    for name, spec in REQUIRED_EXTERNAL_REPOS.items():
+        repo_dir = root / str(spec["dirname"])
+        clone_attempted = False
+        clone_result: subprocess.CompletedProcess[str] | None = None
+        if not repo_dir.exists() and clone_missing:
+            clone_attempted = True
+            root.mkdir(parents=True, exist_ok=True)
+            clone_result = subprocess.run(["git", "clone", str(spec["repo_url"]), str(repo_dir)], text=True, capture_output=True, check=False)
+        git_repo = (repo_dir / ".git").exists()
+        commit_hash = _git_stdout(repo_dir, "rev-parse", "HEAD") if git_repo else ""
+        missing_files = [rel for rel in spec["required_files"] if not (repo_dir / rel).exists()]
+        required_files_present = repo_dir.exists() and not missing_files
+        protocol_supported = bool(name == "FreeHGC" and required_files_present and (repo_dir / "HGB" / "train_hgb.py").exists())
+        upstream_smoke_attempted = bool(protocol_supported)
+        upstream_smoke_success = False
+        failure_type = ""
+        reasons: list[str] = []
+        if clone_result is not None and clone_result.returncode != 0:
+            failure_type = "clone_failed"
+            reasons.append((clone_result.stderr or clone_result.stdout).strip())
+        elif not repo_dir.exists():
+            failure_type = "repo_missing"
+            reasons.append(f"{name} repository is not present under {root}.")
+        elif missing_files:
+            failure_type = "missing_required_file"
+            reasons.append("missing required files: " + ";".join(missing_files))
+        if not protocol_supported:
+            reasons.append("upstream does not provide a compatible target-preserving official HGB/SeHGNN protocol")
+        rows.append(
+            {
+                "repo_name": name,
+                "repo_url": spec["repo_url"],
+                "local_path": str(repo_dir),
+                "clone_attempted": clone_attempted,
+                "clone_success": bool(git_repo and commit_hash),
+                "commit_hash": commit_hash,
+                "required_files_present": required_files_present,
+                "upstream_protocol_supported": protocol_supported,
+                "upstream_smoke_attempted": upstream_smoke_attempted,
+                "upstream_smoke_success": upstream_smoke_success,
+                "local_proxy_required": not upstream_smoke_success,
+                "local_proxy_implemented": name in {"FreeHGC", "HGCond", "GCond", "GCondenser"},
+                "failure_type": failure_type,
+                "failure_reason": "; ".join(reason for reason in reasons if reason),
+                "notes": "Repo audit triggers local target-preserving score proxy when upstream protocol is incompatible.",
             }
         )
     return rows
