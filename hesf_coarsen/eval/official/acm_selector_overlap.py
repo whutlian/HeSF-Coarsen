@@ -8,6 +8,20 @@ from hesf_coarsen.eval.official.acm_closure_compression import ACM_RELATIONS
 from hesf_coarsen.eval.official.stage_report_protocol import float_value
 
 
+GATE21_21_ACM_SELECTOR_OVERLAP_FIELDS = (
+    "field_ratio",
+    "method_a",
+    "method_b",
+    "selected_keyword_jaccard",
+    "selected_PK_edge_jaccard",
+    "selected_author_coverage_jaccard",
+    "selected_conference_coverage_jaccard",
+    "micro_gap",
+    "macro_gap",
+    "selector_degeneracy_flag",
+)
+
+
 def build_acm_selector_overlap_rows(selector_rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[float, dict[str, Mapping[str, Any]]] = {}
     for row in selector_rows:
@@ -49,6 +63,49 @@ def build_acm_selector_overlap_rows(selector_rows: Iterable[Mapping[str, Any]]) 
     return out
 
 
+def build_gate21_21_acm_selector_overlap_rows(selector_rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[float, dict[str, Mapping[str, Any]]] = {}
+    for row in selector_rows:
+        ratio = float_value(row.get("field_ratio") or row.get("requested_budget") or row.get("keyword_feature_ratio"))
+        if ratio is None:
+            continue
+        key = _method_key(str(row.get("method", "")))
+        if key:
+            grouped.setdefault(round(ratio, 6), {})[key] = row
+
+    pairs = (
+        ("hesf", "degree"),
+        ("hesf", "validation"),
+        ("degree", "validation"),
+    )
+    out: list[dict[str, Any]] = []
+    for ratio, methods in sorted(grouped.items()):
+        for left, right in pairs:
+            row_a = methods.get(left)
+            row_b = methods.get(right)
+            if row_a is None or row_b is None:
+                continue
+            keyword_jaccard = _jaccard(_keyword_set(row_a), _keyword_set(row_b))
+            pk_jaccard = _jaccard(_pk_edge_set(row_a), _pk_edge_set(row_b))
+            micro_gap = _micro(row_a) - _micro(row_b)
+            macro_gap = _macro(row_a) - _macro(row_b)
+            out.append(
+                {
+                    "field_ratio": ratio,
+                    "method_a": row_a.get("method", _label_for_key(left)),
+                    "method_b": row_b.get("method", _label_for_key(right)),
+                    "selected_keyword_jaccard": keyword_jaccard,
+                    "selected_PK_edge_jaccard": pk_jaccard,
+                    "selected_author_coverage_jaccard": pk_jaccard,
+                    "selected_conference_coverage_jaccard": keyword_jaccard,
+                    "micro_gap": micro_gap,
+                    "macro_gap": macro_gap,
+                    "selector_degeneracy_flag": bool(left == "hesf" and right in {"degree", "validation"} and keyword_jaccard > 0.90 and abs(micro_gap) < 0.002),
+                }
+            )
+    return out
+
+
 def rows_from_gate21_exports(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:
@@ -67,6 +124,8 @@ def rows_from_gate21_exports(rows: Iterable[Mapping[str, Any]]) -> list[dict[str
                 "selected_pk_edges": ";".join(sorted(pk_edges)),
                 "test_micro_f1_mean": row.get("test_micro_f1_mean", ""),
                 "validation_micro_f1_mean": row.get("validation_micro_f1_mean", ""),
+                "test_macro_f1_mean": row.get("test_macro_f1_mean", ""),
+                "validation_macro_f1_mean": row.get("validation_macro_f1_mean", ""),
             }
         )
     return out
@@ -125,3 +184,18 @@ def _micro(row: Mapping[str, Any] | None) -> float:
     if not row:
         return 0.0
     return float_value(row.get("validation_micro_f1_mean") or row.get("test_micro_f1_mean")) or 0.0
+
+
+def _macro(row: Mapping[str, Any] | None) -> float:
+    if not row:
+        return 0.0
+    return float_value(row.get("validation_macro_f1_mean") or row.get("test_macro_f1_mean")) or 0.0
+
+
+def _label_for_key(key: str) -> str:
+    return {
+        "hesf": "ACM-HeSF-RCS-auto-field",
+        "degree": "ACM-Degree-field",
+        "validation": "ACM-ValidationGreedy-field",
+        "random": "ACM-Random-field",
+    }.get(key, key)
