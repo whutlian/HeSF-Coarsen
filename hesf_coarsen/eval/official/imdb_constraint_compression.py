@@ -139,7 +139,7 @@ def _select_edges(
         return []
     keep = max(1, min(len(edges), int(round(len(edges) * float(ratio)))))
     lower = method.lower()
-    if "degree" in lower or "hesf" in lower:
+    if "degree" in lower or "hesf" in lower or "validation" in lower or "cost_normalized" in lower:
         degrees: dict[int, int] = {}
         for src, dst, _ in edges:
             degrees[src] = degrees.get(src, 0) + 1

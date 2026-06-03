@@ -102,6 +102,65 @@ def select_gate21_18_representatives(
     return out
 
 
+def select_gate21_19_representatives(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    datasets: Sequence[str] = DATASETS,
+) -> list[dict[str, Any]]:
+    """Select a Gate21.19 representative using validation metrics only.
+
+    Gate21.19 compares multiple real planner families per dataset, so the
+    representative selector is no longer limited to rows whose method contains
+    ``HeSF-RCS-auto``.  Test metrics remain diagnostic-only.
+    """
+
+    source_rows = [dict(row) for row in rows]
+    out: list[dict[str, Any]] = []
+    for dataset in [normalize_dataset(item) for item in datasets]:
+        candidates = [
+            row
+            for row in source_rows
+            if normalize_dataset(row.get("dataset")) == dataset
+            and _gate21_19_rep_candidate(row)
+        ]
+        actual = [
+            row
+            for row in candidates
+            if float_value(row.get("validation_micro_f1_mean")) is not None
+            and float_value(row.get("validation_macro_f1_mean")) is not None
+        ]
+        if actual:
+            selected = max(
+                actual,
+                key=lambda row: (
+                    float_value(row.get("validation_micro_f1_mean")) or -1.0,
+                    float_value(row.get("validation_macro_f1_mean")) or -1.0,
+                    -_gate21_19_cost(row),
+                ),
+            )
+            out.append(_rep_row(selected, method="HeSF-RCS-Rep-Validated", selection_source="actual_validation", diagnostic=False))
+        else:
+            out.append(
+                {
+                    "dataset": dataset,
+                    "method": "HeSF-RCS-Rep-Validated",
+                    "source_method": "",
+                    "selected_as_rep": False,
+                    "selection_source": "validation_missing",
+                    "rep_selection_confidence": "missing",
+                    "uses_test_for_selection": False,
+                    "eligible_for_main_table": False,
+                    "eligible_for_decision": False,
+                    "failure_type": "validation_missing",
+                    "failure_reason": "Gate21.19 representative selection requires actual validation metrics.",
+                }
+            )
+        oracle = _select_test_oracle(candidates)
+        if oracle is not None:
+            out.append(_rep_row(oracle, method="HeSF-RCS-TestOracleRep", selection_source="test_oracle_diagnostic_only", diagnostic=True))
+    return out
+
+
 def _select_main_rep(candidates: Sequence[Mapping[str, Any]]) -> tuple[Mapping[str, Any], str] | None:
     with_actual = [row for row in candidates if float_value(row.get("validation_micro_f1_mean")) is not None and float_value(row.get("validation_macro_f1_mean")) is not None]
     if with_actual:
@@ -131,6 +190,37 @@ def _select_main_rep(candidates: Sequence[Mapping[str, Any]]) -> tuple[Mapping[s
     return None
 
 
+def _gate21_19_rep_candidate(row: Mapping[str, Any]) -> bool:
+    method = str(row.get("method", ""))
+    if method in {"Full-native-SeHGNN", "Export-full-SeHGNN"}:
+        return False
+    if bool_value(row.get("constraint_safe_fallback")):
+        return False
+    if bool_value(row.get("uses_test_for_selection")):
+        return False
+    return bool(
+        bool_value(row.get("eligible_for_main_table", True))
+        and bool_value(row.get("eligible_for_compression_claim", True))
+        and bool_value(row.get("success"))
+        and bool_value(row.get("training_executed"))
+    )
+
+
+def _gate21_19_cost(row: Mapping[str, Any]) -> float:
+    for key in (
+        "semantic_structural_storage_ratio",
+        "actual_support_edge_ratio",
+        "keyword_feature_ratio",
+        "channel_edge_ratio",
+        "support_node_ratio",
+        "raw_hgb_text_byte_ratio",
+    ):
+        value = float_value(row.get(key))
+        if value is not None:
+            return value
+    return 999.0
+
+
 def _select_test_oracle(candidates: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
     with_test = [row for row in candidates if float_value(row.get("test_micro_f1_mean")) is not None and float_value(row.get("test_macro_f1_mean")) is not None]
     if not with_test:
@@ -151,6 +241,8 @@ def _rep_row(source: Mapping[str, Any], *, method: str, selection_source: str, d
         "method": method,
         "source_method": source.get("method", ""),
         "method_family": "schema_preserving_rcs_diagnostic" if diagnostic else "schema_preserving_rcs",
+        "planner_backend": source.get("planner_backend", ""),
+        "planner_mode": source.get("planner_mode", ""),
         "requested_budget_type": source.get("requested_budget_type", ""),
         "requested_budget": source.get("requested_budget", ""),
         "actual_structural_storage_ratio": source.get("actual_structural_storage_ratio", ""),
