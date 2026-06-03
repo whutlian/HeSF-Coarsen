@@ -13,6 +13,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from experiments.scripts.run_gate21_19_multidataset_frontier import _add_recovery
+from hesf_coarsen.eval.official.all_methods_experiment_table import (
+    ALL_METHODS_EXPERIMENT_FIELDS,
+    build_all_methods_experiment_table,
+    experiment_table_markdown,
+)
 from hesf_coarsen.eval.official.compact_table_builder import (
     GATE21_22_COMPACT_FIELDS,
     build_gate21_22_compact_table,
@@ -45,6 +50,8 @@ REQUIRED_OUTPUTS = (
     "gate21_22_training_failures.csv",
     "gate21_22_final_compact_table.csv",
     "gate21_22_final_compact_table.md",
+    "gate21_22_all_methods_experiment_table.csv",
+    "gate21_22_all_methods_experiment_table.md",
     "gate21_22_best_method_comparison.csv",
     "gate21_22_frontiers.csv",
     "gate21_22_decision_flags.csv",
@@ -109,6 +116,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     tp_rows, selector_rows = split_condensation_rows(proxy_rows)
 
     compact_rows = build_gate21_22_compact_table(main_rows, datasets=datasets)
+    experiment_rows = build_all_methods_experiment_table(main_rows)
     frontier_rows = build_gate21_21_frontier_rows(main_rows, datasets=datasets)
     decision = gate21_22_decision(
         main_rows=main_rows,
@@ -131,6 +139,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     write_csv(out_dir / "gate21_22_training_queue.csv", queue)
     write_csv(out_dir / "gate21_22_final_compact_table.csv", compact_rows, GATE21_22_COMPACT_FIELDS)
     (out_dir / "gate21_22_final_compact_table.md").write_text(compact_table_markdown(compact_rows), encoding="utf-8")
+    write_csv(out_dir / "gate21_22_all_methods_experiment_table.csv", experiment_rows, ALL_METHODS_EXPERIMENT_FIELDS)
+    (out_dir / "gate21_22_all_methods_experiment_table.md").write_text(experiment_table_markdown(experiment_rows), encoding="utf-8")
     write_csv(out_dir / "gate21_22_best_method_comparison.csv", compact_rows, GATE21_22_COMPACT_FIELDS)
     write_csv(out_dir / "gate21_22_frontiers.csv", frontier_rows, GATE21_21_FRONTIER_FIELDS)
     write_csv(out_dir / "gate21_22_decision_flags.csv", decision_flag_rows(decision))
